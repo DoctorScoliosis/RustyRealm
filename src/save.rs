@@ -617,6 +617,32 @@ mod tests {
     }
 
     #[test]
+    fn save_load_roundtrip_preserves_quest_progress_and_world_event() {
+        let dir = test_dir("quest-persistence");
+        let path = dir.join("player.json");
+        let mut state = test_state("questpersist", "secret");
+        crate::quests::notify_event(
+            &mut state,
+            &crate::event::GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
+        state.player.quests_completed.push("historic_quest".into());
+        state.active_world_event = crate::event::WorldEvent::generate_deterministic(1, 1_800_000_000);
+
+        save_to_path(&state, &path).unwrap();
+        let loaded = load_game_at(&path, "questpersist", "secret").unwrap();
+
+        assert_eq!(loaded.player.lifetime_kills, 1);
+        assert_eq!(loaded.player.quests_completed, state.player.quests_completed);
+        assert_eq!(loaded.active_quests, state.active_quests);
+        assert_eq!(loaded.active_world_event, state.active_world_event);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn version_two_saves_without_new_quest_fields_keep_valid_checksums() {
         let dir = test_dir("quest-fields-compat");
         let path = dir.join("player.json");
