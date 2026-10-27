@@ -537,7 +537,24 @@ mod tests {
 
     #[test]
     fn recipe_xp_uses_the_existing_threshold_and_emits_a_level_up() {
+        use crate::quests::{Quest, QuestObjective, QuestReward};
+
         let mut state = state();
+        state.active_quests.push(Quest {
+            id: "smithing_to_level_two".into(),
+            title: "Practise Smithing".into(),
+            description: "Reach Smithing level 2.".into(),
+            objective: QuestObjective::SkillLevel {
+                skill_name: "Smithing".into(),
+                required_level: 2,
+            },
+            progress: 1,
+            target: 2,
+            is_completed: false,
+            is_claimed: false,
+            reward: QuestReward::Gold(1),
+            is_daily: false,
+        });
         state.player.skills.smithing.xp_remaining = 10;
         state.player.add_item(ItemType::Ore, 1);
 
@@ -546,6 +563,13 @@ mod tests {
         assert_eq!(result.level_up, Some(2));
         assert_eq!(state.player.skills.smithing.level, 2);
         assert_eq!(state.player.skills.smithing.xp_remaining, 200);
+        let quest = state
+            .active_quests
+            .iter()
+            .find(|quest| quest.id == "smithing_to_level_two")
+            .unwrap();
+        assert!(quest.is_completed);
+        assert_eq!(quest.progress, 2);
     }
 
     #[test]
