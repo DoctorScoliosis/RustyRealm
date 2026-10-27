@@ -241,7 +241,7 @@ fn general_store(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     "{} · owned {} · buy {}g / sell {}g",
                     item.name(),
                     state.player.get_item_count(*item),
-                    crate::economy::calculate_dynamic_buy_price(state, *item),
+                    crate::mastery::vendor_price(state, crate::economy::calculate_dynamic_buy_price(state, *item), 0),
                     crate::economy::calculate_dynamic_sell_price(state, *item)
                 )
             })
