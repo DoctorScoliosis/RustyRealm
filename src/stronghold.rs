@@ -1,4 +1,5 @@
-use crate::data::{ArmourTier, NpcType, WeaponTier};
+use crate::combat::{run_engine_battle, BattleConfig, BattleOutcome};
+use crate::data::{ArmourTier, NpcType, WeaponTier, MAX_GOLD, MAX_PLAYER_LEVEL};
 use crate::event::GameEvent;
 use crate::state::GameState;
 use crate::ui::Tui;
@@ -8,7 +9,7 @@ use std::io;
 pub fn stronghold_warning(tui: &mut Tui, state: &GameState) -> io::Result<bool> {
     tui.show_message(
         "Warning · The Stronghold",
-        "THE STRONGHOLD IS VERY DANGEROUS.\n\nYou will lose all your items if you are not properly prepared. You will not be able to flee or access your inventory during battle, so make sure you are ready.",
+        "THE STRONGHOLD IS VERY DANGEROUS.\n\nYou will lose your progress if you are defeated. You cannot flee or access your inventory during battle, so make sure you are ready.",
         Some(state),
     )?;
     let choice = tui.select_menu(
@@ -19,244 +20,144 @@ pub fn stronghold_warning(tui: &mut Tui, state: &GameState) -> io::Result<bool> 
     Ok(choice == 0)
 }
 
+/// Preserve the ten-victory Stronghold run while using the shared combat engine
+/// for its warrior encounters and the Lacoyx boss.
 pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     if state.player.stronghold_kill_count >= 10 {
         return boss_fight(tui, state);
     }
 
     let mut rng = rand::thread_rng();
-    let npc_roll = rng.gen_range(1..=3);
-    let (npc_type, level) = match npc_roll {
+    let (npc_type, level) = match rng.gen_range(1..=3) {
         1 => (NpcType::StrongholdMage, 110),
         2 => (NpcType::StrongholdRanger, 111),
-        3 => (NpcType::StrongholdWarrior, 108),
-        _ => (NpcType::StrongholdMage, 110),
+        _ => (NpcType::StrongholdWarrior, 108),
     };
     let health = npc_type.base_health();
-    let mut current_health = health;
 
-    tui.show_message(
-        "The Stronghold",
-        &format!(
-            "You continue into the Stronghold and encounter a level {} {} with {} health.",
+    match run_engine_battle(
+        tui,
+        state,
+        BattleConfig {
+            enemy_name: npc_type.name(),
             level,
-            npc_type.name(),
-            health
-        ),
-        Some(state),
-    )?;
-
-    while current_health > 0 && state.player.hp > 0 {
-        let max_dmg = state.player.weapon.max_damage();
-        let mut damage = rand::thread_rng().gen_range(1..=max_dmg);
-        if damage > current_health {
-            damage = current_health;
-        }
-
-        let atk_xp = (damage / 4) * 3;
-        state.player.xp += atk_xp;
-        state.player.xp_until_next = state.player.xp_until_next.saturating_sub(atk_xp);
-        current_health = current_health.saturating_sub(damage);
-
-        tui.show_message(
-            "Stronghold · Player attack",
-            &format!("You deal {} damage to the {}.\nIt has {} health left.\nYou gain {} EXP.\nStronghold victories: {}/10",
-                damage, npc_type.name(), current_health, atk_xp, state.player.stronghold_kill_count),
-            Some(state),
-        )?;
-
-        if state.player.xp_until_next == 0 {
-            state.player.level_up_combat();
-            let new_level = state.player.combat_level;
+            enemy_hp: health,
+            enemy_attack_power: npc_type.max_damage(),
+            allow_inventory: false,
+            allow_flee: false,
+        },
+    )? {
+        BattleOutcome::Victory => {
+            let gold_gain = rand::thread_rng().gen_range(1..=1000) + 1000;
+            state.player.gold = state.player.gold.saturating_add(gold_gain).min(MAX_GOLD);
+            state.player.stronghold_kill_count =
+                state.player.stronghold_kill_count.saturating_add(1);
             crate::quests::notify_event(
                 state,
-                &GameEvent::PlayerLeveledUp { new_level },
+                &GameEvent::MonsterDefeated {
+                    name: npc_type.name().to_string(),
+                    is_stronghold: true,
+                },
             );
-            tui.show_message(
-                "Combat level up",
-                &format!(
-                    "You are now combat level {} and have {} health.",
-                    state.player.combat_level, state.player.hp
-                ),
-                Some(state),
-            )?;
-        }
 
-        if current_health == 0 {
-            break;
-        }
+            let healing = state.player.stronghold_kill_count.is_multiple_of(2);
+            if healing {
+                state.player.hp = state.player.max_hp;
+            }
 
-        let mut npc_dmg = rand::thread_rng().gen_range(1..=npc_type.max_damage());
-        let dr = state.player.armour.max_dr();
-        let dr_roll = rand::thread_rng().gen_range(0..=dr);
-        npc_dmg = npc_dmg.saturating_sub(dr_roll);
-        if npc_dmg == 0 {
-            npc_dmg = 0;
+            let mut result = format!(
+                "You defeated the {} and gained {} gold.\nStronghold progress: {}/10.",
+                npc_type.name(),
+                gold_gain,
+                state.player.stronghold_kill_count
+            );
+            if healing {
+                result.push_str("\n\nA wave of healing energy restores your health.");
+            }
+            if state.player.stronghold_kill_count >= 10 {
+                result.push_str("\n\nLacoyx awaits in the throne room.");
+            }
+            tui.show_message("Stronghold victory", &result, Some(state))
         }
-        state.player.hp = state.player.hp.saturating_sub(npc_dmg);
-
-        if state.player.hp == 0 {
-            tui.show_message(
-                "Defeated",
-                "You died. Your Stronghold progress has been reset.",
-                Some(state),
-            )?;
+        BattleOutcome::Defeated => {
             state.player.stronghold_kill_count = 0;
             state.player.hp = state.player.max_hp;
-            return Ok(());
+            tui.show_message(
+                "Stronghold progress lost",
+                "Your run has been reset. Your lifetime monster count is preserved.",
+                Some(state),
+            )
         }
-
-        tui.show_message(
-            "Stronghold · Enemy attack",
-            &format!(
-                "The {} deals {} damage to you.\nYou have {} health left.",
-                npc_type.name(),
-                npc_dmg,
-                state.player.hp
-            ),
-            Some(state),
-        )?;
+        BattleOutcome::Fled => {
+            // Flee is disabled for this encounter; keep a defensive fallback.
+            Ok(())
+        }
     }
-
-    let gold_gain = rand::thread_rng().gen_range(1..=1000) + 1000;
-    state.player.gold = (state.player.gold + gold_gain).min(5_000_000);
-    state.player.stronghold_kill_count += 1;
-    crate::quests::notify_event(
-        state,
-        &GameEvent::MonsterDefeated {
-            name: npc_type.name().to_string(),
-            is_stronghold: true,
-        },
-    );
-
-    let healing = state.player.stronghold_kill_count.is_multiple_of(2);
-    if healing {
-        state.player.hp = state.player.max_hp;
-    }
-
-    let mut result = format!(
-        "You defeated the {} and gained {} gold.\nStronghold progress: {}/10.",
-        npc_type.name(),
-        gold_gain,
-        state.player.stronghold_kill_count
-    );
-    if healing {
-        result.push_str("\n\nA wave of healing energy restores your health.");
-    }
-    if state.player.stronghold_kill_count >= 10 {
-        result.push_str("\n\nLacoyx awaits in the throne room.");
-    }
-    tui.show_message("Stronghold victory", &result, Some(state))
 }
 
 fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     state.player.hp = state.player.max_hp;
     let npc_type = NpcType::Lacoyx;
     let level = 741;
-    let mut health = npc_type.base_health();
-    let xp = npc_type.base_xp();
+    let health = npc_type.base_health();
 
     tui.show_message(
         "Lacoyx's Throne Room",
         &format!(
-            "You enter Lacoyx's throne room. The level {} War Commander has {} health.",
-            level, health
+            "You enter Lacoyx's throne room. The level {level} War Commander has {health} health.\n\nHe shifts tactics as his health falls. Watch for telegraphed attacks and choose how to defend.",
         ),
         Some(state),
     )?;
 
-    while health > 0 && state.player.hp > 0 {
-        let max_dmg = state.player.weapon.max_damage();
-        let mut damage = rand::thread_rng().gen_range(1..=max_dmg);
-        if damage > health {
-            damage = health;
-        }
-
-        let atk_xp = (damage / 4) * 3;
-        state.player.xp += atk_xp;
-        state.player.xp_until_next = state.player.xp_until_next.saturating_sub(atk_xp);
-        health = health.saturating_sub(damage);
-
-        tui.show_message(
-            "Lacoyx · Player attack",
-            &format!(
-                "You deal {} damage to Lacoyx.\nLacoyx has {} health left.\nYou gain {} EXP.",
-                damage, health, atk_xp
-            ),
-            Some(state),
-        )?;
-
-        if state.player.combat_level >= 37 {
-            state.player.xp_until_next = 1;
-        }
-        if state.player.xp >= 1_000_000 {
-            state.player.xp = 1_000_000;
-        }
-
-        if state.player.xp_until_next == 0 {
-            state.player.level_up_combat();
-            let new_level = state.player.combat_level;
+    match run_engine_battle(
+        tui,
+        state,
+        BattleConfig {
+            enemy_name: npc_type.name(),
+            level,
+            enemy_hp: health,
+            enemy_attack_power: npc_type.max_damage(),
+            allow_inventory: false,
+            allow_flee: false,
+        },
+    )? {
+        BattleOutcome::Victory => {
             crate::quests::notify_event(
                 state,
-                &GameEvent::PlayerLeveledUp { new_level },
+                &GameEvent::MonsterDefeated {
+                    name: npc_type.name().to_string(),
+                    is_stronghold: true,
+                },
             );
-            tui.show_message(
-                "Combat level up",
-                &format!("You are now combat level {}.", state.player.combat_level),
-                Some(state),
-            )?;
-        }
-        if health == 0 {
-            break;
-        }
+            state.player.inventory_weapons.push(WeaponTier::Omega);
+            state.player.inventory_armour.push(ArmourTier::Runic);
+            state.player.stronghold_kill_count = 0;
 
-        let mut npc_dmg = rand::thread_rng().gen_range(1..=npc_type.max_damage());
-        let dr = state.player.armour.max_dr();
-        let dr_roll = rand::thread_rng().gen_range(0..=dr);
-        npc_dmg = npc_dmg.saturating_sub(dr_roll);
-        if npc_dmg == 0 {
-            npc_dmg = 0;
-        }
-        state.player.hp = state.player.hp.saturating_sub(npc_dmg);
+            let bonus_xp = npc_type.base_xp();
+            state.player.xp = state.player.xp.saturating_add(bonus_xp).min(1_000_000);
+            state.player.xp_until_next = state.player.xp_until_next.saturating_sub(bonus_xp);
+            if state.player.xp_until_next == 0 && state.player.combat_level < MAX_PLAYER_LEVEL {
+                state.player.level_up_combat();
+                let new_level = state.player.combat_level;
+                crate::quests::notify_event(state, &GameEvent::PlayerLeveledUp { new_level });
+            }
+            state.player.hp = state.player.max_hp;
 
-        if state.player.hp == 0 {
             tui.show_message(
-                "Defeated",
-                "You died. Your Stronghold progress has been reset.",
+                "Lacoyx defeated",
+                "You won the battle against Lacoyx!\n\nRewards:\n• Omega Maul\n• Runic Armour\n• 5,000 Experience\n\nYour health has been restored and Stronghold progress has reset.",
                 Some(state),
-            )?;
+            )
+        }
+        BattleOutcome::Defeated => {
             state.player.stronghold_kill_count = 0;
             state.player.hp = state.player.max_hp;
-            return Ok(());
+            tui.show_message(
+                "Lacoyx defeated you",
+                "Your Stronghold progress has been reset. Your lifetime monster count is preserved.",
+                Some(state),
+            )
         }
-
-        tui.show_message(
-            "Lacoyx attacks",
-            &format!(
-                "Lacoyx deals {} damage to you.\nYou have {} health left.",
-                npc_dmg, state.player.hp
-            ),
-            Some(state),
-        )?;
+        BattleOutcome::Fled => Ok(()),
     }
-
-    crate::quests::notify_event(
-        state,
-        &GameEvent::MonsterDefeated {
-            name: npc_type.name().to_string(),
-            is_stronghold: true,
-        },
-    );
-    state.player.inventory_weapons.push(WeaponTier::Omega);
-    state.player.inventory_armour.push(ArmourTier::Runic);
-    state.player.stronghold_kill_count = 0;
-    state.player.xp += xp;
-    state.player.xp_until_next = state.player.xp_until_next.saturating_sub(xp);
-    state.player.hp = state.player.max_hp;
-
-    tui.show_message(
-        "Lacoyx defeated",
-        "You won the battle against Lacoyx!\n\nRewards:\n• Omega Maul\n• Runic Armour\n• 5,000 Experience\n\nYour health has been restored and Stronghold progress has reset.",
-        Some(state),
-    )
 }

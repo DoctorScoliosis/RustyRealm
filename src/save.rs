@@ -264,9 +264,8 @@ fn read_save(path: &Path) -> Result<ParsedSave, SaveError> {
             && value.get("checksum").is_some()
             && value.get("data").is_some();
         if is_envelope {
-            let envelope: SaveEnvelope = serde_json::from_value(value.clone()).map_err(|error| {
-                SaveError::Corrupted(format!("invalid save envelope: {error}"))
-            })?;
+            let envelope: SaveEnvelope = serde_json::from_value(value.clone())
+                .map_err(|error| SaveError::Corrupted(format!("invalid save envelope: {error}")))?;
             if envelope.version != CURRENT_SAVE_VERSION {
                 return Err(SaveError::UnsupportedVersion(envelope.version));
             }
@@ -593,6 +592,10 @@ mod tests {
         let mut state = test_state("validated", "secret");
         state.player.max_hp = 1200;
         state.player.hp = u32::MAX;
+        state.player.max_stamina = 0;
+        state.player.stamina = u32::MAX;
+        state.player.max_mana = 0;
+        state.player.mana = u32::MAX;
         state.player.gold = u32::MAX;
         state.player.bank_accounts[0].gold = u32::MAX;
         state.player.skills.woodcutting.level = 250;
@@ -602,6 +605,10 @@ mod tests {
 
         assert_eq!(loaded.player.max_hp, 1000);
         assert_eq!(loaded.player.hp, 1000);
+        assert_eq!(loaded.player.max_stamina, 100);
+        assert_eq!(loaded.player.stamina, 100);
+        assert_eq!(loaded.player.max_mana, 50);
+        assert_eq!(loaded.player.mana, 50);
         assert_eq!(loaded.player.gold, crate::data::MAX_GOLD);
         assert_eq!(
             loaded.player.bank_accounts[0].gold,
@@ -629,13 +636,17 @@ mod tests {
             },
         );
         state.player.quests_completed.push("historic_quest".into());
-        state.active_world_event = crate::event::WorldEvent::generate_deterministic(1, 1_800_000_000);
+        state.active_world_event =
+            crate::event::WorldEvent::generate_deterministic(1, 1_800_000_000);
 
         save_to_path(&state, &path).unwrap();
         let loaded = load_game_at(&path, "questpersist", "secret").unwrap();
 
         assert_eq!(loaded.player.lifetime_kills, 1);
-        assert_eq!(loaded.player.quests_completed, state.player.quests_completed);
+        assert_eq!(
+            loaded.player.quests_completed,
+            state.player.quests_completed
+        );
         assert_eq!(loaded.active_quests, state.active_quests);
         assert_eq!(loaded.active_world_event, state.active_world_event);
 
@@ -643,7 +654,7 @@ mod tests {
     }
 
     #[test]
-    fn version_two_saves_without_new_quest_fields_keep_valid_checksums() {
+    fn version_two_saves_without_new_fields_keep_valid_checksums() {
         let dir = test_dir("quest-fields-compat");
         let path = dir.join("player.json");
         let state = test_state("questcompat", "secret");
@@ -651,9 +662,34 @@ mod tests {
 
         let mut document: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        document["data"].as_object_mut().unwrap().remove("active_quests");
-        document["data"].as_object_mut().unwrap().remove("active_world_event");
-        document["data"]["player"].as_object_mut().unwrap().remove("lifetime_kills");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("active_quests");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("active_world_event");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("lifetime_kills");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("stamina");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("max_stamina");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("mana");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("max_mana");
         let checksum = compute_checksum_payload(&document["data"]).unwrap();
         document["checksum"] = serde_json::json!(checksum);
         fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
@@ -661,6 +697,10 @@ mod tests {
         let loaded = load_game_at(&path, "questcompat", "secret").unwrap();
         assert!(loaded.active_quests.is_empty());
         assert_eq!(loaded.player.lifetime_kills, 0);
+        assert_eq!(loaded.player.stamina, 100);
+        assert_eq!(loaded.player.max_stamina, 100);
+        assert_eq!(loaded.player.mana, 50);
+        assert_eq!(loaded.player.max_mana, 50);
         assert_eq!(
             loaded.active_world_event.event_type,
             crate::event::WorldEventType::None

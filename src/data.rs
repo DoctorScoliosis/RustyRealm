@@ -419,3 +419,120 @@ pub const MAX_PLAYER_LEVEL: u32 = 37;
 pub const MAX_SKILL_LEVEL: u32 = 100;
 pub const MAX_GOLD: u32 = 5_000_000;
 pub const MAX_BANK_GOLD: u32 = 1_000_000_000;
+
+/// Damage channels used by the combat engine and NPC affinity table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DamageType {
+    Physical,
+    Fire,
+    Poison,
+    Arcane,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StatusEffectKind {
+    Bleed,
+    Poison,
+    Burn,
+    Stun,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StatusEffect {
+    pub kind: StatusEffectKind,
+    pub duration: u32,
+    pub potency: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AbilityId {
+    HeavyStrike,
+    ShieldWall,
+    LifeDrain,
+    Cleave,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ability {
+    pub id: AbilityId,
+    pub name: String,
+    pub description: String,
+    pub stamina_cost: u32,
+    pub mana_cost: u32,
+    /// Percentage of the combatant's attack power (100 = 1.0x).
+    pub damage_multiplier: u32,
+    pub damage_type: DamageType,
+}
+
+pub fn get_ability(id: AbilityId) -> Ability {
+    match id {
+        AbilityId::HeavyStrike => Ability {
+            id,
+            name: "Heavy Strike".into(),
+            description: "Deals 2.0x physical damage and inflicts Bleed.".into(),
+            stamina_cost: 20,
+            mana_cost: 0,
+            damage_multiplier: 200,
+            damage_type: DamageType::Physical,
+        },
+        AbilityId::ShieldWall => Ability {
+            id,
+            name: "Shield Wall".into(),
+            description: "Reduces incoming damage by 50% for 2 turns.".into(),
+            stamina_cost: 15,
+            mana_cost: 0,
+            damage_multiplier: 0,
+            damage_type: DamageType::Physical,
+        },
+        AbilityId::LifeDrain => Ability {
+            id,
+            name: "Life Drain".into(),
+            description: "Deals 1.2x Arcane damage and heals 50% of damage dealt.".into(),
+            stamina_cost: 0,
+            mana_cost: 25,
+            damage_multiplier: 120,
+            damage_type: DamageType::Arcane,
+        },
+        AbilityId::Cleave => Ability {
+            id,
+            name: "Cleave".into(),
+            description: "Deals 1.5x physical damage and stuns the target for one turn.".into(),
+            stamina_cost: 25,
+            mana_cost: 0,
+            damage_multiplier: 150,
+            damage_type: DamageType::Physical,
+        },
+    }
+}
+
+/// Positive values resist damage; negative values increase damage taken.
+pub fn get_npc_resistance(npc_name: &str, damage_type: DamageType) -> i32 {
+    match (npc_name, damage_type) {
+        ("Dragon", DamageType::Fire) => 75,
+        ("Dragon", DamageType::Physical) => 25,
+        ("Ent", DamageType::Fire) => -50,
+        ("Ent", DamageType::Physical) => 50,
+        ("Rockbeast", DamageType::Physical) => 50,
+        ("Rockbeast", DamageType::Arcane) => -50,
+        ("Mage" | "Sorcerer", DamageType::Arcane) => 50,
+        ("Mage" | "Sorcerer", DamageType::Physical) => -25,
+        _ => 0,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LacoyxPhase {
+    Phase1Commander,
+    Phase2InfernalWarlord,
+    Phase3DesperateOverlord,
+}
+
+impl LacoyxPhase {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Phase1Commander => "Phase 1: War Commander",
+            Self::Phase2InfernalWarlord => "Phase 2: Infernal Warlord",
+            Self::Phase3DesperateOverlord => "Phase 3: Desperate Overlord",
+        }
+    }
+}
