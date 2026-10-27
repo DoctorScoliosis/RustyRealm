@@ -7,7 +7,6 @@ use std::io;
 #[derive(Debug, Clone)]
 pub struct Quest {
     pub id: String,
-    pub description: String,
     pub is_completed: bool,
 }
 
@@ -32,7 +31,6 @@ fn generate_daily_quests(state: &mut GameState) {
     let target_combat_lvl = (state.player.combat_level + rng.gen_range(1..=5)).min(37);
     new_quests.push(Quest {
         id: format!("combat_lvl_{}", target_combat_lvl),
-        description: format!("Reach combat level {}", target_combat_lvl),
         is_completed: state.player.combat_level >= target_combat_lvl,
     });
 
@@ -43,7 +41,6 @@ fn generate_daily_quests(state: &mut GameState) {
         .unwrap_or(1000);
     new_quests.push(Quest {
         id: format!("kill_{}", target_kills),
-        description: format!("Kill {} monsters in the Stronghold", target_kills),
         is_completed: state.player.stronghold_kill_count >= target_kills,
     });
 
@@ -59,20 +56,17 @@ fn generate_daily_quests(state: &mut GameState) {
     let target_skill_lvl = (lowest_skill.1 + rng.gen_range(1..=10)).min(100);
     new_quests.push(Quest {
         id: format!("skill_{}_{}", lowest_skill.0, target_skill_lvl),
-        description: format!("Reach level {} in {}", target_skill_lvl, lowest_skill.0),
         is_completed: lowest_skill.1 >= target_skill_lvl,
     });
 
     let target_total = (total_lvl + rng.gen_range(10..=50)).min(637);
     new_quests.push(Quest {
         id: format!("total_lvl_{}", target_total),
-        description: format!("Reach total level {}", target_total),
         is_completed: total_lvl >= target_total,
     });
 
     let completed_quests: Vec<Quest> = state.player.quests_completed.iter().map(|id| Quest {
         id: id.clone(),
-        description: "Completed quest".to_string(),
         is_completed: true,
     }).collect();
 
