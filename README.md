@@ -1,5 +1,3 @@
-# Rusty Realm
-
 <p align="center">
   <img src="assets/rusty-realm-banner.svg" width="100%" alt="Rusty Realm ASCII-art banner">
 </p>
