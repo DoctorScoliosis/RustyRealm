@@ -311,9 +311,16 @@ fn admin_commands(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                         "thieving_lvl" => val.parse::<u32>().map(|v| state.player.skills.thieving.level = v).is_ok(),
                         _ => false,
                     };
-                    tui.show_message(if updated { "Variable updated" } else { "Variable not updated" },
-                        if updated { &format!("Set {} to {}.", var, val) } else { "Unknown variable or invalid value." },
-                        Some(state))?;
+                    let detail = if updated {
+                        format!("Set {} to {}.", var, val)
+                    } else {
+                        "Unknown variable or invalid value.".to_string()
+                    };
+                    tui.show_message(
+                        if updated { "Variable updated" } else { "Variable not updated" },
+                        &detail,
+                        Some(state),
+                    )?;
                 } else {
                     tui.show_message("Invalid command", "Use the format set variable=value.", Some(state))?;
                 }
