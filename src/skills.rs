@@ -42,7 +42,7 @@ impl SkillKind {
         }
     }
 
-    fn data<'a>(self, state: &'a GameState) -> &'a SkillData {
+    fn data(self, state: &GameState) -> &SkillData {
         match self {
             Self::Woodcutting => &state.player.skills.woodcutting,
             Self::Cooking => &state.player.skills.cooking,
@@ -53,7 +53,7 @@ impl SkillKind {
         }
     }
 
-    fn data_mut<'a>(self, state: &'a mut GameState) -> &'a mut SkillData {
+    fn data_mut(self, state: &mut GameState) -> &mut SkillData {
         match self {
             Self::Woodcutting => &mut state.player.skills.woodcutting,
             Self::Cooking => &mut state.player.skills.cooking,
