@@ -321,10 +321,9 @@ pub fn execute_recipe(
                 state.player.add_item(*item_type, *count);
             }
             RecipeOutput::Weapon { tier, count } => {
-                state
-                    .player
-                    .inventory_weapons
-                    .extend(std::iter::repeat_n(*tier, *count as usize));
+                for _ in 0..*count {
+                    state.player.inventory_weapons.push(*tier);
+                }
             }
         }
     }
