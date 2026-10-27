@@ -204,7 +204,7 @@ impl Tui {
                 frame.render_widget(paragraph, inner);
 
                 if inner.width > 0 && inner.height > 0 {
-                    let input_cells = if masked { input.chars().count() } else { input.chars().count() };
+                    let input_cells = input.chars().count();
                     let cursor_x = inner.x.saturating_add(2).saturating_add(input_cells.min(inner.width.saturating_sub(3) as usize) as u16);
                     frame.set_cursor(cursor_x.min(inner.x + inner.width - 1), inner.y);
                 }
@@ -457,21 +457,39 @@ mod tests {
 
     #[test]
     fn responsive_layout_renders_within_wide_standard_narrow_and_short_terminals() {
+        use std::cell::Cell;
+
         let state = GameState::new(crate::state::Player::new("Hero".into(), String::new()));
-        for (width, height) in [(120, 30), (90, 20), (75, 25), (60, 20), (45, 30), (45, 15), (80, 12), (20, 4), (1, 1)] {
+        let cases = [
+            (120, 30, 28, 0), // Wide: sidebar beside content.
+            (90, 20, 28, 0),  // Exact wide breakpoint.
+            (75, 25, 0, 3),   // Standard: compact header above content.
+            (60, 20, 0, 3),   // Exact standard breakpoint.
+            (45, 30, 0, 1),   // Narrow: minimal status row.
+            (80, 12, 0, 1),   // Short: minimal status row regardless of width.
+            (20, 4, 0, 0),    // Very short: reserve all space for content.
+            (1, 1, 0, 0),
+        ];
+
+        for (width, height, expected_x, expected_y) in cases {
             let backend = TestBackend::new(width, height);
             let mut terminal = Terminal::new(backend).unwrap();
+            let rendered = Cell::new(Rect::default());
             terminal.draw(|frame| {
                 let full = frame.size();
                 render_responsive_base(frame, full, Some(&state), |frame, content, _| {
+                    rendered.set(content);
                     assert!(content.x.saturating_add(content.width) <= full.width);
                     assert!(content.y.saturating_add(content.height) <= full.height);
                     frame.render_widget(Paragraph::new("Responsive content"), content);
                 });
             }).unwrap();
+
+            let content = rendered.get();
+            assert_eq!(content.x, expected_x, "content x at {}x{}", width, height);
+            assert_eq!(content.y, expected_y, "content y at {}x{}", width, height);
         }
     }
-
     #[test]
     fn centered_rect_stays_inside_small_areas() {
         for (width, height) in [(1, 1), (10, 3), (40, 10), (120, 30)] {
