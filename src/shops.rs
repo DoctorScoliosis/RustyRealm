@@ -405,7 +405,7 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 "Weapon s{} · {} · sell for {} gold",
                 index + 1,
                 tier.name(),
-                crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price())
+                crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price(), tier.buy_price())
             ));
             choices.push(SellChoice::Weapon(index));
         }
@@ -414,7 +414,7 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 "Armour a{} · {} · sell for {} gold",
                 index + 1,
                 tier.name(),
-                crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price())
+                crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price(), tier.buy_price())
             ));
             choices.push(SellChoice::Armour(index));
         }
@@ -440,14 +440,14 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 let tier = state.player.inventory_weapons[index];
                 (
                     tier.name().to_string(),
-                    crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price()),
+                    crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price(), tier.buy_price()),
                 )
             }
             SellChoice::Armour(index) => {
                 let tier = state.player.inventory_armour[index];
                 (
                     tier.name().to_string(),
-                    crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price()),
+                    crate::economy::calculate_dynamic_equipment_sell_price(state, tier.sell_price(), tier.buy_price()),
                 )
             }
         };
