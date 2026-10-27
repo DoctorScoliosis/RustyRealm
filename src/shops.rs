@@ -158,7 +158,7 @@ fn try_buy_legend_weapon(tui: &mut Tui, state: &mut GameState, tier: WeaponTier,
         tui.show_message("Purchase failed", "You do not have enough Magic Orbs.", Some(state))?;
         return Ok(());
     }
-    if state.player.inventory_weapons.iter().any(|&owned| owned == tier) {
+    if state.player.inventory_weapons.contains(&tier) {
         tui.show_message("Already owned", "You already own this item.", Some(state))?;
         return Ok(());
     }
@@ -176,7 +176,7 @@ fn try_buy_legend_armour(tui: &mut Tui, state: &mut GameState, tier: ArmourTier,
         tui.show_message("Purchase failed", "You do not have enough Magic Orbs.", Some(state))?;
         return Ok(());
     }
-    if state.player.inventory_armour.iter().any(|&owned| owned == tier) {
+    if state.player.inventory_armour.contains(&tier) {
         tui.show_message("Already owned", "You already own this item.", Some(state))?;
         return Ok(());
     }
@@ -212,7 +212,6 @@ pub fn smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 enum SellChoice {
     Weapon(usize),
     Armour(usize),
-    Back,
 }
 
 fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
@@ -251,7 +250,6 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 let tier = state.player.inventory_armour[index];
                 (tier.name().to_string(), tier.sell_price())
             }
-            SellChoice::Back => return Ok(()),
         };
         let confirmation = tui.select_menu(
             &format!("The {} can be sold for {} gold. Deal?", name, price),
@@ -265,7 +263,6 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         match selected {
             SellChoice::Weapon(index) => { state.player.inventory_weapons.remove(index); }
             SellChoice::Armour(index) => { state.player.inventory_armour.remove(index); }
-            SellChoice::Back => return Ok(()),
         }
         state.player.gold += price;
         tui.show_message("Sale complete", &format!("You sold the {} for {} gold.", name, price), Some(state))?;
@@ -316,7 +313,7 @@ fn try_buy_max_weapon(tui: &mut Tui, state: &mut GameState, tier: WeaponTier, pr
         tui.show_message("Purchase failed", "You do not have enough money.", Some(state))?;
         return Ok(());
     }
-    if state.player.inventory_weapons.iter().any(|&owned| owned == tier) {
+    if state.player.inventory_weapons.contains(&tier) {
         tui.show_message("Already owned", "You already own this item.", Some(state))?;
         return Ok(());
     }
