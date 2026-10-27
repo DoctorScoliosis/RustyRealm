@@ -1,4 +1,5 @@
 use crate::data::{ItemType, NpcType};
+use crate::event::GameEvent;
 use crate::state::GameState;
 use crate::ui::Tui;
 use rand::Rng;
@@ -86,6 +87,11 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
                 if state.player.xp_until_next == 0 {
                     state.player.level_up_combat();
+                    let new_level = state.player.combat_level;
+                    crate::quests::notify_event(
+                        state,
+                        &GameEvent::PlayerLeveledUp { new_level },
+                    );
                     tui.show_message(
                         "Combat level up",
                         &format!(
@@ -171,6 +177,13 @@ fn handle_victory(tui: &mut Tui, state: &mut GameState, npc_type: NpcType) -> io
     };
 
     state.player.add_item(item, amount);
+    crate::quests::notify_event(
+        state,
+        &GameEvent::MonsterDefeated {
+            name: npc_type.name().to_string(),
+            is_stronghold: false,
+        },
+    );
     state.player.hp = state.player.max_hp;
     tui.show_message(
         "Victory",

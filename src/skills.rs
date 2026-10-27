@@ -1,4 +1,5 @@
 use crate::data::{ItemType, MAX_GOLD, MAX_SKILL_LEVEL};
+use crate::event::GameEvent;
 use crate::state::{GameState, SkillData};
 use crate::ui::Tui;
 use std::io;
@@ -152,6 +153,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::Logs, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
+                        crate::quests::notify_event(
+                            state,
+                            &GameEvent::SkillLeveledUp {
+                                skill_name: skill.name().to_string(),
+                                new_level,
+                            },
+                        );
                         tui.show_message(
                             "Skill level up",
                             &format!(
@@ -188,6 +196,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::Food, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
+                        crate::quests::notify_event(
+                            state,
+                            &GameEvent::SkillLeveledUp {
+                                skill_name: skill.name().to_string(),
+                                new_level,
+                            },
+                        );
                         tui.show_message(
                             "Skill level up",
                             &format!(
@@ -224,6 +239,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::RawFood, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
+                        crate::quests::notify_event(
+                            state,
+                            &GameEvent::SkillLeveledUp {
+                                skill_name: skill.name().to_string(),
+                                new_level,
+                            },
+                        );
                         tui.show_message(
                             "Skill level up",
                             &format!(
@@ -249,6 +271,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::Ore, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
+                        crate::quests::notify_event(
+                            state,
+                            &GameEvent::SkillLeveledUp {
+                                skill_name: skill.name().to_string(),
+                                new_level,
+                            },
+                        );
                         tui.show_message(
                             "Skill level up",
                             &format!(
@@ -285,6 +314,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::Ingots, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
+                        crate::quests::notify_event(
+                            state,
+                            &GameEvent::SkillLeveledUp {
+                                skill_name: skill.name().to_string(),
+                                new_level,
+                            },
+                        );
                         tui.show_message(
                             "Skill level up",
                             &format!(
@@ -310,6 +346,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.gold = state.player.gold.saturating_add(10).min(MAX_GOLD);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
+                        crate::quests::notify_event(
+                            state,
+                            &GameEvent::SkillLeveledUp {
+                                skill_name: skill.name().to_string(),
+                                new_level,
+                            },
+                        );
                         tui.show_message(
                             "Skill level up",
                             &format!(

@@ -144,17 +144,20 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Save
     }
 }
 
-fn compute_checksum(state: &GameState) -> Result<String, SaveError> {
-    // Player::password_hash is #[serde(skip)], so authentication data is not
-    // duplicated in the payload checksum or written into the game-state object.
-    // Canonicalise through serde_json::Value before hashing. Player.items is a
-    // HashMap, whose iteration order is not stable across save/load or processes;
-    // hashing direct serialisation could otherwise reject an unchanged save.
-    let canonical_payload = serde_json::to_value(state)?;
-    let payload = serde_json::to_vec(&canonical_payload)?;
+fn compute_checksum_payload(payload: &serde_json::Value) -> Result<String, SaveError> {
+    // serde_json::Value canonicalises object keys. When reading an older save,
+    // checksum the raw data object before serde(default) adds newly introduced
+    // fields, otherwise an unchanged version-2 save would appear corrupted.
+    let payload = serde_json::to_vec(payload)?;
     let mut hasher = Sha256::new();
     hasher.update(payload);
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn compute_checksum(state: &GameState) -> Result<String, SaveError> {
+    // Player::password_hash is #[serde(skip)] and is stored separately.
+    let canonical_payload = serde_json::to_value(state)?;
+    compute_checksum_payload(&canonical_payload)
 }
 
 fn backup_path(path: &Path) -> PathBuf {
@@ -253,31 +256,40 @@ fn read_save(path: &Path) -> Result<ParsedSave, SaveError> {
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    match serde_json::from_str::<SaveEnvelope>(&contents) {
-        Ok(envelope) => {
+    // Inspect the envelope as JSON first, so integrity is checked against the
+    // exact payload stored on disk. This keeps older version-2 saves valid when
+    // newly added fields have serde defaults.
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents) {
+        let is_envelope = value.get("version").is_some()
+            && value.get("checksum").is_some()
+            && value.get("data").is_some();
+        if is_envelope {
+            let envelope: SaveEnvelope = serde_json::from_value(value.clone()).map_err(|error| {
+                SaveError::Corrupted(format!("invalid save envelope: {error}"))
+            })?;
             if envelope.version != CURRENT_SAVE_VERSION {
                 return Err(SaveError::UnsupportedVersion(envelope.version));
             }
 
-            let computed = compute_checksum(&envelope.data)?;
+            let computed = compute_checksum_payload(&value["data"])?;
             if envelope.checksum != computed {
                 return Err(SaveError::ChecksumMismatch {
                     expected: envelope.checksum,
                     computed,
                 });
             }
-
-            Ok(ParsedSave::Current(envelope))
+            return Ok(ParsedSave::Current(envelope));
         }
-        Err(envelope_error) => match serde_json::from_str::<GameState>(&contents) {
-            Ok(mut legacy_state) => {
-                legacy_state.player.cap_values();
-                Ok(ParsedSave::Legacy(legacy_state))
-            }
-            Err(_) => Err(SaveError::Corrupted(format!(
-                "not a recognised save envelope or legacy game-state JSON ({envelope_error})"
-            ))),
-        },
+    }
+
+    match serde_json::from_str::<GameState>(&contents) {
+        Ok(mut legacy_state) => {
+            legacy_state.player.cap_values();
+            Ok(ParsedSave::Legacy(legacy_state))
+        }
+        Err(error) => Err(SaveError::Corrupted(format!(
+            "not a recognised save envelope or legacy game-state JSON ({error})"
+        ))),
     }
 }
 
@@ -600,6 +612,59 @@ mod tests {
             crate::data::MAX_SKILL_LEVEL
         );
         assert_eq!(loaded.player.skills.woodcutting.xp_remaining, 0);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn save_load_roundtrip_preserves_quest_progress_and_world_event() {
+        let dir = test_dir("quest-persistence");
+        let path = dir.join("player.json");
+        let mut state = test_state("questpersist", "secret");
+        crate::quests::notify_event(
+            &mut state,
+            &crate::event::GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
+        state.player.quests_completed.push("historic_quest".into());
+        state.active_world_event = crate::event::WorldEvent::generate_deterministic(1, 1_800_000_000);
+
+        save_to_path(&state, &path).unwrap();
+        let loaded = load_game_at(&path, "questpersist", "secret").unwrap();
+
+        assert_eq!(loaded.player.lifetime_kills, 1);
+        assert_eq!(loaded.player.quests_completed, state.player.quests_completed);
+        assert_eq!(loaded.active_quests, state.active_quests);
+        assert_eq!(loaded.active_world_event, state.active_world_event);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn version_two_saves_without_new_quest_fields_keep_valid_checksums() {
+        let dir = test_dir("quest-fields-compat");
+        let path = dir.join("player.json");
+        let state = test_state("questcompat", "secret");
+        save_to_path(&state, &path).unwrap();
+
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["data"].as_object_mut().unwrap().remove("active_quests");
+        document["data"].as_object_mut().unwrap().remove("active_world_event");
+        document["data"]["player"].as_object_mut().unwrap().remove("lifetime_kills");
+        let checksum = compute_checksum_payload(&document["data"]).unwrap();
+        document["checksum"] = serde_json::json!(checksum);
+        fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
+
+        let loaded = load_game_at(&path, "questcompat", "secret").unwrap();
+        assert!(loaded.active_quests.is_empty());
+        assert_eq!(loaded.player.lifetime_kills, 0);
+        assert_eq!(
+            loaded.active_world_event.event_type,
+            crate::event::WorldEventType::None
+        );
 
         let _ = fs::remove_dir_all(dir);
     }

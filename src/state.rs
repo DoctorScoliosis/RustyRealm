@@ -1,3 +1,5 @@
+use crate::event::WorldEvent;
+use crate::quests::Quest;
 use crate::data::{
     ArmourTier, ItemType, WeaponTier, MAX_BANK_GOLD, MAX_GOLD, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL,
 };
@@ -23,6 +25,8 @@ pub struct Player {
     pub items: std::collections::HashMap<ItemType, u32>,
     pub skills: Skills,
     pub stronghold_kill_count: u32,
+    #[serde(default)]
+    pub lifetime_kills: u32,
     pub bank_accounts: [BankAccount; 5],
     pub quests_completed: Vec<String>,
     pub last_quest_refresh: Option<DateTime<Utc>>,
@@ -133,6 +137,7 @@ impl Player {
             items,
             skills: Skills::new(),
             stronghold_kill_count: 0,
+            lifetime_kills: 0,
             bank_accounts: [BankAccount::new(); 5],
             quests_completed: vec![],
             last_quest_refresh: None,
@@ -226,10 +231,20 @@ impl Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
     pub player: Player,
+    #[serde(default)]
+    pub active_quests: Vec<Quest>,
+    #[serde(default = "WorldEvent::none")]
+    pub active_world_event: WorldEvent,
 }
 
 impl GameState {
     pub fn new(player: Player) -> Self {
-        Self { player }
+        let mut state = Self {
+            player,
+            active_quests: Vec::new(),
+            active_world_event: WorldEvent::none(),
+        };
+        crate::quests::check_and_refresh_quests(&mut state);
+        state
     }
 }

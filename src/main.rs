@@ -1,6 +1,7 @@
 mod bank;
 mod combat;
 mod data;
+mod event;
 mod inventory;
 mod quests;
 mod save;
@@ -166,6 +167,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     ];
 
     loop {
+        crate::quests::check_and_refresh_quests(state);
         if let Err(error) = crate::save::save_game(state) {
             tui.show_message(
                 "Save warning",
