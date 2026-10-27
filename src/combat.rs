@@ -18,8 +18,7 @@ pub enum BattleOutcome {
     Defeated,
 }
 
-/// Run a tactical encounter against any existing NPC. Encounter rules live in
-/// CombatEngine; this function handles the TUI, player resources and save state.
+/// Configuration for a tactical encounter against an existing NPC.
 pub struct BattleConfig<'a> {
     pub enemy_name: &'a str,
     pub level: u32,
