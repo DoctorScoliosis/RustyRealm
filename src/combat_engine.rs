@@ -259,7 +259,7 @@ impl CombatEngine {
                             target.name
                         ));
                         target.apply_status(StatusEffectKind::Bleed, 2, 10);
-                        logs.push(format!("{} is bleeding for 10 damage per turn!", target.name));
+                        logs.push(format!("{} is afflicted with Bleed for 10 damage per turn!", target.name));
                     }
                     AbilityId::LifeDrain => {
                         let healed = damage / 2;
