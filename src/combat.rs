@@ -253,9 +253,11 @@ pub fn run_engine_battle(
                         DefensiveChoice::None,
                     );
                     battle_log.extend(logs);
+                    let enemy_hp_before = enemy.hp;
                     enemy.hp = enemy.hp.saturating_sub(damage);
-                    battle_log.push(format!("You deal {damage} damage to {}.", enemy.name));
-                    award_combat_xp(state, &mut player, damage, tui)?;
+                    let actual_damage = enemy_hp_before.saturating_sub(enemy.hp);
+                    battle_log.push(format!("You deal {actual_damage} damage to {}.", enemy.name));
+                    award_combat_xp(state, &mut player, actual_damage, tui)?;
                     player_acted = true;
                     break;
                 }
