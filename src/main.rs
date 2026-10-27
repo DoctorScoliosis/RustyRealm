@@ -249,7 +249,7 @@ fn buy_sell_item(tui: &mut Tui, state: &mut GameState, item: ItemType) -> io::Re
                     continue;
                 };
                 if state.player.remove_item(item, amount) {
-                    state.player.gold = state.player.gold.saturating_add(value).min(crate::data::MAX_GOLD);
+                    state.player.gold += value;
                     tui.show_message("Sale complete", &format!("Sold {} {} for {} gold.", amount, item.name(), value), Some(state))?;
                 }
             }
