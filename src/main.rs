@@ -1,5 +1,3 @@
-// brevity omitted functions/structs/parts: none
-
 mod data;
 mod state;
 mod save;
@@ -12,365 +10,320 @@ mod skills;
 mod inventory;
 mod quests;
 
+use crate::data::ItemType;
 use crate::state::GameState;
-use crate::ui::{clear_screen, wait_for_enter, print_error, print_success};
+use crate::ui::Tui;
+use std::io;
 
-fn main() {
-    clear_screen();
-    println!("========================================");
-    println!("        Welcome to Rusty Realm        ");
-    println!("  A cross-platform revival of Final   ");
-    println!("           Realm by Brian             ");
-    println!("========================================\n");
-
+fn main() -> io::Result<()> {
+    let mut tui = Tui::new()?;
     loop {
-        println!("What would you like to do?\n");
-        println!("1) Login");
-        println!("2) Create Account\n");
-        println!("Current Version: v1.7_08 (Rusty Remaster)\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => {
-                if let Some(mut state) = login() {
-                    main_menu(&mut state);
+        let choice = tui.select_menu(
+            "Rusty Realm",
+            &["Login", "Create Account", "Exit"],
+            None,
+        )?;
+        match choice {
+            0 => {
+                if let Some(mut state) = login(&mut tui)? {
+                    main_menu(&mut tui, &mut state)?;
                 }
             }
-            "2" => {
-                if let Some(mut state) = create_account() {
-                    main_menu(&mut state);
+            1 => {
+                if let Some(mut state) = create_account(&mut tui)? {
+                    main_menu(&mut tui, &mut state)?;
                 }
             }
-            _ => continue,
+            _ => break,
         }
     }
+    // Tui's RAII guard restores raw mode, the cursor, and the previous screen.
+    Ok(())
 }
 
-fn login() -> Option<GameState> {
-    clear_screen();
-    let username = crate::ui::get_input("Username: ");
+fn login(tui: &mut Tui) -> io::Result<Option<GameState>> {
+    let username = tui.prompt_input("Username", false, None)?;
     if username.is_empty() {
-        return None;
+        return Ok(None);
     }
-    
-    let password = crate::ui::get_hidden_input("Password: ");
-    
+
+    let password = tui.prompt_input("Password", true, None)?;
+    if password.is_empty() {
+        tui.show_message("Login cancelled", "A password is required.", None)?;
+        return Ok(None);
+    }
+
     match crate::save::load_game(&username, &password) {
         Ok(state) => {
-            print_success(&format!("Welcome back, {}!", state.player.username));
-            Some(state)
+            tui.show_message(
+                "Welcome back",
+                &format!("Welcome back, {}!", state.player.username),
+                Some(&state),
+            )?;
+            Ok(Some(state))
         }
         Err(crate::save::SaveError::PasswordMigrationRequired) => {
-            clear_screen();
-            println!("This save predates password-hash persistence.");
-            println!("The old password cannot be verified because no hash was stored.");
-            println!("Your entered password has NOT been accepted as proof of ownership.");
-            println!("Because this is a local save, you may explicitly choose a new password");
-            println!("to migrate it. Cancelling leaves the save unchanged.\n");
-
-            let choice = crate::ui::get_input("Set a new password for this local save? Type YES to continue: ");
+            tui.show_message(
+                "Legacy save migration",
+                "This save predates password-hash persistence. The old password cannot be verified because no hash was stored.\n\nYour entered password has NOT been accepted as proof of ownership. Because this is a local save, you may explicitly choose a new password to migrate it. Cancelling leaves the save unchanged.",
+                None,
+            )?;
+            let choice = tui.prompt_input(
+                "Type YES to set a new password and migrate this save",
+                false,
+                None,
+            )?;
             if choice != "YES" {
-                return None;
+                return Ok(None);
             }
 
-            let new_password = crate::ui::get_hidden_input("New password: ");
+            let new_password = tui.prompt_input("New password", true, None)?;
             if new_password.is_empty() {
-                print_error("Password cannot be empty.");
-                return None;
+                tui.show_message("Migration cancelled", "Password cannot be empty. The save has not been changed.", None)?;
+                return Ok(None);
             }
-            let confirmation = crate::ui::get_hidden_input("Confirm new password: ");
+            let confirmation = tui.prompt_input("Confirm new password", true, None)?;
             if new_password != confirmation {
-                print_error("Passwords do not match. The save has not been changed.");
-                return None;
+                tui.show_message("Migration cancelled", "Passwords do not match. The save has not been changed.", None)?;
+                return Ok(None);
             }
 
             match crate::save::migrate_legacy_save(&username, &new_password) {
                 Ok(state) => {
-                    print_success("Legacy save migrated and password protection updated.");
-                    Some(state)
+                    tui.show_message("Migration complete", "Legacy save migrated and password protection updated.", Some(&state))?;
+                    Ok(Some(state))
                 }
                 Err(error) => {
-                    print_error(&error.to_string());
-                    None
+                    tui.show_message("Migration failed", &error.to_string(), None)?;
+                    Ok(None)
                 }
             }
         }
         Err(error) => {
-            print_error(&error.to_string());
-            None
+            tui.show_message("Login failed", &error.to_string(), None)?;
+            Ok(None)
         }
     }
 }
 
-fn create_account() -> Option<GameState> {
-    clear_screen();
-    let username = crate::ui::get_input("What would you like your Username to be? ");
+fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
+    let username = tui.prompt_input("Choose username (no spaces)", false, None)?;
     if username.is_empty() || username.contains(' ') {
-        print_error("Sorry, you can't use spaces or leave it blank in your Username.");
-        return None;
+        tui.show_message("Invalid username", "A username is required, and spaces are not allowed.", None)?;
+        return Ok(None);
     }
-    
-    let password = crate::ui::get_hidden_input("What would you like your Password to be? ");
+
+    let password = tui.prompt_input("Choose password", true, None)?;
     if password.is_empty() {
-        print_error("Password cannot be empty.");
-        return None;
+        tui.show_message("Invalid password", "Password cannot be empty.", None)?;
+        return Ok(None);
     }
-    
+
     match crate::save::create_account(&username, &password) {
         Ok(state) => {
-            print_success("Account created successfully!");
-            Some(state)
+            tui.show_message("Account created", "Account created successfully!", Some(&state))?;
+            Ok(Some(state))
         }
-        Err(e) => {
-            print_error(&e.to_string());
-            None
+        Err(error) => {
+            tui.show_message("Account creation failed", &error.to_string(), None)?;
+            Ok(None)
         }
     }
 }
 
-fn main_menu(state: &mut GameState) {
+fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let options = [
+        "Wander Gielinor",
+        "Weapon Shop",
+        "Armour Shop",
+        "Legend's Store",
+        "Trading Post (General Store)",
+        "Max's Shop",
+        "Smuggler",
+        "The Stronghold",
+        "Skill Plot",
+        "RealmBank",
+        "Quest Hall",
+        "Your Inventory",
+        "Settings",
+        "Log Out",
+    ];
+
     loop {
-        crate::save::save_game(state).unwrap_or_else(|e| {
-            eprintln!("Failed to save game: {}", e);
-        });
+        if let Err(error) = crate::save::save_game(state) {
+            tui.show_message("Save warning", &format!("Failed to save the game: {}", error), Some(state))?;
+        }
 
-        clear_screen();
-        println!("========================================");
-        println!("        FinalRealm - Varrock            ");
-        println!("========================================\n");
-        println!("What would you like to do?\n");
-        println!(" 1) Wander Gielinor");
-        println!(" 2) Weapon Shop");
-        println!(" 3) Armour Shop");
-        println!(" 4) Legend's Store");
-        println!(" 5) Trading Post (General Store)");
-        println!(" 6) Max's Shop");
-        println!(" 7) Smuggler");
-        println!(" 8) The Stronghold");
-        println!(" 9) Skill Plot");
-        println!("10) RealmBank");
-        println!("11) Quest Hall");
-        println!("97) Your Inventory");
-        println!("98) Settings");
-        println!("99) Log out\n");
-
-        println!("Currently logged in as {}.", state.player.username);
-        println!("Combat Level: {} | Total Level: {} | Gold: {}\n", 
-                 state.player.combat_level, 
-                 state.player.skills.total_level() + state.player.combat_level,
-                 state.player.gold);
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => combat::wander_gielinor(state),
-            "2" => shops::weapon_shop(state),
-            "3" => shops::armour_shop(state),
-            "4" => shops::legends_store(state),
-            "5" => general_store(state),
-            "6" => shops::max_shop(state),
-            "7" => shops::smuggler(state),
-            "8" => {
-                if stronghold::stronghold_warning(state) {
-                    stronghold::stronghold_dungeon(state);
+        let choice = tui.select_menu("Final Realm · Varrock", &options, Some(state))?;
+        match choice {
+            0 => combat::wander_gielinor(tui, state)?,
+            1 => shops::weapon_shop(tui, state)?,
+            2 => shops::armour_shop(tui, state)?,
+            3 => shops::legends_store(tui, state)?,
+            4 => general_store(tui, state)?,
+            5 => shops::max_shop(tui, state)?,
+            6 => shops::smuggler(tui, state)?,
+            7 => {
+                if stronghold::stronghold_warning(tui, state)? {
+                    stronghold::stronghold_dungeon(tui, state)?;
                 }
             }
-            "9" => skills::skill_plot(state),
-            "10" => bank::bank_menu(state),
-            "11" => quests::quest_hall(state),
-            "97" => inventory::view_inventory(state, false),
-            "98" => settings_menu(state),
-            "99" => return,
-            _ => continue,
-        }
-    }
-}
-
-fn general_store(state: &mut GameState) {
-    use crate::data::ItemType;
-    loop {
-        clear_screen();
-        println!("FinalRealm - General Store\n");
-        println!("Gold: {}\n", state.player.gold);
-        println!("Your Items:\t\t\tPrices:");
-        
-        let items = [
-            ItemType::GoblinMail, ItemType::HugeBones, ItemType::DragonHides, ItemType::RunicTablets,
-            ItemType::Potions, ItemType::Food, ItemType::Seeds, ItemType::Fur,
-            ItemType::Ore, ItemType::Logs, ItemType::Gemstones, ItemType::MagicOrbs,
-            ItemType::RawFood, ItemType::Bait, ItemType::Ingots, ItemType::Bows,
-        ];
-        
-        for (i, item) in items.iter().enumerate() {
-            let count = state.player.get_item_count(*item);
-            println!("{:2}) {:<18} {:<8}\t{}", i + 1, item.name(), count, item.buy_price());
-        }
-        
-        println!("\nType \"exit\" to exit.\n");
-        
-        let choice = crate::ui::get_input("Enter the number of the item you would like to buy or sell: ");
-        if choice.to_lowercase() == "exit" {
-            return;
-        }
-        
-        if let Ok(idx) = choice.parse::<usize>() {
-            if idx >= 1 && idx <= items.len() {
-                let item = items[idx - 1];
-                buy_sell_item(state, item);
+            8 => skills::skill_plot(tui, state)?,
+            9 => bank::bank_menu(tui, state)?,
+            10 => quests::quest_hall(tui, state)?,
+            11 => inventory::view_inventory(tui, state, false)?,
+            12 => settings_menu(tui, state)?,
+            _ => {
+                crate::save::save_game(state)
+                    .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+                return Ok(());
             }
         }
     }
 }
 
-fn buy_sell_item(state: &mut GameState, item: crate::data::ItemType) {
+fn general_store(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let items = [
+        ItemType::GoblinMail, ItemType::HugeBones, ItemType::DragonHides, ItemType::RunicTablets,
+        ItemType::Potions, ItemType::Food, ItemType::Seeds, ItemType::Fur,
+        ItemType::Ore, ItemType::Logs, ItemType::Gemstones, ItemType::MagicOrbs,
+        ItemType::RawFood, ItemType::Bait, ItemType::Ingots, ItemType::Bows,
+    ];
+
     loop {
-        clear_screen();
-        println!("Item: {}", item.name());
-        println!("You have: {}", state.player.get_item_count(item));
-        println!("Price: {} gold each\n", item.buy_price());
-        println!("1) Buy");
-        println!("2) Sell");
-        println!("3) Back\n");
-        
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => {
-                let amount_str = crate::ui::get_input("Amount to purchase: ");
-                if let Ok(amount) = amount_str.parse::<u32>() {
-                    if amount == 0 { continue; }
-                    let cost = amount * item.buy_price();
-                    if cost > state.player.gold {
-                        println!("\nYou do not have enough money.");
-                        crate::ui::wait_for_enter();
-                        continue;
-                    }
-                    state.player.gold -= cost;
-                    state.player.add_item(item, amount);
-                    println!("\nBought {} of that item for {} gold.", amount, cost);
-                    crate::ui::wait_for_enter();
-                    return;
-                }
-            }
-            "2" => {
-                let amount_str = crate::ui::get_input("Amount to sell (or \"all\"): ");
-                if amount_str.to_lowercase() == "all" {
-                    let count = state.player.get_item_count(item);
-                    if count == 0 {
-                        println!("\nYou don't have any to sell.");
-                        crate::ui::wait_for_enter();
-                        continue;
-                    }
-                    let price = count * item.sell_price();
-                    state.player.gold += price;
-                    state.player.remove_item(item, count);
-                    println!("\nSold {} of that item for {} gold.", count, price);
-                    crate::ui::wait_for_enter();
-                    return;
-                } else if let Ok(amount) = amount_str.parse::<u32>() {
-                    if amount == 0 { continue; }
-                    if amount > state.player.get_item_count(item) {
-                        println!("\nYou don't have that many.");
-                        crate::ui::wait_for_enter();
-                        continue;
-                    }
-                    let price = amount * item.sell_price();
-                    state.player.gold += price;
-                    state.player.remove_item(item, amount);
-                    println!("\nSold {} of that item for {} gold.", amount, price);
-                    crate::ui::wait_for_enter();
-                    return;
-                }
-            }
-            "3" => return,
-            _ => continue,
+        let labels: Vec<String> = items.iter().map(|item| {
+            format!("{} · owned {} · buy {}g / sell {}g", item.name(), state.player.get_item_count(*item), item.buy_price(), item.sell_price())
+        }).collect();
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Back");
+        let choice = tui.select_menu(
+            &format!("Trading Post · {} gold", state.player.gold),
+            &options,
+            Some(state),
+        )?;
+        if choice >= items.len() {
+            return Ok(());
         }
+        buy_sell_item(tui, state, items[choice])?;
     }
 }
 
-fn settings_menu(state: &mut GameState) {
+fn buy_sell_item(tui: &mut Tui, state: &mut GameState, item: ItemType) -> io::Result<()> {
     loop {
-        clear_screen();
-        println!("What setting would you like to change?\n");
-        println!("1) Admin Commands (Debug)");
-        println!("2) Exit\n");
-        
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => verify_admin(state),
-            "2" => return,
-            _ => continue,
-        }
-    }
-}
-
-fn verify_admin(state: &mut GameState) {
-    clear_screen();
-    println!("Please verify that you are an Administrator.\n");
-    
-    let code = crate::ui::get_input("Please enter the Login Code: ");
-    if code != "741" {
-        println!("\nInvalid Code.");
-        crate::ui::wait_for_enter();
-        return;
-    }
-    
-    let pin = crate::ui::get_input("Please enter the Verification PIN: ");
-    if pin != "9763" {
-        println!("\nInvalid PIN.");
-        crate::ui::wait_for_enter();
-        return;
-    }
-    
-    admin_commands(state);
-}
-
-fn admin_commands(state: &mut GameState) {
-    loop {
-        clear_screen();
-        println!("Type \"vars\" to get a list of Variables that can be edited, or type \"exit\" to exit.\n");
-        println!("Format: set [variable]=[amount]\n");
-        
-        let cmd = crate::ui::get_input("Set: ");
-        if cmd.to_lowercase() == "exit" {
-            return;
-        }
-        if cmd.to_lowercase() == "vars" {
-            println!("\nAvailable variables:");
-            println!("  combat_level, xp, gold, hp, max_hp");
-            println!("  stronghold_kill_count");
-            println!("  woodcutting_lvl, cooking_lvl, fishing_lvl");
-            println!("  mining_lvl, smithing_lvl, thieving_lvl\n");
-            crate::ui::wait_for_enter();
-            continue;
-        }
-        
-        if let Some(eq_pos) = cmd.find('=') {
-            let var = cmd[..eq_pos].trim();
-            let val = cmd[eq_pos + 1..].trim();
-            
-            match var {
-                "combat_level" => if let Ok(v) = val.parse::<u32>() { state.player.combat_level = v; },
-                "xp" => if let Ok(v) = val.parse::<u32>() { state.player.xp = v; },
-                "gold" => if let Ok(v) = val.parse::<u32>() { state.player.gold = v; },
-                "hp" => if let Ok(v) = val.parse::<u32>() { state.player.hp = v; },
-                "max_hp" => if let Ok(v) = val.parse::<u32>() { state.player.max_hp = v; },
-                "stronghold_kill_count" => if let Ok(v) = val.parse::<u32>() { state.player.stronghold_kill_count = v; },
-                "woodcutting_lvl" => if let Ok(v) = val.parse::<u32>() { state.player.skills.woodcutting.level = v; },
-                "cooking_lvl" => if let Ok(v) = val.parse::<u32>() { state.player.skills.cooking.level = v; },
-                "fishing_lvl" => if let Ok(v) = val.parse::<u32>() { state.player.skills.fishing.level = v; },
-                "mining_lvl" => if let Ok(v) = val.parse::<u32>() { state.player.skills.mining.level = v; },
-                "smithing_lvl" => if let Ok(v) = val.parse::<u32>() { state.player.skills.smithing.level = v; },
-                "thieving_lvl" => if let Ok(v) = val.parse::<u32>() { state.player.skills.thieving.level = v; },
-                _ => {
-                    println!("\nUnknown variable.");
-                    crate::ui::wait_for_enter();
+        let choice = tui.select_menu(
+            &format!("{} · owned {}", item.name(), state.player.get_item_count(item)),
+            &["Buy", "Sell", "Back"],
+            Some(state),
+        )?;
+        match choice {
+            0 => {
+                let amount_text = tui.prompt_input("Amount to buy", false, Some(state))?;
+                let Ok(amount) = amount_text.parse::<u32>() else { continue };
+                if amount == 0 { continue; }
+                let Some(cost) = amount.checked_mul(item.buy_price()) else {
+                    tui.show_message("Purchase failed", "That quantity is too large.", Some(state))?;
+                    continue;
+                };
+                if cost > state.player.gold {
+                    tui.show_message("Purchase failed", "You do not have enough money.", Some(state))?;
                     continue;
                 }
+                state.player.gold -= cost;
+                state.player.add_item(item, amount);
+                tui.show_message("Purchase complete", &format!("Bought {} {} for {} gold.", amount, item.name(), cost), Some(state))?;
             }
-            println!("\nSet {} to {}.", var, val);
-            crate::ui::wait_for_enter();
-        } else {
-            println!("\nInvalid format. Use: set [variable]=[amount]");
-            crate::ui::wait_for_enter();
+            1 => {
+                let amount_text = tui.prompt_input("Amount to sell, or type all", false, Some(state))?;
+                let owned = state.player.get_item_count(item);
+                let amount = if amount_text.eq_ignore_ascii_case("all") {
+                    owned
+                } else {
+                    match amount_text.parse::<u32>() { Ok(value) => value, Err(_) => continue }
+                };
+                if amount == 0 || amount > owned { 
+                    tui.show_message("Sale failed", if amount == 0 { "Enter an amount greater than zero." } else { "You do not have that many items." }, Some(state))?;
+                    continue;
+                }
+                let Some(value) = amount.checked_mul(item.sell_price()) else {
+                    tui.show_message("Sale failed", "That quantity is too large.", Some(state))?;
+                    continue;
+                };
+                if state.player.remove_item(item, amount) {
+                    state.player.gold = state.player.gold.saturating_add(value).min(crate::data::MAX_GOLD);
+                    tui.show_message("Sale complete", &format!("Sold {} {} for {} gold.", amount, item.name(), value), Some(state))?;
+                }
+            }
+            _ => return Ok(()),
+        }
+    }
+}
+
+fn settings_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    loop {
+        let choice = tui.select_menu("Settings", &["Admin Commands (Debug)", "Back"], Some(state))?;
+        match choice {
+            0 => verify_admin(tui, state)?,
+            _ => return Ok(()),
+        }
+    }
+}
+
+fn verify_admin(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let code = tui.prompt_input("Administrator login code", false, Some(state))?;
+    if code != "741" {
+        tui.show_message("Access denied", "Invalid code.", Some(state))?;
+        return Ok(());
+    }
+
+    let pin = tui.prompt_input("Administrator verification PIN", true, Some(state))?;
+    if pin != "9763" {
+        tui.show_message("Access denied", "Invalid PIN.", Some(state))?;
+        return Ok(());
+    }
+    admin_commands(tui, state)
+}
+
+fn admin_commands(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    loop {
+        let choice = tui.select_menu(
+            "Developer settings",
+            &["Edit a variable", "List variables", "Back"],
+            Some(state),
+        )?;
+        match choice {
+            0 => {
+                let command = tui.prompt_input("set variable=value", false, Some(state))?;
+                if let Some((var, val)) = command.split_once('=') {
+                    let var = var.trim();
+                    let val = val.trim();
+                    let updated = match var {
+                        "combat_level" => val.parse::<u32>().map(|v| state.player.combat_level = v).is_ok(),
+                        "xp" => val.parse::<u32>().map(|v| state.player.xp = v).is_ok(),
+                        "gold" => val.parse::<u32>().map(|v| state.player.gold = v).is_ok(),
+                        "hp" => val.parse::<u32>().map(|v| state.player.hp = v).is_ok(),
+                        "max_hp" => val.parse::<u32>().map(|v| state.player.max_hp = v).is_ok(),
+                        "stronghold_kill_count" => val.parse::<u32>().map(|v| state.player.stronghold_kill_count = v).is_ok(),
+                        "woodcutting_lvl" => val.parse::<u32>().map(|v| state.player.skills.woodcutting.level = v).is_ok(),
+                        "cooking_lvl" => val.parse::<u32>().map(|v| state.player.skills.cooking.level = v).is_ok(),
+                        "fishing_lvl" => val.parse::<u32>().map(|v| state.player.skills.fishing.level = v).is_ok(),
+                        "mining_lvl" => val.parse::<u32>().map(|v| state.player.skills.mining.level = v).is_ok(),
+                        "smithing_lvl" => val.parse::<u32>().map(|v| state.player.skills.smithing.level = v).is_ok(),
+                        "thieving_lvl" => val.parse::<u32>().map(|v| state.player.skills.thieving.level = v).is_ok(),
+                        _ => false,
+                    };
+                    tui.show_message(if updated { "Variable updated" } else { "Variable not updated" },
+                        if updated { &format!("Set {} to {}.", var, val) } else { "Unknown variable or invalid value." },
+                        Some(state))?;
+                } else {
+                    tui.show_message("Invalid command", "Use the format set variable=value.", Some(state))?;
+                }
+            }
+            1 => tui.show_text(
+                "Editable variables",
+                "combat_level\nxp\ngold\nhp\nmax_hp\nstronghold_kill_count\nwoodcutting_lvl\ncooking_lvl\nfishing_lvl\nmining_lvl\nsmithing_lvl\nthieving_lvl",
+                Some(state),
+            )?,
+            _ => return Ok(()),
         }
     }
 }
