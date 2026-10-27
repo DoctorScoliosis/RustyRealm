@@ -267,7 +267,7 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             SellChoice::Armour(index) => { state.player.inventory_armour.remove(index); }
             SellChoice::Back => return Ok(()),
         }
-        state.player.gold = state.player.gold.saturating_add(price).min(crate::data::MAX_GOLD);
+        state.player.gold += price;
         tui.show_message("Sale complete", &format!("You sold the {} for {} gold.", name, price), Some(state))?;
     }
 }
