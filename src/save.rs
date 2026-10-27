@@ -598,4 +598,69 @@ mod tests {
 
         let _ = fs::remove_dir_all(dir);
     }
+
+    #[test]
+    fn unsupported_future_version_is_not_replaced_by_an_older_backup() {
+        let dir = test_dir("future-version");
+        let path = dir.join("player.json");
+        let state = test_state("future", "secret");
+        save_to_path(&state, &path).unwrap();
+
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["version"] = serde_json::json!(CURRENT_SAVE_VERSION + 1);
+        fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
+
+        assert!(matches!(
+            load_game_at(&path, "future", "secret"),
+            Err(SaveError::UnsupportedVersion(_))
+        ));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_corrupt_active_file_does_not_overwrite_the_last_good_backup() {
+        let dir = test_dir("preserve-backup");
+        let path = dir.join("player.json");
+        let mut state = test_state("preserve", "secret");
+        state.player.gold = 123;
+        save_to_path(&state, &path).unwrap();
+
+        state.player.gold = 456;
+        save_to_path(&state, &path).unwrap();
+
+        fs::write(&path, "truncated and invalid JSON").unwrap();
+
+        // Saving a valid in-memory state can recover the active file, but the
+        // invalid active bytes must never replace the known-good backup.
+        state.player.gold = 789;
+        save_to_path(&state, &path).unwrap();
+
+        let backed_up = match read_save(&backup_path(&path)).unwrap() {
+            ParsedSave::Current(envelope) => envelope.data,
+            ParsedSave::Legacy(_) => panic!("expected a versioned backup"),
+        };
+        assert_eq!(backed_up.player.gold, 123);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn failed_save_without_authentication_leaves_existing_file_untouched() {
+        let dir = test_dir("failed-write");
+        let path = dir.join("player.json");
+        let valid = test_state("failed", "secret");
+        save_to_path(&valid, &path).unwrap();
+        let before = fs::read(&path).unwrap();
+
+        let invalid = GameState::new(Player::new("failed".into(), String::new()));
+        assert!(matches!(
+            save_to_path(&invalid, &path),
+            Err(SaveError::InvalidPasswordHash)
+        ));
+        assert_eq!(fs::read(&path).unwrap(), before);
+
+        let _ = fs::remove_dir_all(dir);
+    }
 }
