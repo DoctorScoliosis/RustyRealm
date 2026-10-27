@@ -212,7 +212,12 @@ impl Tui {
 
             match event::read()? {
                 Event::Resize(_, _) => continue,
-                Event::Key(KeyEvent { code: KeyCode::Enter, .. }) => return Ok(input),
+                Event::Key(KeyEvent { code: KeyCode::Enter, .. }) => {
+                    if masked {
+                        return Ok(input);
+                    }
+                    return Ok(input.trim().to_string());
+                },
                 Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => return Ok(String::new()),
                 Event::Key(KeyEvent { code: KeyCode::Char(c), .. }) => input.push(c),
                 Event::Key(KeyEvent { code: KeyCode::Backspace, .. }) => { input.pop(); }
@@ -227,6 +232,7 @@ impl Tui {
         message: &str,
         state: Option<&GameState>,
     ) -> io::Result<()> {
+        let display_message = format!("{}\n\nPress Enter or Esc to continue.", message);
         let mut scroll = 0u16;
         loop {
             self.render_screen(state, |frame, area, _| {
@@ -238,7 +244,7 @@ impl Tui {
                     .border_style(Style::default().fg(Color::Green));
                 let inner = block.inner(popup);
                 frame.render_widget(block, popup);
-                let paragraph = Paragraph::new(message)
+                let paragraph = Paragraph::new(display_message.as_str())
                     .wrap(Wrap { trim: true })
                     .scroll((scroll, 0));
                 frame.render_widget(paragraph, inner);
