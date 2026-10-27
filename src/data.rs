@@ -420,7 +420,6 @@ pub const MAX_SKILL_LEVEL: u32 = 100;
 pub const MAX_GOLD: u32 = 5_000_000;
 pub const MAX_BANK_GOLD: u32 = 1_000_000_000;
 
-
 /// Damage channels used by the combat engine and NPC affinity table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DamageType {

@@ -89,7 +89,11 @@ impl Combatant {
         if duration == 0 {
             return;
         }
-        if let Some(existing) = self.status_effects.iter_mut().find(|effect| effect.kind == kind) {
+        if let Some(existing) = self
+            .status_effects
+            .iter_mut()
+            .find(|effect| effect.kind == kind)
+        {
             existing.duration = existing.duration.max(duration);
             existing.potency = existing.potency.max(potency);
         } else {
@@ -259,7 +263,10 @@ impl CombatEngine {
                             target.name
                         ));
                         target.apply_status(StatusEffectKind::Bleed, 2, 10);
-                        logs.push(format!("{} is afflicted with Bleed for 10 damage per turn!", target.name));
+                        logs.push(format!(
+                            "{} is afflicted with Bleed for 10 damage per turn!",
+                            target.name
+                        ));
                     }
                     AbilityId::LifeDrain => {
                         let healed = damage / 2;
@@ -300,17 +307,23 @@ impl CombatEngine {
         match boss.lacoyx_phase {
             Some(LacoyxPhase::Phase1Commander) if hp_pct <= 33.0 => {
                 boss.lacoyx_phase = Some(LacoyxPhase::Phase3DesperateOverlord);
-                logs.push("Lacoyx enters Phase 3: Desperate Overlord! He unleashes enraged fury!".into());
+                logs.push(
+                    "Lacoyx enters Phase 3: Desperate Overlord! He unleashes enraged fury!".into(),
+                );
             }
             Some(LacoyxPhase::Phase1Commander | LacoyxPhase::Phase2InfernalWarlord)
                 if hp_pct <= 66.0 && hp_pct > 33.0 =>
             {
                 boss.lacoyx_phase = Some(LacoyxPhase::Phase2InfernalWarlord);
-                logs.push("Lacoyx enters Phase 2: Infernal Warlord! Infernal flames surround him!".into());
+                logs.push(
+                    "Lacoyx enters Phase 2: Infernal Warlord! Infernal flames surround him!".into(),
+                );
             }
             Some(LacoyxPhase::Phase2InfernalWarlord) if hp_pct <= 33.0 => {
                 boss.lacoyx_phase = Some(LacoyxPhase::Phase3DesperateOverlord);
-                logs.push("Lacoyx enters Phase 3: Desperate Overlord! He unleashes enraged fury!".into());
+                logs.push(
+                    "Lacoyx enters Phase 3: Desperate Overlord! He unleashes enraged fury!".into(),
+                );
             }
             _ => {}
         }
@@ -335,9 +348,7 @@ impl CombatEngine {
         }
 
         if enemy.name == "Lacoyx" {
-            let phase = enemy
-                .lacoyx_phase
-                .unwrap_or(LacoyxPhase::Phase1Commander);
+            let phase = enemy.lacoyx_phase.unwrap_or(LacoyxPhase::Phase1Commander);
             let (chance, attack) = match phase {
                 LacoyxPhase::Phase1Commander => (
                     0.4,
@@ -401,11 +412,7 @@ mod tests {
         let mana_before = player.mana;
 
         assert_eq!(
-            CombatEngine::execute_player_ability(
-                &mut player,
-                &mut target,
-                AbilityId::HeavyStrike
-            ),
+            CombatEngine::execute_player_ability(&mut player, &mut target, AbilityId::HeavyStrike),
             Err("Not enough Stamina!")
         );
         assert_eq!(player.stamina, stamina_before);
@@ -430,13 +437,21 @@ mod tests {
     #[test]
     fn elemental_resistances_and_weaknesses_adjust_damage() {
         let (dragon, logs) = CombatEngine::calculate_damage(
-            100, DamageType::Fire, "Dragon", false, DefensiveChoice::None,
+            100,
+            DamageType::Fire,
+            "Dragon",
+            false,
+            DefensiveChoice::None,
         );
         assert_eq!(dragon, 25);
         assert!(logs.iter().any(|line| line.contains("resisted")));
 
         let (ent, logs) = CombatEngine::calculate_damage(
-            100, DamageType::Fire, "Ent", false, DefensiveChoice::None,
+            100,
+            DamageType::Fire,
+            "Ent",
+            false,
+            DefensiveChoice::None,
         );
         assert_eq!(ent, 150);
         assert!(logs.iter().any(|line| line.contains("vulnerable")));
@@ -450,26 +465,42 @@ mod tests {
         lacoyx.hp = 600;
         let phase_two_logs = CombatEngine::update_lacoyx_boss_phase(&mut lacoyx);
         assert!(phase_two_logs.iter().any(|line| line.contains("Phase 2")));
-        assert_eq!(lacoyx.lacoyx_phase, Some(LacoyxPhase::Phase2InfernalWarlord));
+        assert_eq!(
+            lacoyx.lacoyx_phase,
+            Some(LacoyxPhase::Phase2InfernalWarlord)
+        );
 
         lacoyx.hp = 300;
         let phase_three_logs = CombatEngine::update_lacoyx_boss_phase(&mut lacoyx);
         assert!(phase_three_logs.iter().any(|line| line.contains("Phase 3")));
-        assert_eq!(lacoyx.lacoyx_phase, Some(LacoyxPhase::Phase3DesperateOverlord));
+        assert_eq!(
+            lacoyx.lacoyx_phase,
+            Some(LacoyxPhase::Phase3DesperateOverlord)
+        );
     }
 
     #[test]
     fn block_and_consumable_reduce_damage() {
         assert_eq!(
             CombatEngine::calculate_damage(
-                100, DamageType::Physical, "Hero", false, DefensiveChoice::Block,
-            ).0,
+                100,
+                DamageType::Physical,
+                "Hero",
+                false,
+                DefensiveChoice::Block,
+            )
+            .0,
             25
         );
         assert_eq!(
             CombatEngine::calculate_damage(
-                100, DamageType::Physical, "Hero", false, DefensiveChoice::Consumable,
-            ).0,
+                100,
+                DamageType::Physical,
+                "Hero",
+                false,
+                DefensiveChoice::Consumable,
+            )
+            .0,
             50
         );
     }
@@ -496,26 +527,31 @@ mod tests {
         let mut target = Combatant::new_monster("Goblin", 10, 2000);
 
         let before = target.hp;
-        let logs = CombatEngine::execute_player_ability(
-            &mut player, &mut target, AbilityId::HeavyStrike,
-        ).unwrap();
+        let logs =
+            CombatEngine::execute_player_ability(&mut player, &mut target, AbilityId::HeavyStrike)
+                .unwrap();
         assert!(target.hp < before);
         assert_eq!(target.status_effects[0].kind, StatusEffectKind::Bleed);
         assert!(logs.iter().any(|line| line.contains("Bleed")));
 
-        let logs = CombatEngine::execute_player_ability(
-            &mut player, &mut target, AbilityId::Cleave,
-        ).unwrap();
-        assert!(target.status_effects.iter().any(|s| s.kind == StatusEffectKind::Stun));
+        let logs =
+            CombatEngine::execute_player_ability(&mut player, &mut target, AbilityId::Cleave)
+                .unwrap();
+        assert!(target
+            .status_effects
+            .iter()
+            .any(|s| s.kind == StatusEffectKind::Stun));
         assert!(logs.iter().any(|line| line.contains("stunned")));
         let stun_logs = target.tick_status_effects();
         assert!(target.is_stunned);
-        assert!(stun_logs.iter().any(|line| line.contains("loses this turn")));
+        assert!(stun_logs
+            .iter()
+            .any(|line| line.contains("loses this turn")));
 
         player.hp = 10;
-        let logs = CombatEngine::execute_player_ability(
-            &mut player, &mut target, AbilityId::LifeDrain,
-        ).unwrap();
+        let logs =
+            CombatEngine::execute_player_ability(&mut player, &mut target, AbilityId::LifeDrain)
+                .unwrap();
         assert!(player.hp > 10);
         assert!(logs.iter().any(|line| line.contains("Life Drain")));
     }

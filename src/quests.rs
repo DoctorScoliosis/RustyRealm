@@ -35,8 +35,12 @@ impl std::error::Error for QuestError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum QuestObjective {
-    MonsterKills { required: u32 },
-    PlayerLevel { required_level: u32 },
+    MonsterKills {
+        required: u32,
+    },
+    PlayerLevel {
+        required_level: u32,
+    },
     SkillLevel {
         skill_name: String,
         required_level: u32,
@@ -186,7 +190,10 @@ fn refresh_quests_at(state: &mut GameState, now: DateTime<Utc>) {
         .retain(|quest| !quest.is_daily || !quest.is_claimed);
 
     for quest in default_daily_quests(state, day_index) {
-        if !state.active_quests.iter().any(|active| active.id == quest.id)
+        if !state
+            .active_quests
+            .iter()
+            .any(|active| active.id == quest.id)
             && !state.player.quests_completed.contains(&quest.id)
         {
             state.active_quests.push(quest);
@@ -343,10 +350,7 @@ fn grant_reward(state: &mut GameState, reward: &QuestReward) {
             if state.player.xp_until_next == 0 && state.player.combat_level < MAX_PLAYER_LEVEL {
                 state.player.level_up_combat();
                 let new_level = state.player.combat_level;
-                notify_event(
-                    state,
-                    &GameEvent::PlayerLeveledUp { new_level },
-                );
+                notify_event(state, &GameEvent::PlayerLeveledUp { new_level });
             }
         }
         QuestReward::Item { item_type, count } => state.player.add_item(*item_type, *count),
@@ -469,7 +473,9 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                             "The required items were deducted and the quest is ready to claim.",
                             Some(state),
                         )?,
-                        Err(error) => tui.show_message("Hand-in failed", &error.to_string(), Some(state))?,
+                        Err(error) => {
+                            tui.show_message("Hand-in failed", &error.to_string(), Some(state))?
+                        }
                     }
                 }
             }
@@ -514,7 +520,11 @@ mod tests {
             );
         }
 
-        let quest = state.active_quests.iter().find(|quest| quest.id == quest_id).unwrap();
+        let quest = state
+            .active_quests
+            .iter()
+            .find(|quest| quest.id == quest_id)
+            .unwrap();
         assert_eq!(state.player.lifetime_kills, target);
         assert_eq!(quest.progress, target);
         assert!(quest.is_completed);
@@ -530,7 +540,12 @@ mod tests {
             .unwrap()
             .id
             .clone();
-        let target = state.active_quests.iter().find(|quest| quest.id == quest_id).unwrap().target;
+        let target = state
+            .active_quests
+            .iter()
+            .find(|quest| quest.id == quest_id)
+            .unwrap()
+            .target;
         for _ in 0..target {
             notify_event(
                 &mut state,
@@ -542,9 +557,15 @@ mod tests {
         }
 
         let gold_before = state.player.gold;
-        assert_eq!(claim_quest_reward(&mut state, &quest_id), Ok(QuestReward::Gold(250)));
+        assert_eq!(
+            claim_quest_reward(&mut state, &quest_id),
+            Ok(QuestReward::Gold(250))
+        );
         assert_eq!(state.player.gold, gold_before + 250);
-        assert_eq!(claim_quest_reward(&mut state, &quest_id), Err(QuestError::AlreadyClaimed));
+        assert_eq!(
+            claim_quest_reward(&mut state, &quest_id),
+            Err(QuestError::AlreadyClaimed)
+        );
         assert_eq!(state.player.gold, gold_before + 250);
         assert!(state.player.quests_completed.contains(&quest_id));
     }
@@ -552,23 +573,55 @@ mod tests {
     #[test]
     fn level_events_complete_combat_and_skill_objectives() {
         let mut state = new_state();
-        let combat = state.active_quests.iter().find(|quest|
-            matches!(&quest.objective, QuestObjective::PlayerLevel { .. })
-        ).unwrap().clone();
+        let combat = state
+            .active_quests
+            .iter()
+            .find(|quest| matches!(&quest.objective, QuestObjective::PlayerLevel { .. }))
+            .unwrap()
+            .clone();
         if let QuestObjective::PlayerLevel { required_level } = combat.objective {
-            notify_event(&mut state, &GameEvent::PlayerLeveledUp { new_level: required_level });
-            assert!(state.active_quests.iter().find(|quest| quest.id == combat.id).unwrap().is_completed);
+            notify_event(
+                &mut state,
+                &GameEvent::PlayerLeveledUp {
+                    new_level: required_level,
+                },
+            );
+            assert!(
+                state
+                    .active_quests
+                    .iter()
+                    .find(|quest| quest.id == combat.id)
+                    .unwrap()
+                    .is_completed
+            );
         }
 
-        let skill = state.active_quests.iter().find(|quest|
-            matches!(&quest.objective, QuestObjective::SkillLevel { .. })
-        ).unwrap().clone();
-        if let QuestObjective::SkillLevel { skill_name, required_level } = skill.objective {
-            notify_event(&mut state, &GameEvent::SkillLeveledUp {
-                skill_name,
-                new_level: required_level,
-            });
-            assert!(state.active_quests.iter().find(|quest| quest.id == skill.id).unwrap().is_completed);
+        let skill = state
+            .active_quests
+            .iter()
+            .find(|quest| matches!(&quest.objective, QuestObjective::SkillLevel { .. }))
+            .unwrap()
+            .clone();
+        if let QuestObjective::SkillLevel {
+            skill_name,
+            required_level,
+        } = skill.objective
+        {
+            notify_event(
+                &mut state,
+                &GameEvent::SkillLeveledUp {
+                    skill_name,
+                    new_level: required_level,
+                },
+            );
+            assert!(
+                state
+                    .active_quests
+                    .iter()
+                    .find(|quest| quest.id == skill.id)
+                    .unwrap()
+                    .is_completed
+            );
         }
     }
 
@@ -583,13 +636,23 @@ mod tests {
             .id
             .clone();
 
-        assert_eq!(hand_in_item_quest(&mut state, &quest_id), Err(QuestError::InsufficientItems));
+        assert_eq!(
+            hand_in_item_quest(&mut state, &quest_id),
+            Err(QuestError::InsufficientItems)
+        );
         assert_eq!(state.player.get_item_count(ItemType::Ore), 0);
 
         state.player.add_item(ItemType::Ore, 5);
         assert_eq!(hand_in_item_quest(&mut state, &quest_id), Ok(()));
         assert_eq!(state.player.get_item_count(ItemType::Ore), 2);
-        assert!(state.active_quests.iter().find(|quest| quest.id == quest_id).unwrap().is_completed);
+        assert!(
+            state
+                .active_quests
+                .iter()
+                .find(|quest| quest.id == quest_id)
+                .unwrap()
+                .is_completed
+        );
         assert_eq!(
             claim_quest_reward(&mut state, &quest_id),
             Ok(QuestReward::Item {
@@ -598,20 +661,32 @@ mod tests {
             })
         );
         assert_eq!(state.player.get_item_count(ItemType::Ingots), 2);
-        assert_eq!(hand_in_item_quest(&mut state, &quest_id), Err(QuestError::AlreadyClaimed));
+        assert_eq!(
+            hand_in_item_quest(&mut state, &quest_id),
+            Err(QuestError::AlreadyClaimed)
+        );
     }
 
     #[test]
     fn daily_refresh_preserves_history_and_generates_new_daily_ids() {
         let mut state = new_state();
-        state.player.quests_completed.push("historical_quest_1".into());
+        state
+            .player
+            .quests_completed
+            .push("historical_quest_1".into());
         state.active_quests.clear();
         state.player.last_quest_refresh = Some(DateTime::from_timestamp(1, 0).unwrap());
 
         refresh_quests_at(&mut state, DateTime::from_timestamp(86_402, 0).unwrap());
 
-        assert!(state.player.quests_completed.contains(&"historical_quest_1".to_string()));
-        assert!(state.active_quests.iter().any(|quest| quest.id.ends_with("_1")));
+        assert!(state
+            .player
+            .quests_completed
+            .contains(&"historical_quest_1".to_string()));
+        assert!(state
+            .active_quests
+            .iter()
+            .any(|quest| quest.id.ends_with("_1")));
         assert!(state.active_world_event.is_active(86_402));
     }
 }

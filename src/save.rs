@@ -264,9 +264,8 @@ fn read_save(path: &Path) -> Result<ParsedSave, SaveError> {
             && value.get("checksum").is_some()
             && value.get("data").is_some();
         if is_envelope {
-            let envelope: SaveEnvelope = serde_json::from_value(value.clone()).map_err(|error| {
-                SaveError::Corrupted(format!("invalid save envelope: {error}"))
-            })?;
+            let envelope: SaveEnvelope = serde_json::from_value(value.clone())
+                .map_err(|error| SaveError::Corrupted(format!("invalid save envelope: {error}")))?;
             if envelope.version != CURRENT_SAVE_VERSION {
                 return Err(SaveError::UnsupportedVersion(envelope.version));
             }
@@ -637,13 +636,17 @@ mod tests {
             },
         );
         state.player.quests_completed.push("historic_quest".into());
-        state.active_world_event = crate::event::WorldEvent::generate_deterministic(1, 1_800_000_000);
+        state.active_world_event =
+            crate::event::WorldEvent::generate_deterministic(1, 1_800_000_000);
 
         save_to_path(&state, &path).unwrap();
         let loaded = load_game_at(&path, "questpersist", "secret").unwrap();
 
         assert_eq!(loaded.player.lifetime_kills, 1);
-        assert_eq!(loaded.player.quests_completed, state.player.quests_completed);
+        assert_eq!(
+            loaded.player.quests_completed,
+            state.player.quests_completed
+        );
         assert_eq!(loaded.active_quests, state.active_quests);
         assert_eq!(loaded.active_world_event, state.active_world_event);
 
@@ -659,13 +662,34 @@ mod tests {
 
         let mut document: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        document["data"].as_object_mut().unwrap().remove("active_quests");
-        document["data"].as_object_mut().unwrap().remove("active_world_event");
-        document["data"]["player"].as_object_mut().unwrap().remove("lifetime_kills");
-        document["data"]["player"].as_object_mut().unwrap().remove("stamina");
-        document["data"]["player"].as_object_mut().unwrap().remove("max_stamina");
-        document["data"]["player"].as_object_mut().unwrap().remove("mana");
-        document["data"]["player"].as_object_mut().unwrap().remove("max_mana");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("active_quests");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("active_world_event");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("lifetime_kills");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("stamina");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("max_stamina");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("mana");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("max_mana");
         let checksum = compute_checksum_payload(&document["data"]).unwrap();
         document["checksum"] = serde_json::json!(checksum);
         fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();

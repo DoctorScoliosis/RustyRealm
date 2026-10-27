@@ -136,15 +136,10 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             let bonus_xp = npc_type.base_xp();
             state.player.xp = state.player.xp.saturating_add(bonus_xp).min(1_000_000);
             state.player.xp_until_next = state.player.xp_until_next.saturating_sub(bonus_xp);
-            if state.player.xp_until_next == 0
-                && state.player.combat_level < MAX_PLAYER_LEVEL
-            {
+            if state.player.xp_until_next == 0 && state.player.combat_level < MAX_PLAYER_LEVEL {
                 state.player.level_up_combat();
                 let new_level = state.player.combat_level;
-                crate::quests::notify_event(
-                    state,
-                    &GameEvent::PlayerLeveledUp { new_level },
-                );
+                crate::quests::notify_event(state, &GameEvent::PlayerLeveledUp { new_level });
             }
             state.player.hp = state.player.max_hp;
 

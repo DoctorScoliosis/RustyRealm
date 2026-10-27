@@ -106,11 +106,8 @@ pub fn run_engine_battle(
             } else {
                 vec!["Block · mitigate 75%", "Dodge · 80% chance"]
             };
-            let defence_choice = tui.select_menu(
-                "Defensive response",
-                &defensive_options,
-                Some(state),
-            )?;
+            let defence_choice =
+                tui.select_menu("Defensive response", &defensive_options, Some(state))?;
             let defence = match defence_choice {
                 0 => DefensiveChoice::Block,
                 1 => DefensiveChoice::Dodge,
@@ -118,9 +115,7 @@ pub fn run_engine_battle(
                     if state.player.remove_item(ItemType::Potions, 1) {
                         let healing = (player.max_hp / 4).max(1);
                         player.hp = player.hp.saturating_add(healing).min(player.max_hp);
-                        battle_log.push(format!(
-                            "You consume a brew and restore {healing} HP."
-                        ));
+                        battle_log.push(format!("You consume a brew and restore {healing} HP."));
                     }
                     DefensiveChoice::Consumable
                 }
@@ -138,8 +133,7 @@ pub fn run_engine_battle(
                 defence,
             );
             battle_log.extend(logs);
-            let armour_reduction =
-                rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
+            let armour_reduction = rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
             let damage = mitigated.saturating_sub(armour_reduction);
             player.hp = player.hp.saturating_sub(damage);
             battle_log.push(format!(
@@ -253,7 +247,10 @@ pub fn run_engine_battle(
                 }
                 let refs: Vec<&str> = options.iter().map(String::as_str).collect();
                 let choice = tui.select_menu(
-                    &format!("Combat action · {} vs {}", state.player.username, enemy.name),
+                    &format!(
+                        "Combat action · {} vs {}",
+                        state.player.username, enemy.name
+                    ),
                     &refs,
                     Some(state),
                 )?;
@@ -271,7 +268,10 @@ pub fn run_engine_battle(
                     let enemy_hp_before = enemy.hp;
                     enemy.hp = enemy.hp.saturating_sub(damage);
                     let actual_damage = enemy_hp_before.saturating_sub(enemy.hp);
-                    battle_log.push(format!("You deal {actual_damage} damage to {}.", enemy.name));
+                    battle_log.push(format!(
+                        "You deal {actual_damage} damage to {}.",
+                        enemy.name
+                    ));
                     award_combat_xp(state, &mut player, actual_damage, tui)?;
                     break true;
                 }
@@ -285,7 +285,8 @@ pub fn run_engine_battle(
                 };
                 if let Some(ability_id) = ability_id {
                     let before = enemy.hp;
-                    match CombatEngine::execute_player_ability(&mut player, &mut enemy, ability_id) {
+                    match CombatEngine::execute_player_ability(&mut player, &mut enemy, ability_id)
+                    {
                         Ok(logs) => {
                             battle_log.extend(logs);
                             let damage = before.saturating_sub(enemy.hp);
@@ -369,7 +370,10 @@ pub fn run_engine_battle(
                 sync_player(state, &player);
                 tui.show_message(
                     "Defeat",
-                    &format!("{} defeated you. You were revived at full health.", enemy.name),
+                    &format!(
+                        "{} defeated you. You were revived at full health.",
+                        enemy.name
+                    ),
                     Some(state),
                 )?;
                 state.player.hp = state.player.max_hp;
@@ -472,9 +476,7 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         },
     )? {
         BattleOutcome::Victory => handle_victory(tui, state, npc_type),
-        BattleOutcome::Fled => {
-            tui.show_message("Fled", "You flee from the battle.", Some(state))
-        }
+        BattleOutcome::Fled => tui.show_message("Fled", "You flee from the battle.", Some(state)),
         BattleOutcome::Defeated => Ok(()),
     }
 }

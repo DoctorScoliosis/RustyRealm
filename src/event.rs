@@ -4,31 +4,24 @@ use serde::{Deserialize, Serialize};
 /// A domain event emitted after a gameplay action succeeds.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum GameEvent {
-    MonsterDefeated {
-        name: String,
-        is_stronghold: bool,
-    },
-    PlayerLeveledUp {
-        new_level: u32,
-    },
-    SkillLeveledUp {
-        skill_name: String,
-        new_level: u32,
-    },
-    ItemHandedIn {
-        item_type: ItemType,
-        count: u32,
-    },
+    MonsterDefeated { name: String, is_stronghold: bool },
+    PlayerLeveledUp { new_level: u32 },
+    SkillLeveledUp { skill_name: String, new_level: u32 },
+    ItemHandedIn { item_type: ItemType, count: u32 },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum WorldEventType {
-    MonsterSurge { monster_type: String },
+    MonsterSurge {
+        monster_type: String,
+    },
     MarketBoom {
         item_type: ItemType,
         price_multiplier: u32,
     },
-    DoubleSkillXp { skill_name: String },
+    DoubleSkillXp {
+        skill_name: String,
+    },
     None,
 }
 
