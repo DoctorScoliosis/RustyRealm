@@ -159,11 +159,11 @@ fn active_market_multiplier(state: &GameState, item_type: ItemType, timestamp: u
         return 1;
     }
 
-    match state.active_world_event.event_type {
+    match &state.active_world_event.event_type {
         WorldEventType::MarketBoom {
             item_type: event_item,
             price_multiplier,
-        } if event_item == item_type => price_multiplier.max(1),
+        } if *event_item == item_type => (*price_multiplier).max(1),
         _ => 1,
     }
 }
