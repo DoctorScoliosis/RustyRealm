@@ -1,139 +1,125 @@
 use crate::state::GameState;
-use crate::ui::{clear_screen, wait_for_enter};
+use crate::ui::Tui;
+use std::io;
 
-pub fn bank_menu(state: &mut GameState) {
+const MAX_ACCOUNT_GOLD: u32 = 1_000_000_000;
+
+pub fn bank_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
-        clear_screen();
-        println!("Welcome to RealmBank! Here are your accounts which you can store up to 1,000,000,000 (1B) gold into each.\n");
-        println!("You have {} gold.\n", state.player.gold);
-        
-        for i in 0..5 {
-            let acc = &state.player.bank_accounts[i];
-            let status = if acc.is_closed { "Closed" } else { "Open" };
-            println!("Account {}: {}", i + 1, status);
-            println!("   - Gold: {}\n", acc.gold);
+        let summary = (0..state.player.bank_accounts.len())
+            .map(|i| {
+                let account = state.player.bank_accounts[i];
+                format!(
+                    "Account {} · {} · {} gold",
+                    i + 1,
+                    if account.is_closed { "Closed" } else { "Open" },
+                    account.gold
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let content = format!(
+            "RealmBank accounts can hold up to 1,000,000,000 gold each.\nYour wallet: {} gold\n\n{}",
+            state.player.gold, summary
+        );
+        tui.show_text("RealmBank", &content, Some(state))?;
+
+        let mut options = vec![
+            "Account 1", "Account 2", "Account 3", "Account 4", "Account 5", "Exit bank",
+        ];
+        let choice = tui.select_menu("Select an account", &options, Some(state))?;
+        if choice >= 5 {
+            return Ok(());
         }
-        
-        println!("Type \"exit\" to exit.\n");
-        
-        let choice = crate::ui::get_input("Access account number (1-5) or \"exit\": ");
-        if choice.to_lowercase() == "exit" {
-            return;
+        if state.player.bank_accounts[choice].is_closed {
+            tui.show_message("Account unavailable", "This account is full and closed.", Some(state))?;
+            continue;
         }
-        
-        if let Ok(acc_num) = choice.parse::<usize>() {
-            if acc_num >= 1 && acc_num <= 5 {
-                let idx = acc_num - 1;
-                if state.player.bank_accounts[idx].is_closed {
-                    println!("\nThis account is closed (full).");
-                    crate::ui::wait_for_enter();
-                    continue;
-                }
-                deposit_withdraw(state, idx);
-            } else {
-                println!("\nInvalid account number.");
-                crate::ui::wait_for_enter();
-            }
-        } else {
-            println!("\nInvalid input.");
-            crate::ui::wait_for_enter();
-        }
+        deposit_withdraw(tui, state, choice)?;
     }
 }
 
-fn deposit_withdraw(state: &mut GameState, acc_idx: usize) {
+fn deposit_withdraw(tui: &mut Tui, state: &mut GameState, acc_idx: usize) -> io::Result<()> {
     loop {
-        clear_screen();
-        let acc = &state.player.bank_accounts[acc_idx];
-        println!("Account {} ({} gold, {})\n", acc_idx + 1, acc.gold, if acc.is_closed { "Closed" } else { "Open" });
-        println!("1) Deposit");
-        println!("2) Withdraw");
-        println!("3) Back\n");
-        
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => {
-                let amount_str = crate::ui::get_input("Amount to deposit (or \"all\"): ");
-                if amount_str.to_lowercase() == "all" {
-                    let to_deposit = state.player.gold;
-                    if to_deposit == 0 {
-                        println!("\nYou have no gold to deposit.");
-                        crate::ui::wait_for_enter();
-                        continue;
+        let acc = state.player.bank_accounts[acc_idx];
+        let choice = tui.select_menu(
+            &format!("Account {} · {} gold", acc_idx + 1, acc.gold),
+            &["Deposit gold", "Withdraw gold", "Back"],
+            Some(state),
+        )?;
+        match choice {
+            0 => {
+                let amount_text = tui.prompt_input("Amount to deposit, or all", false, Some(state))?;
+                let to_deposit = if amount_text.eq_ignore_ascii_case("all") {
+                    state.player.gold
+                } else {
+                    match amount_text.parse::<u32>() {
+                        Ok(amount) => amount,
+                        Err(_) => {
+                            tui.show_message("Invalid amount", "Enter a positive number or all.", Some(state))?;
+                            continue;
+                        }
                     }
-                    
-                    let new_bank_gold = acc.gold.saturating_add(to_deposit);
-                    if new_bank_gold >= 1_000_000_000 {
-                        let overflow = new_bank_gold.saturating_sub(1_000_000_000);
-                        state.player.bank_accounts[acc_idx].gold = 1_000_000_000;
-                        state.player.bank_accounts[acc_idx].is_closed = true;
-                        state.player.gold = state.player.gold.saturating_add(overflow).saturating_sub(to_deposit);
-                        println!("\nAccount is now full and closed. {} gold returned to you.", overflow);
-                    } else {
-                        state.player.bank_accounts[acc_idx].gold = new_bank_gold;
-                        state.player.gold = state.player.gold.saturating_sub(to_deposit);
-                        println!("\nDeposited {} gold.", to_deposit);
-                    }
-                    crate::ui::wait_for_enter();
-                } else if let Ok(amount) = amount_str.parse::<u32>() {
-                    if amount == 0 {
-                        continue;
-                    }
-                    if amount > state.player.gold {
-                        println!("\nYou don't have enough gold.");
-                        crate::ui::wait_for_enter();
-                        continue;
-                    }
-                    
-                    let new_bank_gold = acc.gold.saturating_add(amount);
-                    if new_bank_gold >= 1_000_000_000 {
-                        let overflow = new_bank_gold.saturating_sub(1_000_000_000);
-                        state.player.bank_accounts[acc_idx].gold = 1_000_000_000;
-                        state.player.bank_accounts[acc_idx].is_closed = true;
-                        state.player.gold = state.player.gold.saturating_add(overflow).saturating_sub(amount);
-                        println!("\nAccount is now full and closed. {} gold returned to you.", overflow);
-                    } else {
-                        state.player.bank_accounts[acc_idx].gold = new_bank_gold;
-                        state.player.gold = state.player.gold.saturating_sub(amount);
-                        println!("\nDeposited {} gold.", amount);
-                    }
-                    crate::ui::wait_for_enter();
+                };
+                if to_deposit == 0 {
+                    tui.show_message("Nothing to deposit", "You have no gold to deposit.", Some(state))?;
+                    continue;
+                }
+                if to_deposit > state.player.gold {
+                    tui.show_message("Deposit failed", "You do not have enough gold.", Some(state))?;
+                    continue;
+                }
+
+                let current_gold = state.player.bank_accounts[acc_idx].gold;
+                let new_bank_gold = current_gold.saturating_add(to_deposit);
+                if new_bank_gold >= MAX_ACCOUNT_GOLD {
+                    let overflow = new_bank_gold.saturating_sub(MAX_ACCOUNT_GOLD);
+                    state.player.bank_accounts[acc_idx].gold = MAX_ACCOUNT_GOLD;
+                    state.player.bank_accounts[acc_idx].is_closed = true;
+                    state.player.gold = state.player.gold.saturating_add(overflow).saturating_sub(to_deposit);
+                    tui.show_message(
+                        "Account is full",
+                        &format!("The account is now full and closed. {} gold was returned to you.", overflow),
+                        Some(state),
+                    )?;
+                } else {
+                    state.player.bank_accounts[acc_idx].gold = new_bank_gold;
+                    state.player.gold = state.player.gold.saturating_sub(to_deposit);
+                    tui.show_message("Deposit complete", &format!("Deposited {} gold.", to_deposit), Some(state))?;
                 }
             }
-            "2" => {
-                let amount_str = crate::ui::get_input("Amount to withdraw (or \"all\"): ");
-                if amount_str.to_lowercase() == "all" {
-                    let to_withdraw = state.player.bank_accounts[acc_idx].gold;
-                    if to_withdraw == 0 {
-                        println!("\nAccount is empty.");
-                        crate::ui::wait_for_enter();
-                        continue;
+            1 => {
+                let amount_text = tui.prompt_input("Amount to withdraw, or all", false, Some(state))?;
+                let available = state.player.bank_accounts[acc_idx].gold;
+                let to_withdraw = if amount_text.eq_ignore_ascii_case("all") {
+                    available
+                } else {
+                    match amount_text.parse::<u32>() {
+                        Ok(amount) => amount,
+                        Err(_) => {
+                            tui.show_message("Invalid amount", "Enter a positive number or all.", Some(state))?;
+                            continue;
+                        }
                     }
-                    state.player.gold = state.player.gold.saturating_add(to_withdraw);
-                    state.player.bank_accounts[acc_idx].gold = 0;
+                };
+                if to_withdraw == 0 {
+                    tui.show_message("Nothing to withdraw", "The account is empty or the amount is zero.", Some(state))?;
+                    continue;
+                }
+                if to_withdraw > available {
+                    tui.show_message("Withdrawal failed", "The account does not have enough gold.", Some(state))?;
+                    continue;
+                }
+
+                state.player.gold = state.player.gold.saturating_add(to_withdraw);
+                state.player.bank_accounts[acc_idx].gold =
+                    state.player.bank_accounts[acc_idx].gold.saturating_sub(to_withdraw);
+                if state.player.bank_accounts[acc_idx].gold < MAX_ACCOUNT_GOLD {
                     state.player.bank_accounts[acc_idx].is_closed = false;
-                    println!("\nWithdrew {} gold.", to_withdraw);
-                    crate::ui::wait_for_enter();
-                } else if let Ok(amount) = amount_str.parse::<u32>() {
-                    if amount == 0 {
-                        continue;
-                    }
-                    if amount > state.player.bank_accounts[acc_idx].gold {
-                        println!("\nAccount doesn't have enough gold.");
-                        crate::ui::wait_for_enter();
-                        continue;
-                    }
-                    state.player.gold = state.player.gold.saturating_add(amount);
-                    state.player.bank_accounts[acc_idx].gold = state.player.bank_accounts[acc_idx].gold.saturating_sub(amount);
-                    if state.player.bank_accounts[acc_idx].gold < 1_000_000_000 {
-                        state.player.bank_accounts[acc_idx].is_closed = false;
-                    }
-                    println!("\nWithdrew {} gold.", amount);
-                    crate::ui::wait_for_enter();
                 }
+                tui.show_message("Withdrawal complete", &format!("Withdrew {} gold.", to_withdraw), Some(state))?;
             }
-            "3" => return,
-            _ => continue,
+            _ => return Ok(()),
         }
     }
 }
