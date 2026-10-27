@@ -22,8 +22,8 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
                 "Total level: {}",
                 state.player.skills.total_level() + state.player.combat_level
             ),
-            format!("Weapon: {}", state.player.weapon.name()),
-            format!("Armour: {}", state.player.armour.name()),
+            format!("Weapon: [{}] {}", state.player.weapon.rarity(), state.player.weapon.name()),
+            format!("Armour: [{}] {}", state.player.armour.rarity(), state.player.armour.name()),
             String::new(),
             "Items".to_string(),
         ];
@@ -81,7 +81,7 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
                 .iter()
                 .filter(|&&owned| owned == tier)
                 .count();
-            lines.push(format!("{:<24} {}", tier.name(), count));
+            lines.push(format!("[{}] {:<24} {}", tier.rarity(), tier.name(), count));
         }
 
         lines.push(String::new());
@@ -109,7 +109,7 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
                 .iter()
                 .filter(|&&owned| owned == tier)
                 .count();
-            lines.push(format!("{:<24} {}", tier.name(), count));
+            lines.push(format!("[{}] {:<24} {}", tier.rarity(), tier.name(), count));
         }
         tui.show_text("Final Realm · Inventory", &lines.join("\n"), Some(state))?;
 
@@ -214,7 +214,7 @@ fn change_weapon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             .inventory_weapons
             .iter()
             .enumerate()
-            .map(|(index, tier)| format!("{} · {}", index + 1, tier.name()))
+            .map(|(index, tier)| format!("{} · [{}] {}", index + 1, tier.rarity(), tier.name()))
             .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
@@ -262,7 +262,7 @@ fn change_armour(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             .inventory_armour
             .iter()
             .enumerate()
-            .map(|(index, tier)| format!("{} · {}", index + 1, tier.name()))
+            .map(|(index, tier)| format!("{} · [{}] {}", index + 1, tier.rarity(), tier.name()))
             .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
