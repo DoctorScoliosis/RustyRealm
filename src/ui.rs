@@ -8,7 +8,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::Line,
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
@@ -456,7 +456,7 @@ mod tests {
                     assert!(content.x.saturating_add(content.width) <= full.width);
                     assert!(content.y.saturating_add(content.height) <= full.height);
                     frame.render_widget(Paragraph::new("Responsive content"), content);
-                }).unwrap_or(());
+                });
             }).unwrap();
         }
     }
