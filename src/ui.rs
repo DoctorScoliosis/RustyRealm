@@ -8,7 +8,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
@@ -82,7 +82,7 @@ impl Tui {
 
         let mut selected = 0usize;
         loop {
-            self.render_screen(state, |frame, area, _| {
+            self.render_screen(state, |frame, area, game_state| {
                 let title_height = if area.height >= 7 { 3 } else { 0 };
                 let footer_height = if area.height >= 10 { 2 } else { 0 };
                 let content_height = area.height.saturating_sub(title_height + footer_height);
@@ -105,7 +105,7 @@ impl Tui {
                         .alignment(Alignment::Center)
                         .style(
                             Style::default()
-                                .fg(Color::Cyan)
+                                .fg(theme_color(game_state))
                                 .add_modifier(Modifier::BOLD),
                         )
                         .block(Block::default().borders(Borders::ALL));
@@ -117,12 +117,29 @@ impl Tui {
                     .iter()
                     .enumerate()
                     .map(|(i, option)| {
-                        let label = if i < 9 {
-                            format!("{}) {}", i + 1, option)
+                        let prefix = if i < 9 { format!("{}) ", i + 1) } else { "   ".to_string() };
+                        let line = if let Some(rest) = option.strip_prefix('[') {
+                            if let Some((rarity, name)) = rest.split_once("] ") {
+                                let color = match rarity {
+                                    "Common" => Color::Gray,
+                                    "Uncommon" => Color::Green,
+                                    "Rare" => Color::Blue,
+                                    "Epic" => Color::Magenta,
+                                    "Legendary" => Color::Yellow,
+                                    _ => Color::White,
+                                };
+                                Line::from(vec![
+                                    Span::raw(prefix),
+                                    Span::styled(format!("[{rarity}] "), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                                    Span::raw(name.to_string()),
+                                ])
+                            } else {
+                                Line::from(format!("{prefix}{option}"))
+                            }
                         } else {
-                            format!("   {}", option)
+                            Line::from(format!("{prefix}{option}"))
                         };
-                        ListItem::new(Line::from(label))
+                        ListItem::new(line)
                     })
                     .collect();
 
@@ -139,7 +156,7 @@ impl Tui {
                     .highlight_style(
                         Style::default()
                             .fg(Color::Black)
-                            .bg(Color::Yellow)
+                            .bg(theme_color(game_state))
                             .add_modifier(Modifier::BOLD),
                     )
                     .highlight_symbol("▶ ");
@@ -229,13 +246,13 @@ impl Tui {
     ) -> io::Result<String> {
         let mut input = String::new();
         loop {
-            self.render_screen(state, |frame, area, _| {
+            self.render_screen(state, |frame, area, game_state| {
                 let popup = centered_rect(88, 35, area);
                 frame.render_widget(Clear, popup);
                 let block = Block::default()
                     .title(format!(" {} ", prompt))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Yellow));
+                    .border_style(Style::default().fg(theme_color(game_state)));
                 let inner = block.inner(popup);
                 frame.render_widget(block, popup);
 
@@ -296,13 +313,13 @@ impl Tui {
         let display_message = format!("{}\n\nPress Enter or Esc to continue.", message);
         let mut scroll = 0u16;
         loop {
-            self.render_screen(state, |frame, area, _| {
+            self.render_screen(state, |frame, area, game_state| {
                 let popup = centered_rect(92, 82, area);
                 frame.render_widget(Clear, popup);
                 let block = Block::default()
                     .title(format!(" {} ", title))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Green));
+                    .border_style(Style::default().fg(theme_color(game_state)));
                 let inner = block.inner(popup);
                 frame.render_widget(block, popup);
                 let paragraph = Paragraph::new(display_message.as_str())
@@ -353,7 +370,7 @@ impl Tui {
     ) -> io::Result<()> {
         let mut scroll = 0u16;
         loop {
-            self.render_screen(state, |frame, area, _| {
+            self.render_screen(state, |frame, area, game_state| {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
@@ -366,7 +383,7 @@ impl Tui {
                     .alignment(Alignment::Center)
                     .style(
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(theme_color(game_state))
                             .add_modifier(Modifier::BOLD),
                     )
                     .block(Block::default().borders(Borders::ALL));
@@ -460,7 +477,7 @@ fn render_sidebar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
     let block = Block::default()
         .title(" Hero ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(theme_color(Some(state))));
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let chunks = Layout::default()
@@ -475,8 +492,10 @@ fn render_sidebar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
 
     frame.render_widget(
         Paragraph::new(format!(
-            "{} · Combat {}",
-            state.player.username, state.player.combat_level
+            "{}{} · Combat {}",
+            state.player.username,
+            state.active_title.as_deref().map(|t| format!(" · {t}")).unwrap_or_default(),
+            state.player.combat_level
         ))
         .style(
             Style::default()
@@ -533,31 +552,26 @@ fn render_sidebar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
 }
 
 fn render_topbar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
+    let title = state.active_title.as_deref().map(|t| format!(" · {t}")).unwrap_or_default();
     let text = format!(
-        " {}  ·  Lv {}  ·  HP {}/{}  ·  Gold {}  ·  {} ",
-        state.player.username,
-        state.player.combat_level,
-        state.player.hp,
-        state.player.max_hp,
-        state.player.gold,
-        state.player.weapon.name(),
+        " {}{}  ·  Lv {}  ·  HP {}/{}  ·  Gold {}  ·  {} ",
+        state.player.username, title, state.player.combat_level, state.player.hp,
+        state.player.max_hp, state.player.gold, state.player.weapon.name(),
     );
     frame.render_widget(
         Paragraph::new(text)
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray))
+            .style(Style::default().fg(theme_color(Some(state))).bg(Color::DarkGray))
             .block(Block::default().borders(Borders::ALL)),
         area,
     );
 }
 
 fn render_compact_header(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
-    let text = format!(
-        "Lv{} HP:{}/{} G:{}",
-        state.player.combat_level, state.player.hp, state.player.max_hp, state.player.gold
-    );
+    let title = state.active_title.as_deref().map(|t| format!(" · {t}")).unwrap_or_default();
+    let text = format!("Lv{} HP:{}/{} G:{}{}", state.player.combat_level, state.player.hp, state.player.max_hp, state.player.gold, title);
     frame.render_widget(
-        Paragraph::new(text).style(Style::default().fg(Color::Yellow)),
+        Paragraph::new(text).style(Style::default().fg(theme_color(Some(state)))),
         area,
     );
 }
@@ -586,6 +600,15 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage(right),
         ])
         .split(vertical[1])[1]
+}
+
+pub fn theme_color(state: Option<&GameState>) -> Color {
+    match state.map(|s| s.active_theme.as_str()).unwrap_or("Classic") {
+        "Infernal Red" => Color::Red,
+        "Golden Realm" => Color::Yellow,
+        "Obsidian Shadow" => Color::DarkGray,
+        _ => Color::Cyan,
+    }
 }
 
 #[cfg(test)]
