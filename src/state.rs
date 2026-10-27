@@ -6,6 +6,14 @@ use crate::data::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+fn default_stamina() -> u32 {
+    100
+}
+
+fn default_mana() -> u32 {
+    50
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
     pub username: String,
@@ -17,6 +25,14 @@ pub struct Player {
     pub orig_xp_threshold: u32,
     pub hp: u32,
     pub max_hp: u32,
+    #[serde(default = "default_stamina")]
+    pub stamina: u32,
+    #[serde(default = "default_stamina")]
+    pub max_stamina: u32,
+    #[serde(default = "default_mana")]
+    pub mana: u32,
+    #[serde(default = "default_mana")]
+    pub max_mana: u32,
     pub gold: u32,
     pub weapon: WeaponTier,
     pub armour: ArmourTier,
@@ -129,6 +145,10 @@ impl Player {
             orig_xp_threshold: 500,
             hp: 100,
             max_hp: 100,
+            stamina: default_stamina(),
+            max_stamina: default_stamina(),
+            mana: default_mana(),
+            max_mana: default_mana(),
             gold: 100,
             weapon: WeaponTier::BareHands,
             armour: ArmourTier::None,
@@ -172,6 +192,20 @@ impl Player {
         }
         if self.hp > self.max_hp {
             self.hp = self.max_hp;
+        }
+
+        if self.max_stamina == 0 {
+            self.max_stamina = default_stamina();
+        }
+        if self.stamina > self.max_stamina {
+            self.stamina = self.max_stamina;
+        }
+
+        if self.max_mana == 0 {
+            self.max_mana = default_mana();
+        }
+        if self.mana > self.max_mana {
+            self.mana = self.max_mana;
         }
 
         if self.gold > MAX_GOLD {
