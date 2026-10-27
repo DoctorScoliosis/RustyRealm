@@ -13,6 +13,7 @@ pub enum QuestError {
     NotFound,
     NotCompleted,
     AlreadyClaimed,
+    AlreadyCompleted,
     InsufficientItems,
     InvalidOperation,
 }
@@ -23,6 +24,7 @@ impl fmt::Display for QuestError {
             Self::NotFound => write!(f, "Quest not found."),
             Self::NotCompleted => write!(f, "Quest objectives have not been met."),
             Self::AlreadyClaimed => write!(f, "The reward has already been claimed."),
+            Self::AlreadyCompleted => write!(f, "This quest is already complete."),
             Self::InsufficientItems => write!(f, "You do not have enough items for that hand-in."),
             Self::InvalidOperation => write!(f, "That operation is not valid for this quest."),
         }
@@ -262,13 +264,13 @@ pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), Q
 
     let (item_type, required_count, is_completed, is_claimed) = {
         let quest = &state.active_quests[quest_index];
-        match quest.objective {
+        match &quest.objective {
             QuestObjective::ItemHandIn {
                 item_type,
                 required_count,
             } => (
-                item_type,
-                required_count,
+                *item_type,
+                *required_count,
                 quest.is_completed,
                 quest.is_claimed,
             ),
@@ -280,7 +282,7 @@ pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), Q
         return Err(QuestError::AlreadyClaimed);
     }
     if is_completed {
-        return Err(QuestError::NotCompleted);
+        return Err(QuestError::AlreadyCompleted);
     }
     if state.player.get_item_count(item_type) < required_count {
         return Err(QuestError::InsufficientItems);
@@ -430,7 +432,7 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                         if quest.is_claimed || quest.is_completed {
                             return None;
                         }
-                        match quest.objective {
+                        match &quest.objective {
                             QuestObjective::ItemHandIn {
                                 item_type,
                                 required_count,
@@ -491,7 +493,7 @@ mod tests {
         let quest_id = state
             .active_quests
             .iter()
-            .find(|quest| matches!(quest.objective, QuestObjective::MonsterKills { .. }))
+            .find(|quest| matches!(&quest.objective, QuestObjective::MonsterKills { .. }))
             .unwrap()
             .id
             .clone();
@@ -553,7 +555,7 @@ mod tests {
         let quest_id = state
             .active_quests
             .iter()
-            .find(|quest| matches!(quest.objective, QuestObjective::ItemHandIn { .. }))
+            .find(|quest| matches!(&quest.objective, QuestObjective::ItemHandIn { .. }))
             .unwrap()
             .id
             .clone();
