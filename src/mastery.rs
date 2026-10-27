@@ -6,7 +6,7 @@ use std::io;
 pub fn has_perk(s:&GameState,p:MasteryPerkId)->bool{s.mastery_perks.contains(&p)}
 pub fn unlocked_mastery_slots(s:&GameState)->usize{
  let lv=[s.player.skills.woodcutting.level,s.player.skills.cooking.level,s.player.skills.fishing.level,s.player.skills.mining.level,s.player.skills.smithing.level,s.player.skills.thieving.level];
- let mut slots=usize::from(lv.iter().any(|n|*n>=MAX_SKILL_LEVEL));let total=s.player.skills.total_level();
+ let mut slots=if lv.iter().any(|n|*n>=MAX_SKILL_LEVEL){1}else{0};let total=s.player.skills.total_level();
  if total>=300{slots=slots.max(2)}if total>=400{slots=slots.max(3)}if total>=500{slots=slots.max(4)}slots.min(MasteryPerkId::ALL.len())
 }
 pub fn critical_chance_pct(s:&GameState)->u32{(5+if has_perk(s,MasteryPerkId::LethalPrecision){10}else{0}).min(25)}
