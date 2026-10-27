@@ -212,16 +212,14 @@ pub fn run_engine_battle(
             );
         })?;
 
-        let mut player_acted = false;
         let mut fled = false;
-
-        if player_stunned {
+        let player_acted = if player_stunned {
             battle_log.push("You are stunned and lose this turn!".into());
-            player_acted = true;
+            true
         } else {
             // Inventory and failed ability attempts do not trigger another
             // status tick. Keep the player within this input loop until an
-            // actual action, flee, or turn skip occurs.
+            // actual action or flee is selected.
             loop {
                 let mut options = vec![
                     "Basic attack".to_string(),
@@ -258,8 +256,7 @@ pub fn run_engine_battle(
                     let actual_damage = enemy_hp_before.saturating_sub(enemy.hp);
                     battle_log.push(format!("You deal {actual_damage} damage to {}.", enemy.name));
                     award_combat_xp(state, &mut player, actual_damage, tui)?;
-                    player_acted = true;
-                    break;
+                    break true;
                 }
 
                 let ability_id = match choice {
@@ -276,8 +273,7 @@ pub fn run_engine_battle(
                             battle_log.extend(logs);
                             let damage = before.saturating_sub(enemy.hp);
                             award_combat_xp(state, &mut player, damage, tui)?;
-                            player_acted = true;
-                            break;
+                            break true;
                         }
                         Err(error) => {
                             tui.show_message("Action unavailable", error, Some(state))?;
@@ -290,23 +286,23 @@ pub fn run_engine_battle(
                 if allow_inventory && choice == inventory_index {
                     sync_player(state, &player);
                     crate::inventory::view_inventory(tui, state, true)?;
-                    // Inventory may consume items, so reload the resource snapshot.
+                    // Inventory may consume items or equip a different weapon.
                     player.hp = state.player.hp;
                     player.max_hp = state.player.max_hp;
                     player.stamina = state.player.stamina;
                     player.max_stamina = state.player.max_stamina;
                     player.mana = state.player.mana;
-                    player.attack_power = state.player.weapon.max_damage().max(1);
                     player.max_mana = state.player.max_mana;
+                    player.attack_power = state.player.weapon.max_damage().max(1);
                     continue;
                 }
 
                 if allow_flee && choice == options.len() - 1 {
                     fled = true;
-                    break;
+                    break false;
                 }
             }
-        }
+        };
 
         if fled {
             sync_player(state, &player);
