@@ -112,12 +112,14 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     match run_engine_battle(
         tui,
         state,
-        npc_type.name(),
-        level,
-        health,
-        npc_type.max_damage(),
-        false,
-        false,
+        BattleConfig {
+            enemy_name: npc_type.name(),
+            level,
+            enemy_hp: health,
+            enemy_attack_power: npc_type.max_damage(),
+            allow_inventory: false,
+            allow_flee: false,
+        },
     )? {
         BattleOutcome::Victory => {
             crate::quests::notify_event(
