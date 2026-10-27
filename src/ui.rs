@@ -49,10 +49,7 @@ impl Tui {
     pub fn new() -> io::Result<Self> {
         let guard = TerminalGuard::new()?;
         let backend = CrosstermBackend::new(io::stdout());
-        let mut terminal = match Terminal::new(backend) {
-            Ok(terminal) => terminal,
-            Err(error) => return Err(error),
-        };
+        let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
         Ok(Self { terminal, _guard: guard })
     }
