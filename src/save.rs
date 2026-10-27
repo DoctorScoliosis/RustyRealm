@@ -593,6 +593,10 @@ mod tests {
         let mut state = test_state("validated", "secret");
         state.player.max_hp = 1200;
         state.player.hp = u32::MAX;
+        state.player.max_stamina = 0;
+        state.player.stamina = u32::MAX;
+        state.player.max_mana = 0;
+        state.player.mana = u32::MAX;
         state.player.gold = u32::MAX;
         state.player.bank_accounts[0].gold = u32::MAX;
         state.player.skills.woodcutting.level = 250;
@@ -602,6 +606,10 @@ mod tests {
 
         assert_eq!(loaded.player.max_hp, 1000);
         assert_eq!(loaded.player.hp, 1000);
+        assert_eq!(loaded.player.max_stamina, 100);
+        assert_eq!(loaded.player.stamina, 100);
+        assert_eq!(loaded.player.max_mana, 50);
+        assert_eq!(loaded.player.mana, 50);
         assert_eq!(loaded.player.gold, crate::data::MAX_GOLD);
         assert_eq!(
             loaded.player.bank_accounts[0].gold,
@@ -654,6 +662,10 @@ mod tests {
         document["data"].as_object_mut().unwrap().remove("active_quests");
         document["data"].as_object_mut().unwrap().remove("active_world_event");
         document["data"]["player"].as_object_mut().unwrap().remove("lifetime_kills");
+        document["data"]["player"].as_object_mut().unwrap().remove("stamina");
+        document["data"]["player"].as_object_mut().unwrap().remove("max_stamina");
+        document["data"]["player"].as_object_mut().unwrap().remove("mana");
+        document["data"]["player"].as_object_mut().unwrap().remove("max_mana");
         let checksum = compute_checksum_payload(&document["data"]).unwrap();
         document["checksum"] = serde_json::json!(checksum);
         fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
@@ -661,6 +673,10 @@ mod tests {
         let loaded = load_game_at(&path, "questcompat", "secret").unwrap();
         assert!(loaded.active_quests.is_empty());
         assert_eq!(loaded.player.lifetime_kills, 0);
+        assert_eq!(loaded.player.stamina, 100);
+        assert_eq!(loaded.player.max_stamina, 100);
+        assert_eq!(loaded.player.mana, 50);
+        assert_eq!(loaded.player.max_mana, 50);
         assert_eq!(
             loaded.active_world_event.event_type,
             crate::event::WorldEventType::None
