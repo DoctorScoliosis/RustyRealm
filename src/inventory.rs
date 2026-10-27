@@ -153,6 +153,7 @@ fn change_weapon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             state.player.weapon = new_weapon;
             tui.show_message("Weapon equipped", &format!("You have equipped {}.", new_weapon.name()), Some(state))?;
         }
+        return Ok(());
     }
 }
 
@@ -184,6 +185,7 @@ fn change_armour(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             state.player.armour = new_armour;
             tui.show_message("Armour equipped", &format!("You have equipped {}.", new_armour.name()), Some(state))?;
         }
+        return Ok(());
     }
 }
 
