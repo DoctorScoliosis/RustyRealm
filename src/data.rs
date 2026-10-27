@@ -327,6 +327,25 @@ impl NpcType {
     }
 
 
+    pub fn base_health(&self) -> u32 {
+        match self {
+            NpcType::StrongholdMage => 750,
+            NpcType::StrongholdRanger => 750,
+            NpcType::StrongholdWarrior => 750,
+            NpcType::Lacoyx => 2780,
+            _ => 0, // Wandering NPC health is scaled dynamically.
+        }
+    }
+
+    pub fn base_xp(&self) -> u32 {
+        match self {
+            NpcType::StrongholdMage => 1000,
+            NpcType::StrongholdRanger => 1000,
+            NpcType::StrongholdWarrior => 1000,
+            NpcType::Lacoyx => 5000,
+            _ => 0, // Wandering NPC experience is calculated per action.
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
