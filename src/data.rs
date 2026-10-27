@@ -332,7 +332,7 @@ impl NpcType {
             NpcType::StrongholdRanger => 750,
             NpcType::StrongholdWarrior => 750,
             NpcType::Lacoyx => 2780,
-            _ => 0, // Calculated dynamically for wandering NPCs
+            _ => 0, // Wandering NPC health is scaled dynamically.
         }
     }
 
@@ -342,7 +342,7 @@ impl NpcType {
             NpcType::StrongholdRanger => 1000,
             NpcType::StrongholdWarrior => 1000,
             NpcType::Lacoyx => 5000,
-            _ => 0, // Calculated dynamically
+            _ => 0, // Wandering NPC experience is calculated per action.
         }
     }
 }

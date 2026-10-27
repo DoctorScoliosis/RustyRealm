@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use crate::data::{
+    ArmourTier, ItemType, WeaponTier, MAX_BANK_GOLD, MAX_GOLD, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL,
+};
 use chrono::{DateTime, Utc};
-use crate::data::{WeaponTier, ArmourTier, ItemType, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL, MAX_GOLD, MAX_BANK_GOLD};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
@@ -49,12 +51,12 @@ impl Skills {
     }
 
     pub fn total_level(&self) -> u32 {
-        self.woodcutting.level +
-        self.cooking.level +
-        self.fishing.level +
-        self.mining.level +
-        self.smithing.level +
-        self.thieving.level
+        self.woodcutting.level
+            + self.cooking.level
+            + self.fishing.level
+            + self.mining.level
+            + self.smithing.level
+            + self.thieving.level
     }
 }
 

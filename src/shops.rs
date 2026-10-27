@@ -1,427 +1,586 @@
+use crate::data::{ArmourTier, ItemType, WeaponTier};
 use crate::state::GameState;
-use crate::data::{WeaponTier, ArmourTier, ItemType};
-use crate::ui::{clear_screen, wait_for_enter};
+use crate::ui::Tui;
+use std::io;
 
-pub fn weapon_shop(state: &mut GameState) {
+pub fn weapon_shop(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let weapons = [
+        WeaponTier::Wooden,
+        WeaponTier::Stone,
+        WeaponTier::Bronze,
+        WeaponTier::Iron,
+        WeaponTier::Steel,
+        WeaponTier::Gold,
+        WeaponTier::Crystal,
+        WeaponTier::Sacred,
+    ];
     loop {
-        clear_screen();
-        println!("FinalRealm Weapon Shop\n");
-        println!("You currently have {} Gold.\n", state.player.gold);
-
-        let weapons = [
-            (WeaponTier::Wooden, 1),
-            (WeaponTier::Stone, 1),
-            (WeaponTier::Bronze, 5),
-            (WeaponTier::Iron, 5),
-            (WeaponTier::Steel, 10),
-            (WeaponTier::Gold, 10), // Fixed: was incorrectly incrementing steel slot
-            (WeaponTier::Crystal, 15),
-            (WeaponTier::Sacred, 15),
-        ];
-
-        for (i, (tier, req_lvl)) in weapons.iter().enumerate() {
-            let owned = state.player.inventory_weapons.iter().filter(|&&t| t == *tier).count();
-            println!("{}) {:<16} Costs {:<6} gold. Owned: {}", 
-                     i + 1, tier.name(), tier.buy_price(), owned);
-        }
-        println!("9) Next Page");
-        println!("Type \"exit\" to exit the store.\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "exit" => return,
-            "9" => {
-                weapon_shop_page_2(state);
-                continue;
-            }
-            "1" => try_buy_weapon(state, WeaponTier::Wooden),
-            "2" => try_buy_weapon(state, WeaponTier::Stone),
-            "3" => try_buy_weapon(state, WeaponTier::Bronze),
-            "4" => try_buy_weapon(state, WeaponTier::Iron),
-            "5" => try_buy_weapon(state, WeaponTier::Steel),
-            "6" => try_buy_weapon(state, WeaponTier::Gold),
-            "7" => try_buy_weapon(state, WeaponTier::Crystal),
-            "8" => try_buy_weapon(state, WeaponTier::Sacred),
-            _ => continue,
+        let labels: Vec<String> = weapons
+            .iter()
+            .map(|tier| {
+                let owned = state
+                    .player
+                    .inventory_weapons
+                    .iter()
+                    .filter(|&&item| item == *tier)
+                    .count();
+                format!(
+                    "{} · {} gold · level {} · owned {}",
+                    tier.name(),
+                    tier.buy_price(),
+                    tier.level_required(),
+                    owned
+                )
+            })
+            .collect();
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Next page");
+        options.push("Exit shop");
+        let choice = tui.select_menu(
+            &format!("Weapon Shop · {} gold", state.player.gold),
+            &options,
+            Some(state),
+        )?;
+        match choice {
+            0..=7 => try_buy_weapon(tui, state, weapons[choice])?,
+            8 => weapon_shop_page_2(tui, state)?,
+            _ => return Ok(()),
         }
     }
 }
 
-fn weapon_shop_page_2(state: &mut GameState) {
+fn weapon_shop_page_2(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let weapons = [
+        WeaponTier::Runic,
+        WeaponTier::Infernal,
+        WeaponTier::Omega,
+        WeaponTier::Chaotic,
+    ];
     loop {
-        clear_screen();
-        println!("FinalRealm Weapon Shop - Page 2\n");
-        println!("You currently have {} Gold.\n", state.player.gold);
-
-        let weapons = [
-            WeaponTier::Runic,
-            WeaponTier::Infernal,
-            WeaponTier::Omega,
-            WeaponTier::Chaotic,
-        ];
-
-        for (i, tier) in weapons.iter().enumerate() {
-            let owned = state.player.inventory_weapons.iter().filter(|&&t| t == *tier).count();
-            println!("{}) {:<16} Costs {:<6} gold. Owned: {}", 
-                     i + 1, tier.name(), tier.buy_price(), owned);
-        }
-        println!("5) Previous Page");
-        println!("Type \"exit\" to exit the store.\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "exit" => return,
-            "5" => return,
-            "1" => try_buy_weapon(state, WeaponTier::Runic),
-            "2" => try_buy_weapon(state, WeaponTier::Infernal),
-            "3" => try_buy_weapon(state, WeaponTier::Omega),
-            "4" => try_buy_weapon(state, WeaponTier::Chaotic),
-            _ => continue,
+        let labels: Vec<String> = weapons
+            .iter()
+            .map(|tier| {
+                let owned = state
+                    .player
+                    .inventory_weapons
+                    .iter()
+                    .filter(|&&item| item == *tier)
+                    .count();
+                format!(
+                    "{} · {} gold · level {} · owned {}",
+                    tier.name(),
+                    tier.buy_price(),
+                    tier.level_required(),
+                    owned
+                )
+            })
+            .collect();
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Previous page");
+        options.push("Exit shop");
+        let choice = tui.select_menu(
+            &format!("Weapon Shop · Page 2 · {} gold", state.player.gold),
+            &options,
+            Some(state),
+        )?;
+        match choice {
+            0..=3 => try_buy_weapon(tui, state, weapons[choice])?,
+            4 => return Ok(()),
+            _ => return Ok(()),
         }
     }
 }
 
-fn try_buy_weapon(state: &mut GameState, tier: WeaponTier) {
+fn try_buy_weapon(tui: &mut Tui, state: &mut GameState, tier: WeaponTier) -> io::Result<()> {
     if state.player.combat_level < tier.level_required() {
-        println!("\nYou are not a high enough level to buy this item. You need to be at least level {}.", tier.level_required());
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Level requirement not met",
+            &format!(
+                "You need to be at least level {} to buy this item.",
+                tier.level_required()
+            ),
+            Some(state),
+        )?;
+        return Ok(());
     }
     if state.player.gold < tier.buy_price() {
-        println!("\nYou don't have enough money.");
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Purchase failed",
+            "You do not have enough money.",
+            Some(state),
+        )?;
+        return Ok(());
     }
-    
     state.player.gold -= tier.buy_price();
     state.player.inventory_weapons.push(tier);
-    println!("\n{} purchased. You have a damage bonus of up to {} with this item.", tier.name(), tier.max_damage());
-    crate::ui::wait_for_enter();
+    tui.show_message(
+        "Weapon purchased",
+        &format!(
+            "{} purchased. Its maximum damage roll is {}.",
+            tier.name(),
+            tier.max_damage()
+        ),
+        Some(state),
+    )
 }
 
-pub fn armour_shop(state: &mut GameState) {
+pub fn armour_shop(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let armours = [
+        ArmourTier::Cloth,
+        ArmourTier::Chain,
+        ArmourTier::Bronze,
+        ArmourTier::Iron,
+        ArmourTier::Steel,
+        ArmourTier::Gold,
+        ArmourTier::Crystal,
+        ArmourTier::Sacred,
+    ];
     loop {
-        clear_screen();
-        println!("FinalRealm - Armour Shop\n");
-        println!("You currently have {} Gold.\n", state.player.gold);
-
-        let armours = [
-            (ArmourTier::Cloth, 1),
-            (ArmourTier::Chain, 1),
-            (ArmourTier::Bronze, 5),
-            (ArmourTier::Iron, 5),
-            (ArmourTier::Steel, 10),
-            (ArmourTier::Gold, 10), // Fixed: was incorrectly incrementing steel slot
-            (ArmourTier::Crystal, 15),
-            (ArmourTier::Sacred, 15),
-        ];
-
-        for (i, (tier, req_lvl)) in armours.iter().enumerate() {
-            let owned = state.player.inventory_armour.iter().filter(|&&t| t == *tier).count();
-            println!("{}) {:<16} Costs {:<6} gold. Owned: {}", 
-                     i + 1, tier.name(), tier.buy_price(), owned);
-        }
-        println!("9) Next Page");
-        println!("Type \"exit\" to exit the store.\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "exit" => return,
-            "9" => {
-                armour_shop_page_2(state);
-                continue;
-            }
-            "1" => try_buy_armour(state, ArmourTier::Cloth),
-            "2" => try_buy_armour(state, ArmourTier::Chain),
-            "3" => try_buy_armour(state, ArmourTier::Bronze),
-            "4" => try_buy_armour(state, ArmourTier::Iron),
-            "5" => try_buy_armour(state, ArmourTier::Steel),
-            "6" => try_buy_armour(state, ArmourTier::Gold),
-            "7" => try_buy_armour(state, ArmourTier::Crystal),
-            "8" => try_buy_armour(state, ArmourTier::Sacred),
-            _ => continue,
+        let labels: Vec<String> = armours
+            .iter()
+            .map(|tier| {
+                let owned = state
+                    .player
+                    .inventory_armour
+                    .iter()
+                    .filter(|&&item| item == *tier)
+                    .count();
+                format!(
+                    "{} · {} gold · level {} · owned {}",
+                    tier.name(),
+                    tier.buy_price(),
+                    tier.level_required(),
+                    owned
+                )
+            })
+            .collect();
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Next page");
+        options.push("Exit shop");
+        let choice = tui.select_menu(
+            &format!("Armour Shop · {} gold", state.player.gold),
+            &options,
+            Some(state),
+        )?;
+        match choice {
+            0..=7 => try_buy_armour(tui, state, armours[choice])?,
+            8 => armour_shop_page_2(tui, state)?,
+            _ => return Ok(()),
         }
     }
 }
 
-fn armour_shop_page_2(state: &mut GameState) {
+fn armour_shop_page_2(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let armours = [
+        ArmourTier::Runic,
+        ArmourTier::Infernal,
+        ArmourTier::Omega,
+        ArmourTier::Chaotic,
+    ];
     loop {
-        clear_screen();
-        println!("FinalRealm Armour Shop - Page 2\n");
-        println!("You currently have {} Gold.\n", state.player.gold);
-
-        let armours = [
-            ArmourTier::Runic,
-            ArmourTier::Infernal,
-            ArmourTier::Omega,
-            ArmourTier::Chaotic,
-        ];
-
-        for (i, tier) in armours.iter().enumerate() {
-            let owned = state.player.inventory_armour.iter().filter(|&&t| t == *tier).count();
-            println!("{}) {:<16} Costs {:<6} gold. Owned: {}", 
-                     i + 1, tier.name(), tier.buy_price(), owned);
-        }
-        println!("5) Previous Page");
-        println!("Type \"exit\" to exit the store.\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "exit" => return,
-            "5" => return,
-            "1" => try_buy_armour(state, ArmourTier::Runic),
-            "2" => try_buy_armour(state, ArmourTier::Infernal),
-            "3" => try_buy_armour(state, ArmourTier::Omega),
-            "4" => try_buy_armour(state, ArmourTier::Chaotic),
-            _ => continue,
+        let labels: Vec<String> = armours
+            .iter()
+            .map(|tier| {
+                let owned = state
+                    .player
+                    .inventory_armour
+                    .iter()
+                    .filter(|&&item| item == *tier)
+                    .count();
+                format!(
+                    "{} · {} gold · level {} · owned {}",
+                    tier.name(),
+                    tier.buy_price(),
+                    tier.level_required(),
+                    owned
+                )
+            })
+            .collect();
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Previous page");
+        options.push("Exit shop");
+        let choice = tui.select_menu(
+            &format!("Armour Shop · Page 2 · {} gold", state.player.gold),
+            &options,
+            Some(state),
+        )?;
+        match choice {
+            0..=3 => try_buy_armour(tui, state, armours[choice])?,
+            4 => return Ok(()),
+            _ => return Ok(()),
         }
     }
 }
 
-fn try_buy_armour(state: &mut GameState, tier: ArmourTier) {
+fn try_buy_armour(tui: &mut Tui, state: &mut GameState, tier: ArmourTier) -> io::Result<()> {
     if state.player.combat_level < tier.level_required() {
-        println!("\nYou are not a high enough level to buy this item. You need to be at least level {}.", tier.level_required());
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Level requirement not met",
+            &format!(
+                "You need to be at least level {} to buy this item.",
+                tier.level_required()
+            ),
+            Some(state),
+        )?;
+        return Ok(());
     }
     if state.player.gold < tier.buy_price() {
-        println!("\nYou don't have enough money.");
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Purchase failed",
+            "You do not have enough money.",
+            Some(state),
+        )?;
+        return Ok(());
     }
-    
     state.player.gold -= tier.buy_price();
     state.player.inventory_armour.push(tier);
-    println!("\n{} purchased. You have a damage reduction bonus of up to {} with this item.", tier.name(), tier.max_dr());
-    crate::ui::wait_for_enter();
+    tui.show_message(
+        "Armour purchased",
+        &format!(
+            "{} purchased. Its maximum damage reduction roll is {}.",
+            tier.name(),
+            tier.max_dr()
+        ),
+        Some(state),
+    )
 }
 
-pub fn legends_store(state: &mut GameState) {
+pub fn legends_store(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
-        clear_screen();
-        println!("FinalRealm Legend's Store\n");
-        println!("You currently have {} gold.\n", state.player.gold);
-        println!("You currently have {} Magic Orbs.\n", state.player.get_item_count(ItemType::MagicOrbs));
-
-        println!("1) Mythical Godsword:  Costs 50 Magic Orbs.  Owned: {}", 
-                 state.player.inventory_weapons.iter().filter(|&&t| t == WeaponTier::Mythical).count());
-        println!("2) Alydril Godsword:   Costs 100 Magic Orbs. Owned: {}", 
-                 state.player.inventory_weapons.iter().filter(|&&t| t == WeaponTier::Alydril).count());
-        println!("3) Mythical Armour:    Costs 65 Magic Orbs.  Owned: {}", 
-                 state.player.inventory_armour.iter().filter(|&&t| t == ArmourTier::Mythical).count());
-        println!("4) Alydril Armour:     Costs 120 Magic Orbs. Owned: {}", 
-                 state.player.inventory_armour.iter().filter(|&&t| t == ArmourTier::Alydril).count());
-        println!("Type \"exit\" to exit the store.\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "exit" => return,
-            "1" => try_buy_legend_weapon(state, WeaponTier::Mythical, 50),
-            "2" => try_buy_legend_weapon(state, WeaponTier::Alydril, 100),
-            "3" => try_buy_legend_armour(state, ArmourTier::Mythical, 65),
-            "4" => try_buy_legend_armour(state, ArmourTier::Alydril, 120),
-            _ => continue,
+        let options = [
+            format!(
+                "Mythical Godsword · 50 Magic Orbs · owned {}",
+                state
+                    .player
+                    .inventory_weapons
+                    .iter()
+                    .filter(|&&tier| tier == WeaponTier::Mythical)
+                    .count()
+            ),
+            format!(
+                "Alydril Godsword · 100 Magic Orbs · owned {}",
+                state
+                    .player
+                    .inventory_weapons
+                    .iter()
+                    .filter(|&&tier| tier == WeaponTier::Alydril)
+                    .count()
+            ),
+            format!(
+                "Mythical Armour · 65 Magic Orbs · owned {}",
+                state
+                    .player
+                    .inventory_armour
+                    .iter()
+                    .filter(|&&tier| tier == ArmourTier::Mythical)
+                    .count()
+            ),
+            format!(
+                "Alydril Armour · 120 Magic Orbs · owned {}",
+                state
+                    .player
+                    .inventory_armour
+                    .iter()
+                    .filter(|&&tier| tier == ArmourTier::Alydril)
+                    .count()
+            ),
+        ];
+        let option_refs: Vec<&str> = options
+            .iter()
+            .map(String::as_str)
+            .chain(std::iter::once("Exit shop"))
+            .collect();
+        let choice = tui.select_menu(
+            &format!(
+                "Legend's Store · {} gold · {} Magic Orbs",
+                state.player.gold,
+                state.player.get_item_count(ItemType::MagicOrbs)
+            ),
+            &option_refs,
+            Some(state),
+        )?;
+        match choice {
+            0 => try_buy_legend_weapon(tui, state, WeaponTier::Mythical, 50)?,
+            1 => try_buy_legend_weapon(tui, state, WeaponTier::Alydril, 100)?,
+            2 => try_buy_legend_armour(tui, state, ArmourTier::Mythical, 65)?,
+            3 => try_buy_legend_armour(tui, state, ArmourTier::Alydril, 120)?,
+            _ => return Ok(()),
         }
     }
 }
 
-fn try_buy_legend_weapon(state: &mut GameState, tier: WeaponTier, cost: u32) {
+fn try_buy_legend_weapon(
+    tui: &mut Tui,
+    state: &mut GameState,
+    tier: WeaponTier,
+    cost: u32,
+) -> io::Result<()> {
     if state.player.get_item_count(ItemType::MagicOrbs) < cost {
-        println!("\nYou don't have enough Magic Orbs.");
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Purchase failed",
+            "You do not have enough Magic Orbs.",
+            Some(state),
+        )?;
+        return Ok(());
     }
-    if state.player.inventory_weapons.iter().any(|&t| t == tier) {
-        println!("\nYou already own this item.");
-        crate::ui::wait_for_enter();
-        return;
+    if state.player.inventory_weapons.contains(&tier) {
+        tui.show_message("Already owned", "You already own this item.", Some(state))?;
+        return Ok(());
     }
-    
     state.player.remove_item(ItemType::MagicOrbs, cost);
     state.player.inventory_weapons.push(tier);
-    println!("\n{} purchased. You have a damage bonus of up to {} with this item.", tier.name(), tier.max_damage());
-    crate::ui::wait_for_enter();
+    tui.show_message(
+        "Weapon purchased",
+        &format!(
+            "{} purchased. Its maximum damage roll is {}.",
+            tier.name(),
+            tier.max_damage()
+        ),
+        Some(state),
+    )
 }
 
-fn try_buy_legend_armour(state: &mut GameState, tier: ArmourTier, cost: u32) {
+fn try_buy_legend_armour(
+    tui: &mut Tui,
+    state: &mut GameState,
+    tier: ArmourTier,
+    cost: u32,
+) -> io::Result<()> {
     if state.player.get_item_count(ItemType::MagicOrbs) < cost {
-        println!("\nYou don't have enough Magic Orbs.");
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Purchase failed",
+            "You do not have enough Magic Orbs.",
+            Some(state),
+        )?;
+        return Ok(());
     }
-    if state.player.inventory_armour.iter().any(|&t| t == tier) {
-        println!("\nYou already own this item.");
-        crate::ui::wait_for_enter();
-        return;
+    if state.player.inventory_armour.contains(&tier) {
+        tui.show_message("Already owned", "You already own this item.", Some(state))?;
+        return Ok(());
     }
-    
     state.player.remove_item(ItemType::MagicOrbs, cost);
     state.player.inventory_armour.push(tier);
-    println!("\n{} purchased. You have a damage reduction bonus of up to {} with this item.", tier.name(), tier.max_dr());
-    crate::ui::wait_for_enter();
+    tui.show_message(
+        "Armour purchased",
+        &format!(
+            "{} purchased. Its maximum damage reduction roll is {}.",
+            tier.name(),
+            tier.max_dr()
+        ),
+        Some(state),
+    )
 }
 
-pub fn smuggler(state: &mut GameState) {
+pub fn smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
-        clear_screen();
-        println!("Smuggler:\n");
-        println!("Hello {}, what can I do for you?\n", state.player.username);
-        println!("1) Who are you?");
-        println!("2) What do you have for trade?");
-        println!("3) Walk away\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => {
-                clear_screen();
-                println!("{}:\n\nWho are you?\n", state.player.username);
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                println!("Smuggler:\n\nI am the Smuggler. I will buy your swords and armour off of you for a small amount.\n");
-                crate::ui::wait_for_enter();
-            }
-            "2" => {
-                sell_to_smuggler(state);
-            }
-            "3" => return,
-            _ => continue,
+        let choice = tui.select_menu(
+            &format!("Smuggler · {} gold", state.player.gold),
+            &["Who are you?", "Sell weapons or armour", "Walk away"],
+            Some(state),
+        )?;
+        match choice {
+            0 => tui.show_message(
+                "Smuggler",
+                "I am the Smuggler. I will buy your swords and armour off of you for a small amount.",
+                Some(state),
+            )?,
+            1 => sell_to_smuggler(tui, state)?,
+            _ => return Ok(()),
         }
     }
 }
 
-fn sell_to_smuggler(state: &mut GameState) {
+#[derive(Clone, Copy)]
+enum SellChoice {
+    Weapon(usize),
+    Armour(usize),
+}
+
+fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
-        clear_screen();
-        println!("You currently have {} swords.", state.player.inventory_weapons.len());
-        println!("You currently have a {} equipped.", state.player.weapon.name());
-        println!("You currently have {} pieces of Armour.", state.player.inventory_armour.len());
-        println!("You currently have {} equipped.\n", state.player.armour.name());
-        println!("Select an item to sell, or type \"back\" to go back.\n");
-
-        for (i, tier) in state.player.inventory_weapons.iter().enumerate() {
-            println!("s{}) {}", i + 1, tier.name());
+        let mut labels = Vec::new();
+        let mut choices = Vec::new();
+        for (index, tier) in state.player.inventory_weapons.iter().enumerate() {
+            labels.push(format!(
+                "Weapon s{} · {} · sell for {} gold",
+                index + 1,
+                tier.name(),
+                tier.sell_price()
+            ));
+            choices.push(SellChoice::Weapon(index));
         }
-        for (i, tier) in state.player.inventory_armour.iter().enumerate() {
-            println!("a{}) {}", i + 1, tier.name());
+        for (index, tier) in state.player.inventory_armour.iter().enumerate() {
+            labels.push(format!(
+                "Armour a{} · {} · sell for {} gold",
+                index + 1,
+                tier.name(),
+                tier.sell_price()
+            ));
+            choices.push(SellChoice::Armour(index));
         }
-        println!("\nType \"back\" to return.");
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Back");
+        let choice = tui.select_menu(
+            &format!(
+                "Smuggler · weapons {} · armour {} · equipped: {} / {}",
+                state.player.inventory_weapons.len(),
+                state.player.inventory_armour.len(),
+                state.player.weapon.name(),
+                state.player.armour.name(),
+            ),
+            &options,
+            Some(state),
+        )?;
+        let Some(selected) = choices.get(choice).copied() else {
+            return Ok(());
+        };
 
-        let choice = crate::ui::get_input("Choice: ");
-        if choice == "back" {
-            return;
-        }
-
-        if let Some(stripped) = choice.strip_prefix('s') {
-            if let Ok(idx) = stripped.parse::<usize>() {
-                if idx > 0 && idx <= state.player.inventory_weapons.len() {
-                    let tier = state.player.inventory_weapons[idx - 1];
-                    let price = tier.sell_price();
-                    println!("\nAh, the {}. That's a nice piece of metal. Tell ya what.", tier.name());
-                    println!("I'll buy it off of you for {} gold. Deal?\n", price);
-                    println!("1) Deal.\n2) No thanks.\n");
-                    let deal = crate::ui::get_input("Choice: ");
-                    if deal == "1" {
-                        state.player.inventory_weapons.remove(idx - 1);
-                        state.player.gold += price;
-                        println!("\nYou sell the {} for {} gold.", tier.name(), price);
-                        crate::ui::wait_for_enter();
-                        continue;
-                    }
-                }
+        let (name, price) = match selected {
+            SellChoice::Weapon(index) => {
+                let tier = state.player.inventory_weapons[index];
+                (tier.name().to_string(), tier.sell_price())
             }
-        } else if let Some(stripped) = choice.strip_prefix('a') {
-            if let Ok(idx) = stripped.parse::<usize>() {
-                if idx > 0 && idx <= state.player.inventory_armour.len() {
-                    let tier = state.player.inventory_armour[idx - 1];
-                    let price = tier.sell_price();
-                    println!("\nAh, the {}. That's a nice piece of metal. Tell ya what.", tier.name());
-                    println!("I'll buy it off of you for {} gold. Deal?\n", price);
-                    println!("1) Deal.\n2) No thanks.\n");
-                    let deal = crate::ui::get_input("Choice: ");
-                    if deal == "1" {
-                        state.player.inventory_armour.remove(idx - 1);
-                        state.player.gold += price;
-                        println!("\nYou sell the {} for {} gold.", tier.name(), price);
-                        crate::ui::wait_for_enter();
-                        continue;
-                    }
-                }
+            SellChoice::Armour(index) => {
+                let tier = state.player.inventory_armour[index];
+                (tier.name().to_string(), tier.sell_price())
+            }
+        };
+        let confirmation = tui.select_menu(
+            &format!("The {} can be sold for {} gold. Deal?", name, price),
+            &["Deal", "No thanks"],
+            Some(state),
+        )?;
+        if confirmation != 0 {
+            continue;
+        }
+
+        match selected {
+            SellChoice::Weapon(index) => {
+                state.player.inventory_weapons.remove(index);
+            }
+            SellChoice::Armour(index) => {
+                state.player.inventory_armour.remove(index);
             }
         }
-        
-        println!("\nYou don't have that item.");
-        crate::ui::wait_for_enter();
+        state.player.gold += price;
+        tui.show_message(
+            "Sale complete",
+            &format!("You sold the {} for {} gold.", name, price),
+            Some(state),
+        )?;
     }
 }
 
-pub fn max_shop(state: &mut GameState) {
-    // Max's Shop requires total level 1300 in original, but max achievable is 37 + 6*100 = 637.
-    // We'll lower the requirement to 600 to make it actually reachable as a remaster feature.
+pub fn max_shop(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    // The remaster lowers the original 1300 requirement to the achievable total level of 600.
     if state.player.skills.total_level() + state.player.combat_level < 600 {
-        clear_screen();
-        println!("\nMax's shop is closed at the moment. (Requires combined level 600)\n");
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Max's Shop is closed",
+            "This shop requires a combined combat and skill level of 600.",
+            Some(state),
+        )?;
+        return Ok(());
     }
 
     loop {
-        clear_screen();
-        println!("FinalRealm - Max's Shop\n");
-        println!("What would you like to do?\n");
-        println!("1) Buy Weapons");
-        println!("2) Buy Armour");
-        println!("3) Leave\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => max_shop_weapons(state),
-            "2" => max_shop_armour(state),
-            "3" => return,
-            _ => continue,
+        let choice = tui.select_menu(
+            "Max's Shop",
+            &["Buy weapons", "Armour (not available)", "Leave"],
+            Some(state),
+        )?;
+        match choice {
+            0 => max_shop_weapons(tui, state)?,
+            1 => max_shop_armour(tui, state)?,
+            _ => return Ok(()),
         }
     }
 }
 
-fn max_shop_weapons(state: &mut GameState) {
+fn max_shop_weapons(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
-        clear_screen();
-        println!("Gold: {}\n", state.player.gold);
-        println!("Weapons:\n");
-        println!("1) Elysian Blade       3,000,000 gold");
-        println!("2) Arcane Blade          400,000 gold");
-        println!("3) Spectral Blade      5,000,000 gold\n");
-        println!("Type \"exit\" to exit.\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "exit" => return,
-            "1" => try_buy_max_weapon(state, WeaponTier::Elysian, 3_000_000),
-            "2" => try_buy_max_weapon(state, WeaponTier::Arcane, 400_000),
-            "3" => try_buy_max_weapon(state, WeaponTier::Spectral, 5_000_000),
-            _ => continue,
+        let options = [
+            format!(
+                "Elysian Blade · 3,000,000 gold · owned {}",
+                state
+                    .player
+                    .inventory_weapons
+                    .iter()
+                    .filter(|&&tier| tier == WeaponTier::Elysian)
+                    .count()
+            ),
+            format!(
+                "Arcane Blade · 400,000 gold · owned {}",
+                state
+                    .player
+                    .inventory_weapons
+                    .iter()
+                    .filter(|&&tier| tier == WeaponTier::Arcane)
+                    .count()
+            ),
+            format!(
+                "Spectral Blade · 5,000,000 gold · owned {}",
+                state
+                    .player
+                    .inventory_weapons
+                    .iter()
+                    .filter(|&&tier| tier == WeaponTier::Spectral)
+                    .count()
+            ),
+        ];
+        let option_refs: Vec<&str> = options
+            .iter()
+            .map(String::as_str)
+            .chain(std::iter::once("Back"))
+            .collect();
+        let choice = tui.select_menu(
+            &format!("Max's Shop · {} gold", state.player.gold),
+            &option_refs,
+            Some(state),
+        )?;
+        match choice {
+            0 => try_buy_max_weapon(tui, state, WeaponTier::Elysian, 3_000_000)?,
+            1 => try_buy_max_weapon(tui, state, WeaponTier::Arcane, 400_000)?,
+            2 => try_buy_max_weapon(tui, state, WeaponTier::Spectral, 5_000_000)?,
+            _ => return Ok(()),
         }
     }
 }
 
-fn try_buy_max_weapon(state: &mut GameState, tier: WeaponTier, price: u32) {
+fn try_buy_max_weapon(
+    tui: &mut Tui,
+    state: &mut GameState,
+    tier: WeaponTier,
+    price: u32,
+) -> io::Result<()> {
     if state.player.gold < price {
-        println!("\nYou don't have enough money.");
-        crate::ui::wait_for_enter();
-        return;
+        tui.show_message(
+            "Purchase failed",
+            "You do not have enough money.",
+            Some(state),
+        )?;
+        return Ok(());
     }
-    if state.player.inventory_weapons.iter().any(|&t| t == tier) {
-        println!("\nYou already own this item.");
-        crate::ui::wait_for_enter();
-        return;
+    if state.player.inventory_weapons.contains(&tier) {
+        tui.show_message("Already owned", "You already own this item.", Some(state))?;
+        return Ok(());
     }
-    
     state.player.gold -= price;
     state.player.inventory_weapons.push(tier);
-    println!("\n{} purchased. You have a damage bonus of up to {} with this item.", tier.name(), tier.max_damage());
-    crate::ui::wait_for_enter();
+    tui.show_message(
+        "Weapon purchased",
+        &format!(
+            "{} purchased. Its maximum damage roll is {}.",
+            tier.name(),
+            tier.max_damage()
+        ),
+        Some(state),
+    )
 }
 
-fn max_shop_armour(state: &mut GameState) {
-    clear_screen();
-    println!("Max currently only sells legendary weapons. Armour is not available.\n");
-    crate::ui::wait_for_enter();
+fn max_shop_armour(tui: &mut Tui, state: &GameState) -> io::Result<()> {
+    tui.show_message(
+        "Armour unavailable",
+        "Max currently only sells legendary weapons. Armour is not available.",
+        Some(state),
+    )
 }
