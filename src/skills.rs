@@ -1,7 +1,9 @@
+use crate::crafting::{execute_recipe, get_recipes_for_skill};
 use crate::data::{ItemType, MAX_GOLD, MAX_SKILL_LEVEL};
 use crate::event::GameEvent;
 use crate::state::{GameState, SkillData};
 use crate::ui::Tui;
+use rand::Rng;
 use std::io;
 
 fn award_xp(skill: &mut SkillData) -> bool {
@@ -75,6 +77,16 @@ impl SkillKind {
             Self::Thieving => "Pickpocket",
         }
     }
+
+    /// Use the recipe engine for the existing cook/smelt transformations while
+    /// retaining the original all-at-once mastery behaviour at level 100.
+    fn primary_recipe(self) -> Option<&'static str> {
+        match self {
+            Self::Cooking => Some("cook_food"),
+            Self::Smithing => Some("smith_ingot"),
+            _ => None,
+        }
+    }
 }
 
 pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
@@ -117,6 +129,32 @@ pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
+
+/// Execute a recipe and report the actual transaction result to the player.
+fn run_recipe(tui: &mut Tui, state: &mut GameState, recipe_id: &str) -> io::Result<String> {
+    match execute_recipe(state, recipe_id) {
+        Ok(result) => {
+            let mut message = format!(
+                "{} crafted successfully.\n\nInputs: {}\nOutputs: {}\nSkill XP gained: {}.",
+                result.recipe.name,
+                result.recipe.input_description(),
+                result.recipe.output_description(),
+                result.xp_awarded
+            );
+            if let Some(new_level) = result.level_up {
+                message.push_str(&format!("\n\nYour {} level is now {}.", result.recipe.skill_name, new_level));
+            }
+            tui.show_message("Crafting complete", &message, Some(state))?;
+            Ok(format!("Crafted {}.", result.recipe.name))
+        }
+        Err(error) => {
+            let message = error.to_string();
+            tui.show_message("Crafting unavailable", &message, Some(state))?;
+            Ok(message)
+        }
+    }
+}
+
 fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Result<()> {
     let mut status = String::new();
     loop {
@@ -137,10 +175,36 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 format!(" — {}", status)
             }
         );
-        let action_options = [action_label.as_str(), "Back"];
-        let choice = tui.select_menu(&detail, &action_options, Some(state))?;
-        if choice != 0 {
+        let recipes: Vec<_> = get_recipes_for_skill(skill.name())
+            .into_iter()
+            .filter(|recipe| skill.primary_recipe() != Some(recipe.id.as_str()))
+            .collect();
+        let mut options = vec![action_label];
+        options.extend(
+            recipes
+                .iter()
+                .map(|recipe| format!("Craft: {} (Req Lvl {})", recipe.name, recipe.required_level)),
+        );
+        options.push("Back".into());
+        let option_refs: Vec<&str> = options.iter().map(String::as_str).collect();
+        let choice = tui.select_menu(&detail, &option_refs, Some(state))?;
+
+        if choice >= options.len().saturating_sub(1) {
             return Ok(());
+        }
+        if choice > 0 {
+            let Some(recipe) = recipes.get(choice - 1) else {
+                return Ok(());
+            };
+            status = run_recipe(tui, state, &recipe.id)?;
+            continue;
+        }
+
+        if skill.data(state).level < MAX_SKILL_LEVEL {
+            if let Some(recipe_id) = skill.primary_recipe() {
+                status = run_recipe(tui, state, recipe_id)?;
+                continue;
+            }
         }
 
         status = match skill {
@@ -344,6 +408,10 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     "Mastery: stole 10,000 coins.".to_string()
                 } else {
                     state.player.gold = state.player.gold.saturating_add(10).min(MAX_GOLD);
+                    let found_thread = rand::thread_rng().gen_bool(0.4);
+                    if found_thread {
+                        state.player.add_item(ItemType::Thread, 1);
+                    }
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
                         crate::quests::notify_event(
@@ -367,7 +435,11 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                             Some(state),
                         )?;
                     }
-                    "You stole some coins.".to_string()
+                    if found_thread {
+                        "You stole some coins and found a thread.".to_string()
+                    } else {
+                        "You stole some coins.".to_string()
+                    }
                 }
             }
         };
