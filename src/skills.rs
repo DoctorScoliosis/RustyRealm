@@ -142,7 +142,10 @@ fn run_recipe(tui: &mut Tui, state: &mut GameState, recipe_id: &str) -> io::Resu
                 result.xp_awarded
             );
             if let Some(new_level) = result.level_up {
-                message.push_str(&format!("\n\nYour {} level is now {}.", result.recipe.skill_name, new_level));
+                message.push_str(&format!(
+                    "\n\nYour {} level is now {}.",
+                    result.recipe.skill_name, new_level
+                ));
             }
             tui.show_message("Crafting complete", &message, Some(state))?;
             Ok(format!("Crafted {}.", result.recipe.name))
@@ -183,7 +186,9 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
         options.extend(
             recipes
                 .iter()
-                .map(|recipe| format!("Craft: {} (Req Lvl {})", recipe.name, recipe.required_level)),
+                .map(|recipe| {
+                    format!("Craft: {} (Req Lvl {})", recipe.name, recipe.required_level)
+                }),
         );
         options.push("Back".into());
         let option_refs: Vec<&str> = options.iter().map(String::as_str).collect();
@@ -403,15 +408,20 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 }
             }
             SkillKind::Thieving => {
+                let found_thread = rand::thread_rng().gen_bool(0.4);
+                if found_thread {
+                    state.player.add_item(ItemType::Thread, 1);
+                }
+
                 if skill.data(state).level >= MAX_SKILL_LEVEL {
                     state.player.gold = state.player.gold.saturating_add(10_000).min(MAX_GOLD);
-                    "Mastery: stole 10,000 coins.".to_string()
+                    if found_thread {
+                        "Mastery: stole 10,000 coins and found a thread.".to_string()
+                    } else {
+                        "Mastery: stole 10,000 coins.".to_string()
+                    }
                 } else {
                     state.player.gold = state.player.gold.saturating_add(10).min(MAX_GOLD);
-                    let found_thread = rand::thread_rng().gen_bool(0.4);
-                    if found_thread {
-                        state.player.add_item(ItemType::Thread, 1);
-                    }
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
                         crate::quests::notify_event(
