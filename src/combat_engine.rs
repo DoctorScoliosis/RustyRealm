@@ -213,7 +213,7 @@ impl CombatEngine {
             DefensiveChoice::None | DefensiveChoice::Dodge => {}
         }
 
-        (final_damage.max(1.0).min(u32::MAX as f64) as u32, logs)
+        (final_damage.clamp(1.0, u32::MAX as f64) as u32, logs)
     }
 
     pub fn execute_player_ability(
@@ -513,6 +513,9 @@ mod tests {
         ).unwrap();
         assert!(target.status_effects.iter().any(|s| s.kind == StatusEffectKind::Stun));
         assert!(logs.iter().any(|line| line.contains("stunned")));
+        let stun_logs = target.tick_status_effects();
+        assert!(target.is_stunned);
+        assert!(stun_logs.iter().any(|line| line.contains("loses this turn")));
 
         player.hp = 10;
         let logs = CombatEngine::execute_player_ability(
