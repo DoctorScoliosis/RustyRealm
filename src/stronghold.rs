@@ -76,7 +76,7 @@ pub fn stronghold_dungeon(state: &mut GameState) {
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
 
-        if current_health <= 0 {
+        if current_health == 0 {
             break;
         }
 
@@ -93,7 +93,7 @@ pub fn stronghold_dungeon(state: &mut GameState) {
         
         state.player.hp = state.player.hp.saturating_sub(npc_dmg);
         
-        if state.player.hp <= 0 {
+        if state.player.hp == 0 {
             println!("\nYou died. Your stronghold progress has been reset.");
             state.player.stronghold_kill_count = 0;
             state.player.hp = state.player.max_hp;
@@ -176,7 +176,7 @@ fn boss_fight(state: &mut GameState) {
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
 
-        if health <= 0 {
+        if health == 0 {
             break;
         }
 
@@ -193,7 +193,7 @@ fn boss_fight(state: &mut GameState) {
         
         state.player.hp = state.player.hp.saturating_sub(npc_dmg);
         
-        if state.player.hp <= 0 {
+        if state.player.hp == 0 {
             println!("\nYou died. Your stronghold progress has been reset.");
             state.player.stronghold_kill_count = 0;
             state.player.hp = state.player.max_hp;
