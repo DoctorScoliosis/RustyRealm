@@ -531,6 +531,39 @@ mod tests {
     }
 
     #[test]
+    fn selling_items_does_not_advance_quest_hall_hand_in_progress() {
+        use crate::quests::{Quest, QuestObjective, QuestReward};
+
+        let mut state = state();
+        state.active_quests.push(Quest {
+            id: "ore_hand_in_test".into(),
+            title: "Supply the Smelter".into(),
+            description: "Hand in three Ore at the Quest Hall.".into(),
+            objective: QuestObjective::ItemHandIn {
+                item_type: ItemType::Ore,
+                required_count: 3,
+            },
+            progress: 0,
+            target: 3,
+            is_completed: false,
+            is_claimed: false,
+            reward: QuestReward::Gold(1),
+            is_daily: false,
+        });
+        state.player.add_item(ItemType::Ore, 1);
+
+        sell_item_transaction(&mut state, ItemType::Ore, 1).unwrap();
+
+        let quest = state
+            .active_quests
+            .iter()
+            .find(|quest| quest.id == "ore_hand_in_test")
+            .unwrap();
+        assert_eq!(quest.progress, 0);
+        assert!(!quest.is_completed);
+    }
+
+    #[test]
     fn old_game_state_without_market_data_uses_a_default_market() {
         let state = state();
         let mut value = serde_json::to_value(&state).unwrap();
