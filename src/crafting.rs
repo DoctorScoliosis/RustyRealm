@@ -181,7 +181,7 @@ pub fn get_recipes_for_skill(skill_name: &str) -> Vec<Recipe> {
         .collect()
 }
 
-fn get_skill_data(state: &GameState, skill_name: &str) -> Option<&SkillData> {
+fn get_skill_data<'a>(state: &'a GameState, skill_name: &str) -> Option<&'a SkillData> {
     match skill_name.to_ascii_lowercase().as_str() {
         "woodcutting" => Some(&state.player.skills.woodcutting),
         "cooking" => Some(&state.player.skills.cooking),
@@ -193,7 +193,7 @@ fn get_skill_data(state: &GameState, skill_name: &str) -> Option<&SkillData> {
     }
 }
 
-fn get_skill_data_mut(state: &mut GameState, skill_name: &str) -> Option<&mut SkillData> {
+fn get_skill_data_mut<'a>(state: &'a mut GameState, skill_name: &str) -> Option<&'a mut SkillData> {
     match skill_name.to_ascii_lowercase().as_str() {
         "woodcutting" => Some(&mut state.player.skills.woodcutting),
         "cooking" => Some(&mut state.player.skills.cooking),
