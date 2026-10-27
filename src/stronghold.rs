@@ -1,4 +1,5 @@
 use crate::data::{ArmourTier, NpcType, WeaponTier};
+use crate::event::GameEvent;
 use crate::state::GameState;
 use crate::ui::Tui;
 use rand::Rng;
@@ -66,6 +67,11 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
 
         if state.player.xp_until_next == 0 {
             state.player.level_up_combat();
+            let new_level = state.player.combat_level;
+            crate::quests::notify_event(
+                state,
+                &GameEvent::PlayerLeveledUp { new_level },
+            );
             tui.show_message(
                 "Combat level up",
                 &format!(
@@ -115,6 +121,13 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
     let gold_gain = rand::thread_rng().gen_range(1..=1000) + 1000;
     state.player.gold = (state.player.gold + gold_gain).min(5_000_000);
     state.player.stronghold_kill_count += 1;
+    crate::quests::notify_event(
+        state,
+        &GameEvent::MonsterDefeated {
+            name: npc_type.name().to_string(),
+            is_stronghold: true,
+        },
+    );
 
     let healing = state.player.stronghold_kill_count.is_multiple_of(2);
     if healing {
@@ -182,6 +195,11 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
         if state.player.xp_until_next == 0 {
             state.player.level_up_combat();
+            let new_level = state.player.combat_level;
+            crate::quests::notify_event(
+                state,
+                &GameEvent::PlayerLeveledUp { new_level },
+            );
             tui.show_message(
                 "Combat level up",
                 &format!("You are now combat level {}.", state.player.combat_level),
@@ -222,6 +240,13 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         )?;
     }
 
+    crate::quests::notify_event(
+        state,
+        &GameEvent::MonsterDefeated {
+            name: npc_type.name().to_string(),
+            is_stronghold: true,
+        },
+    );
     state.player.inventory_weapons.push(WeaponTier::Omega);
     state.player.inventory_armour.push(ArmourTier::Runic);
     state.player.stronghold_kill_count = 0;
