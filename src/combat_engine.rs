@@ -331,12 +331,7 @@ impl CombatEngine {
                 "{} strikes with telegraphed move {}!",
                 enemy.name, telegraphed.name
             ));
-            return (
-                telegraphed.damage,
-                telegraphed.damage_type,
-                Some(telegraphed),
-                logs,
-            );
+            return (telegraphed.damage, telegraphed.damage_type, None, logs);
         }
 
         if enemy.name == "Lacoyx" {
