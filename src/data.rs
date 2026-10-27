@@ -545,7 +545,6 @@ impl LacoyxPhase {
     }
 }
 
-
 #[cfg(test)]
 mod npc_resistance_tests {
     use super::*;

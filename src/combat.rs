@@ -571,20 +571,13 @@ fn encounter_travelling_merchant(tui: &mut Tui, state: &mut GameState) -> io::Re
         Some(state),
     )?;
     if choice == 0 {
-        match crate::economy::buy_item_transaction_at_price(
-            state,
-            item,
-            1,
-            discounted_price,
-        ) {
+        match crate::economy::buy_item_transaction_at_price(state, item, 1, discounted_price) {
             Ok(cost) => tui.show_message(
                 "Purchase complete",
                 &format!("Bought one Health Potion for {cost} gold."),
                 Some(state),
             )?,
-            Err(error) => {
-                tui.show_message("Purchase failed", &error.to_string(), Some(state))?
-            }
+            Err(error) => tui.show_message("Purchase failed", &error.to_string(), Some(state))?,
         }
     }
     Ok(())
@@ -607,11 +600,7 @@ fn encounter_treasure_puzzle(tui: &mut Tui, state: &mut GameState) -> io::Result
             let gold_awarded = MAX_GOLD
                 .saturating_sub(state.player.gold.min(MAX_GOLD))
                 .min(300);
-            state.player.gold = state
-                .player
-                .gold
-                .saturating_add(gold_awarded)
-                .min(MAX_GOLD);
+            state.player.gold = state.player.gold.saturating_add(gold_awarded).min(MAX_GOLD);
             let gemstone_awarded = if state
                 .player
                 .get_item_count(ItemType::Gemstones)

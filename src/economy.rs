@@ -187,8 +187,7 @@ pub fn calculate_dynamic_buy_price_at(
         .copied()
         .unwrap_or(0);
     let volume_percent = volume_modifier_percent(net_trades) as u128;
-    let event_multiplier =
-        active_market_multiplier(state, item_type, timestamp) as u128;
+    let event_multiplier = active_market_multiplier(state, item_type, timestamp) as u128;
 
     let price = u128::from(base_price)
         .saturating_mul(volume_percent)
@@ -366,7 +365,10 @@ mod tests {
         let mut state = state();
         let base = ItemType::Ore.buy_price();
 
-        assert_eq!(calculate_dynamic_buy_price_at(&state, ItemType::Ore, 0), base);
+        assert_eq!(
+            calculate_dynamic_buy_price_at(&state, ItemType::Ore, 0),
+            base
+        );
 
         state.market_state.record_trade(ItemType::Ore, 100);
         assert_eq!(
@@ -419,14 +421,14 @@ mod tests {
         let mut state = state();
         state.player.gold = 5000;
 
-        assert_eq!(
-            buy_item_transaction(&mut state, ItemType::Ore, 1),
-            Ok(500)
-        );
+        assert_eq!(buy_item_transaction(&mut state, ItemType::Ore, 1), Ok(500));
         assert_eq!(state.player.gold, 4500);
         assert_eq!(state.player.get_item_count(ItemType::Ore), 1);
         assert_eq!(state.market_state.net_trades.get(&ItemType::Ore), Some(&1));
-        assert_eq!(calculate_dynamic_buy_price_at(&state, ItemType::Ore, 0), 510);
+        assert_eq!(
+            calculate_dynamic_buy_price_at(&state, ItemType::Ore, 0),
+            510
+        );
     }
 
     #[test]
@@ -464,10 +466,7 @@ mod tests {
         let mut state = state();
         state.player.add_item(ItemType::Ore, 2);
 
-        assert_eq!(
-            sell_item_transaction(&mut state, ItemType::Ore, 1),
-            Ok(300)
-        );
+        assert_eq!(sell_item_transaction(&mut state, ItemType::Ore, 1), Ok(300));
         assert_eq!(state.player.gold, 400);
         assert_eq!(state.player.get_item_count(ItemType::Ore), 1);
         assert_eq!(state.market_state.net_trades.get(&ItemType::Ore), Some(&-1));
@@ -531,7 +530,10 @@ mod tests {
 
         // A high-pressure market cannot turn a fixed-price equipment purchase
         // into a profitable resale loop; the payout is capped at 60% of retail.
-        assert_eq!(calculate_dynamic_equipment_sell_price(&state, 500, 1000), 600);
+        assert_eq!(
+            calculate_dynamic_equipment_sell_price(&state, 500, 1000),
+            600
+        );
     }
 
     #[test]
