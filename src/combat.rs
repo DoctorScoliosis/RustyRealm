@@ -1,12 +1,12 @@
-use rand::Rng;
+use crate::data::{ItemType, NpcType};
 use crate::state::GameState;
-use crate::data::{NpcType, ItemType};
-use crate::ui::{clear_screen, wait_for_enter};
+use crate::ui::Tui;
+use rand::Rng;
+use std::io;
 
-pub fn wander_gielinor(state: &mut GameState) {
+pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let mut rng = rand::thread_rng();
     let npc_roll = rng.gen_range(1..=13);
-    
     let npc_type = match npc_roll {
         1 => NpcType::Goblin,
         2 => NpcType::Giant,
@@ -25,7 +25,7 @@ pub fn wander_gielinor(state: &mut GameState) {
     };
 
     let player_lvl = state.player.combat_level;
-    let (base_health, base_level) = if player_lvl <= 5 {
+    let (base_health, level) = if player_lvl <= 5 {
         (rng.gen_range(75..=175), rng.gen_range(1..=4))
     } else if player_lvl <= 10 {
         (rng.gen_range(200..=300), rng.gen_range(5..=9))
@@ -42,103 +42,94 @@ pub fn wander_gielinor(state: &mut GameState) {
     };
 
     let mut health = base_health;
-    let level = base_level;
-
-    clear_screen();
-    println!("\nYou are wandering Gielinor...\n");
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    println!("You encounter a level {} {}.\n", level, npc_type.name());
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    tui.show_message(
+        "Wandering Gielinor",
+        &format!("You encounter a level {} {} with {} health.", level, npc_type.name(), health),
+        Some(state),
+    )?;
 
     while health > 0 && state.player.hp > 0 {
-        clear_screen();
-        println!("┌────────────────────────────────────────────────────────────────┐");
-        println!("│ **** Your Health: {:<4} ***** {}'s Health: {:<4} **** │", 
-                 state.player.hp, npc_type.name(), health);
-        println!("└────────────────────────────────────────────────────────────────┘\n");
-        println!("What would you like to do?\n");
-        println!("1) Attack!");
-        println!("2) Inventory");
-        println!("3) Flee!\n");
-
-        let choice = crate::ui::get_input("Choice: ");
-        match choice.as_str() {
-            "1" => {
+        let choice = tui.select_menu(
+            &format!("Battle · {} HP · {} HP", state.player.hp, health),
+            &["Attack!", "Inventory", "Flee!"],
+            Some(state),
+        )?;
+        match choice {
+            0 => {
                 let max_dmg = state.player.weapon.max_damage();
                 let mut damage = rand::thread_rng().gen_range(1..=max_dmg);
-                if damage > health { damage = health; }
-
-                println!("\nYou attack!");
-                std::thread::sleep(std::time::Duration::from_millis(300));
+                if damage > health {
+                    damage = health;
+                }
 
                 let atk_xp = (damage / 4) * 3;
                 state.player.xp += atk_xp;
                 state.player.xp_until_next = state.player.xp_until_next.saturating_sub(atk_xp);
                 health = health.saturating_sub(damage);
 
-                println!("You deal {} damage to the {}!", damage, npc_type.name());
-                println!("It now has {} health left.", health);
-                println!("You gain {} EXP.", atk_xp);
-                crate::ui::wait_for_enter();
+                tui.show_message(
+                    "Attack",
+                    &format!(
+                        "You deal {} damage to the {}.\nIt has {} health left.\nYou gain {} EXP.",
+                        damage, npc_type.name(), health, atk_xp
+                    ),
+                    Some(state),
+                )?;
 
                 if state.player.xp_until_next == 0 {
                     state.player.level_up_combat();
-                    println!("\nYou have leveled up! You are now level {}.", state.player.combat_level);
-                    println!("You now have {} health.", state.player.hp);
-                    crate::ui::wait_for_enter();
+                    tui.show_message(
+                        "Combat level up",
+                        &format!("You are now combat level {} and have {} health.", state.player.combat_level, state.player.hp),
+                        Some(state),
+                    )?;
                 }
 
                 if health == 0 {
-                    handle_victory(state, npc_type);
-                    return;
+                    handle_victory(tui, state, npc_type)?;
+                    return Ok(());
                 }
             }
-            "2" => {
-                crate::inventory::view_inventory(state, true);
+            1 => {
+                crate::inventory::view_inventory(tui, state, true)?;
                 continue;
             }
-            "3" => {
-                println!("\nYou flee from the battle.");
-                crate::ui::wait_for_enter();
-                return;
+            _ => {
+                tui.show_message("Fled", "You flee from the battle.", Some(state))?;
+                return Ok(());
             }
-            _ => continue,
         }
 
-        // NPC turn
         if health > 0 {
             let mut npc_dmg = rand::thread_rng().gen_range(1..=npc_type.max_damage());
             let dr = state.player.armour.max_dr();
             let dr_roll = rand::thread_rng().gen_range(0..=dr);
             npc_dmg = npc_dmg.saturating_sub(dr_roll);
-            if npc_dmg == 0 { npc_dmg = 0; } // Ensure no negative damage
-
-            println!("\nThe {} attacks.", npc_type.name());
-            std::thread::sleep(std::time::Duration::from_millis(300));
-            println!("The {} deals {} damage to you.", npc_type.name(), npc_dmg);
-            
-            state.player.hp = state.player.hp.saturating_sub(npc_dmg);
-            
-            if state.player.hp == 0 {
-                println!("\nYou died.");
-                crate::ui::wait_for_enter();
-                state.player.hp = state.player.max_hp;
-                return;
+            if npc_dmg == 0 {
+                npc_dmg = 0;
             }
-            
-            println!("You now have {} health left.", state.player.hp);
-            crate::ui::wait_for_enter();
+
+            state.player.hp = state.player.hp.saturating_sub(npc_dmg);
+            if state.player.hp == 0 {
+                tui.show_message("Defeated", &format!("The {} dealt {} damage. You died and were revived at full health.", npc_type.name(), npc_dmg), Some(state))?;
+                state.player.hp = state.player.max_hp;
+                return Ok(());
+            }
+
+            tui.show_message(
+                "Enemy attack",
+                &format!("The {} deals {} damage to you.\nYou have {} health left.", npc_type.name(), npc_dmg, state.player.hp),
+                Some(state),
+            )?;
         }
     }
+    Ok(())
 }
 
-fn handle_victory(state: &mut GameState, npc_type: NpcType) {
+fn handle_victory(tui: &mut Tui, state: &mut GameState, npc_type: NpcType) -> io::Result<()> {
     let gold_gain = rand::thread_rng().gen_range(1..=1000) + 1000;
     state.player.gold = (state.player.gold + gold_gain).min(5_000_000);
-    
-    clear_screen();
-    println!("\nYou won the battle against the {}.", npc_type.name());
-    
+
     let (item, amount) = match npc_type {
         NpcType::Goblin => (ItemType::GoblinMail, 1),
         NpcType::Giant => (ItemType::HugeBones, 3),
@@ -154,11 +145,15 @@ fn handle_victory(state: &mut GameState, npc_type: NpcType) {
         NpcType::Elemental => (ItemType::MagicOrbs, 5),
         _ => (ItemType::Food, 1),
     };
-    
+
     state.player.add_item(item, amount);
-    println!("You received {} {}.", amount, item.name());
-    println!("You gained {} gold.", gold_gain);
-    
     state.player.hp = state.player.max_hp;
-    crate::ui::wait_for_enter();
+    tui.show_message(
+        "Victory",
+        &format!(
+            "You defeated the {}.\nYou received {} {} and gained {} gold.\nYour health has been restored.",
+            npc_type.name(), amount, item.name(), gold_gain
+        ),
+        Some(state),
+    )
 }
