@@ -1,4 +1,4 @@
-use crate::combat::{run_engine_battle, BattleOutcome};
+use crate::combat::{run_engine_battle, BattleConfig, BattleOutcome};
 use crate::data::{ArmourTier, NpcType, WeaponTier, MAX_GOLD, MAX_PLAYER_LEVEL};
 use crate::event::GameEvent;
 use crate::state::GameState;
@@ -38,12 +38,14 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
     match run_engine_battle(
         tui,
         state,
-        npc_type.name(),
-        level,
-        health,
-        npc_type.max_damage(),
-        false,
-        false,
+        BattleConfig {
+            enemy_name: npc_type.name(),
+            level,
+            enemy_hp: health,
+            enemy_attack_power: npc_type.max_damage(),
+            allow_inventory: false,
+            allow_flee: false,
+        },
     )? {
         BattleOutcome::Victory => {
             let gold_gain = rand::thread_rng().gen_range(1..=1000) + 1000;
