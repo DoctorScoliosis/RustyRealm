@@ -156,7 +156,18 @@ impl Tui {
                     selected = if selected + 1 >= options.len() { 0 } else { selected + 1 };
                 }
                 Event::Key(KeyEvent { code: KeyCode::Enter, .. }) => return Ok(selected),
-                Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => return Ok(options.len() - 1),
+                Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => {
+                    let back_index = options.iter().position(|option| {
+                        let label = option.to_ascii_lowercase();
+                        label.contains("back")
+                            || label.contains("exit")
+                            || label.contains("leave")
+                            || label.contains("return")
+                            || label.contains("flee")
+                            || label.contains("cancel")
+                    }).unwrap_or(options.len() - 1);
+                    return Ok(back_index);
+                },
                 Event::Key(KeyEvent { code: KeyCode::Char(c), .. }) if c.is_ascii_digit() => {
                     let digit = c.to_digit(10).unwrap_or(0) as usize;
                     if digit > 0 && digit <= options.len() && digit <= 9 {
