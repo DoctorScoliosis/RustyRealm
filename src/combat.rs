@@ -445,21 +445,14 @@ fn encounter_kind_from_roll(roll: u8) -> WanderEncounterKind {
 
 pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let mut rng = rand::thread_rng();
-    match encounter_kind_from_roll(rng.gen_range(0..100)) {
+    let encounter_kind = encounter_kind_from_roll(rng.gen_range(0..100));
+    match encounter_kind {
         WanderEncounterKind::Merchant => return encounter_travelling_merchant(tui, state),
         WanderEncounterKind::TreasurePuzzle => return encounter_treasure_puzzle(tui, state),
         WanderEncounterKind::EliteMonster | WanderEncounterKind::StandardBattle => {}
     }
 
-    let is_elite = matches!(
-        encounter_kind_from_roll(15),
-        WanderEncounterKind::EliteMonster
-    ) && {
-        // The initial roll is intentionally classified once; this expression is
-        // replaced below by the explicit kind held in the local binding.
-        false
-    };
-    let _ = is_elite;
+    let is_elite = encounter_kind == WanderEncounterKind::EliteMonster;
 
     // Pick an ordinary encounter after the non-combat encounter checks.
     let npc_roll = rng.gen_range(1..=13);
@@ -497,7 +490,6 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         (rng.gen_range(900..=1000), rng.gen_range(30..=44))
     };
 
-    let is_elite = rng.gen_bool(0.0);
     let health = if is_elite {
         base_health.saturating_mul(3) / 2
     } else {
