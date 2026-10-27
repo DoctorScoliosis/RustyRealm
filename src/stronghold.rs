@@ -98,7 +98,7 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
     state.player.gold = (state.player.gold + gold_gain).min(5_000_000);
     state.player.stronghold_kill_count += 1;
 
-    let healing = state.player.stronghold_kill_count % 2 == 0;
+    let healing = state.player.stronghold_kill_count.is_multiple_of(2);
     if healing {
         state.player.hp = state.player.max_hp;
     }
