@@ -13,7 +13,7 @@ pub fn critical_chance_pct(s:&GameState)->u32{(5+if has_perk(s,MasteryPerkId::Le
 pub fn vendor_discount_pct(s:&GameState)->u32{if has_perk(s,MasteryPerkId::SilverTongue){15}else{0}}
 pub fn vendor_price(s:&GameState,base:u32,extra:u32)->u32{let d=vendor_discount_pct(s).saturating_add(extra).min(30);(u64::from(base)*u64::from(100-d)/100).min(u64::from(u32::MAX)) as u32}
 pub fn discounted_ingredient_count(n:u32)->u32{(u64::from(n)*85/100).max(1).min(u64::from(u32::MAX)) as u32}
-pub fn gathering_yield_at(base:u32,enabled:bool,roll:u32)->u32{if !enabled||base==0{return base}base.saturating_add(base/4).saturating_add(u32::from(roll%100<(base%4)*25))}
+pub fn gathering_yield_at(base:u32,enabled:bool,roll:u32)->u32{if !enabled||base==0{return base}base.saturating_add(base/4).saturating_add(if roll%100<(base%4)*25 {1}else{0})}
 pub fn gathering_yield(s:&GameState,base:u32)->u32{gathering_yield_at(base,has_perk(s,MasteryPerkId::LumberjacksGreed),rand::thread_rng().gen_range(0..100))}
 pub fn mastery_menu(tui:&mut Tui,s:&mut GameState)->io::Result<()>{
  loop{let slots=unlocked_mastery_slots(s);let mut labels:Vec<String>=MasteryPerkId::ALL.iter().map(|p|format!("{} {} — {}",if has_perk(s,*p){"[Equipped]"}else{"[Available]"},p.name(),p.description())).collect();labels.push("Back".into());let refs:Vec<&str>=labels.iter().map(String::as_str).collect();let n=tui.select_menu(&format!("Mastery Perks · {} / {} slots",s.mastery_perks.len(),slots),&refs,Some(s))?;if n>=MasteryPerkId::ALL.len(){return Ok(())}let p=MasteryPerkId::ALL[n];
