@@ -109,7 +109,8 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             skill.name(), data.level, data.current_xp, data.xp_remaining
         );
         let action_label = format!("{}{}", skill.action(), if status.is_empty() { String::new() } else { format!(" — {}", status) });
-        let choice = tui.select_menu(&detail, &[&action_label, "Back"], Some(state))?;
+        let action_options = [action_label.as_str(), "Back"];
+        let choice = tui.select_menu(&detail, &action_options, Some(state))?;
         if choice != 0 {
             return Ok(());
         }
