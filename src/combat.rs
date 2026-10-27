@@ -478,6 +478,17 @@ fn encounter_gold_reward(base_reward: u32, is_elite: bool) -> u32 {
     }
 }
 
+/// Random encounters are drawn only from explicitly hostile fantasy creatures.
+/// Generic civilians and ordinary animals stay out of the combat rotation.
+const WANDERING_ENEMIES: [NpcType; 6] = [
+    NpcType::Goblin,
+    NpcType::Giant,
+    NpcType::Dragon,
+    NpcType::Rockbeast,
+    NpcType::Ent,
+    NpcType::Elemental,
+];
+
 pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let mut rng = rand::thread_rng();
     let encounter_kind = encounter_kind_from_roll(rng.gen_range(0..100));
@@ -489,24 +500,9 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
     let is_elite = encounter_kind == WanderEncounterKind::EliteMonster;
 
-    // Pick the base monster; elite encounters scale its stats below.
-    let npc_roll = rng.gen_range(1..=13);
-    let npc_type = match npc_roll {
-        1 => NpcType::Goblin,
-        2 => NpcType::Giant,
-        3 => NpcType::Dragon,
-        4 => NpcType::Mage,
-        5 => NpcType::Sorcerer,
-        6 => NpcType::Human,
-        7 => NpcType::Farmer,
-        8 => NpcType::Bear,
-        9 => NpcType::Rockbeast,
-        10 => NpcType::Ent,
-        11 => NpcType::Thief,
-        12 => NpcType::Elemental,
-        13 => NpcType::Rat,
-        _ => NpcType::Goblin,
-    };
+    // Only explicitly hostile fantasy creatures appear as random encounters.
+    // Civilians and ordinary wildlife are not player combat targets.
+    let npc_type = WANDERING_ENEMIES[rng.gen_range(0..WANDERING_ENEMIES.len())];
 
     let player_level = state.player.combat_level;
     let (base_health, base_level) = if player_level <= 5 {
@@ -717,6 +713,29 @@ fn handle_victory(
 #[cfg(test)]
 mod encounter_tests {
     use super::*;
+
+    #[test]
+    fn wandering_pool_excludes_civilians_and_ordinary_wildlife() {
+        assert_eq!(
+            WANDERING_ENEMIES,
+            [
+                NpcType::Goblin,
+                NpcType::Giant,
+                NpcType::Dragon,
+                NpcType::Rockbeast,
+                NpcType::Ent,
+                NpcType::Elemental,
+            ]
+        );
+        assert!(!WANDERING_ENEMIES.iter().any(|npc| matches!(
+            *npc,
+            NpcType::Human
+                | NpcType::Farmer
+                | NpcType::Bear
+                | NpcType::Rat
+                | NpcType::Thief
+        )));
+    }
 
     #[test]
     fn wandering_encounter_rolls_match_the_documented_probabilities() {
