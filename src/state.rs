@@ -135,6 +135,8 @@ impl Player {
         items.insert(ItemType::RunicTablets, 0);
         items.insert(ItemType::Ingots, 0);
         items.insert(ItemType::Bows, 0);
+        items.insert(ItemType::Thread, 0);
+        items.insert(ItemType::GourmetFeast, 0);
 
         Self {
             username,

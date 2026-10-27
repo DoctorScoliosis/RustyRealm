@@ -365,6 +365,8 @@ pub enum ItemType {
     Bait,
     Ingots,
     Bows,
+    Thread,
+    GourmetFeast,
 }
 
 impl ItemType {
@@ -386,6 +388,8 @@ impl ItemType {
             ItemType::Bait => "Bait",
             ItemType::Ingots => "Ingots",
             ItemType::Bows => "Bows",
+            ItemType::Thread => "Thread",
+            ItemType::GourmetFeast => "Gourmet Feast",
         }
     }
 
@@ -407,6 +411,8 @@ impl ItemType {
             ItemType::Bait => 2,
             ItemType::Ingots => 473,
             ItemType::Bows => 713,
+            // Crafting-only products are not sold by the Trading Post.
+            ItemType::Thread | ItemType::GourmetFeast => 0,
         }
     }
 

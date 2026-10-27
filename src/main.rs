@@ -1,6 +1,7 @@
 mod bank;
 mod combat;
 mod combat_engine;
+mod crafting;
 mod data;
 mod event;
 mod inventory;
