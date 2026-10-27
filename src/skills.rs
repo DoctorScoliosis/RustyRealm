@@ -213,10 +213,12 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             SkillKind::Woodcutting => {
                 let level = skill.data(state).level;
                 if level >= MAX_SKILL_LEVEL {
-                    state.player.add_item(ItemType::Logs, 100);
-                    "Mastery: instantly cut 100 logs.".to_string()
+                    let count = crate::mastery::gathering_yield(state, 100);
+                    state.player.add_item(ItemType::Logs, count);
+                    format!("Mastery: instantly cut {count} logs.")
                 } else {
-                    state.player.add_item(ItemType::Logs, 1);
+                    let count = crate::mastery::gathering_yield(state, 1);
+                    state.player.add_item(ItemType::Logs, count);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
                         crate::quests::notify_event(
@@ -331,10 +333,12 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             }
             SkillKind::Mining => {
                 if skill.data(state).level >= MAX_SKILL_LEVEL {
-                    state.player.add_item(ItemType::Ore, 100);
-                    "Mastery: instantly mined 100 ore.".to_string()
+                    let count = crate::mastery::gathering_yield(state, 100);
+                    state.player.add_item(ItemType::Ore, count);
+                    format!("Mastery: instantly mined {count} ore.")
                 } else {
-                    state.player.add_item(ItemType::Ore, 1);
+                    let count = crate::mastery::gathering_yield(state, 1);
+                    state.player.add_item(ItemType::Ore, count);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
                         crate::quests::notify_event(
