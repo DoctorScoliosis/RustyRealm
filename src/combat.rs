@@ -26,6 +26,7 @@ pub struct BattleConfig<'a> {
     pub enemy_attack_power: u32,
     pub allow_inventory: bool,
     pub allow_flee: bool,
+    pub resource_drain_per_turn: u32,
 }
 
 /// Run a tactical encounter against any existing NPC. Encounter rules live in
@@ -42,15 +43,21 @@ pub fn run_engine_battle(
         enemy_attack_power,
         allow_inventory,
         allow_flee,
+        resource_drain_per_turn,
     } = config;
     let mut player = Combatant::from_player(&state.player);
+    player.critical_chance_pct = crate::mastery::critical_chance_pct(state);
     let mut enemy = Combatant::new_monster(enemy_name, level, enemy_hp);
     enemy.attack_power = enemy_attack_power.max(1);
-    let mut battle_log = vec![format!(
-        "You encounter a level {level} {enemy_name} with {enemy_hp} health."
-    )];
+    let mut battle_log = crate::data::get_ascii_portrait(enemy_name).into_iter().map(str::to_string).collect::<Vec<_>>();
+    battle_log.push(format!("You encounter a level {level} {enemy_name} with {enemy_hp} health."));
 
     loop {
+        if resource_drain_per_turn > 0 {
+            player.stamina = player.stamina.saturating_sub(resource_drain_per_turn);
+            player.mana = player.mana.saturating_sub(resource_drain_per_turn);
+            battle_log.push(format!("Resource Drain removes {resource_drain_per_turn} Stamina and Mana."));
+        }
         let player_logs = player.tick_status_effects();
         battle_log.extend(player_logs);
         let player_stunned = player.is_stunned;
@@ -256,7 +263,9 @@ pub fn run_engine_battle(
                 )?;
 
                 if choice == 0 {
-                    let base = rand::thread_rng().gen_range(1..=player.attack_power.max(1));
+                    let mut base = rand::thread_rng().gen_range(1..=player.attack_power.max(1));
+                    let critical = CombatEngine::is_critical_roll(player.critical_chance_pct, rand::thread_rng().gen_range(0..100));
+                    if critical { base = CombatEngine::critical_hit_damage(base, true); battle_log.push("Critical hit! Your attack deals double base damage.".into()); }
                     let (damage, logs) = CombatEngine::calculate_damage(
                         base,
                         DamageType::Physical,
@@ -533,6 +542,7 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             enemy_attack_power: attack_power,
             allow_inventory: true,
             allow_flee: true,
+            resource_drain_per_turn: 0,
         },
     )? {
         BattleOutcome::Victory => handle_victory(tui, state, npc_type, is_elite),
@@ -552,9 +562,7 @@ fn encounter_travelling_merchant(tui: &mut Tui, state: &mut GameState) -> io::Re
         )?;
         return Ok(());
     }
-    let discounted_price = (u64::from(retail_price) * 75 / 100)
-        .max(1)
-        .min(u64::from(MAX_GOLD)) as u32;
+    let discounted_price = crate::mastery::vendor_price(state, retail_price, 25).max(1).min(MAX_GOLD);
 
     tui.show_message(
         "Travelling Merchant",

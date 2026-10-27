@@ -545,6 +545,25 @@ impl LacoyxPhase {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MasteryPerkId { LumberjacksGreed, MasterArtisan, LethalPrecision, SilverTongue }
+impl MasteryPerkId {
+    pub const ALL:[Self;4]=[Self::LumberjacksGreed,Self::MasterArtisan,Self::LethalPrecision,Self::SilverTongue];
+    pub fn name(self)->&'static str { match self {
+        Self::LumberjacksGreed=>"Lumberjack's Greed",Self::MasterArtisan=>"Master Artisan",
+        Self::LethalPrecision=>"Lethal Precision",Self::SilverTongue=>"Silver Tongue" } }
+    pub fn description(self)->&'static str { match self {
+        Self::LumberjacksGreed=>"+25% expected Woodcutting and Mining yield.",
+        Self::MasterArtisan=>"-15% recipe ingredients, minimum one each.",
+        Self::LethalPrecision=>"+10 percentage points critical chance (maximum 25%).",
+        Self::SilverTongue=>"15% discount at gold-priced vendors; total discount caps at 30%." } }
+}
+pub fn get_ascii_portrait(npc_name:&str)->Vec<&'static str>{
+    if npc_name.contains("Lacoyx"){vec![r"       /\\_____/\\",r"      /  o   o  \\",r"     ( ==  ^  == )",r"      ) INFERNAL (",r"     (___________)"]}
+    else if npc_name.contains("Dragon"){vec![r"         /\\",r"    ____/  \\___",r"   (  o      o )",r"    \\___/\\___/",r"        /  \\"]}
+    else {vec![r"       .-^^^-.",r"      /  o o  \\",r"     |    ^    |",r"      \\  '-'  /",r"       '-----'"]}
+}
+
 #[cfg(test)]
 mod npc_resistance_tests {
     use super::*;

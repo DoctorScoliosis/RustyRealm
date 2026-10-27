@@ -1,5 +1,5 @@
 use crate::data::{
-    ArmourTier, ItemType, WeaponTier, MAX_BANK_GOLD, MAX_GOLD, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL,
+    ArmourTier, ItemType, MasteryPerkId, WeaponTier, MAX_BANK_GOLD, MAX_GOLD, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL,
 };
 use crate::economy::MarketState;
 use crate::event::WorldEvent;
@@ -11,9 +11,9 @@ fn default_stamina() -> u32 {
     100
 }
 
-fn default_mana() -> u32 {
-    50
-}
+fn default_mana() -> u32 { 50 }
+fn default_theme() -> String { "Classic".to_string() }
+fn default_unlocked_themes() -> Vec<String> { vec!["Classic".to_string()] }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
@@ -272,9 +272,17 @@ pub struct GameState {
     pub active_quests: Vec<Quest>,
     #[serde(default = "WorldEvent::none")]
     pub active_world_event: WorldEvent,
-    /// Added with a default so existing character saves load without migration.
+    /// Added with defaults for backward-compatible progression saves.
     #[serde(default)]
     pub market_state: MarketState,
+    #[serde(default)] pub stronghold_high_score: u32,
+    #[serde(default)] pub lacoyx_defeated: bool,
+    #[serde(default)] pub unlocked_achievements: Vec<String>,
+    #[serde(default)] pub unlocked_titles: Vec<String>,
+    #[serde(default)] pub active_title: Option<String>,
+    #[serde(default = "default_unlocked_themes")] pub unlocked_themes: Vec<String>,
+    #[serde(default = "default_theme")] pub active_theme: String,
+    #[serde(default)] pub mastery_perks: Vec<MasteryPerkId>,
 }
 
 impl GameState {
@@ -284,6 +292,14 @@ impl GameState {
             active_quests: Vec::new(),
             active_world_event: WorldEvent::none(),
             market_state: MarketState::new(),
+            stronghold_high_score: 0,
+            lacoyx_defeated: false,
+            unlocked_achievements: Vec::new(),
+            unlocked_titles: Vec::new(),
+            active_title: None,
+            unlocked_themes: default_unlocked_themes(),
+            active_theme: default_theme(),
+            mastery_perks: Vec::new(),
         };
         crate::quests::check_and_refresh_quests(&mut state);
         state
