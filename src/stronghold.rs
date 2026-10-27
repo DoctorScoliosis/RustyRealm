@@ -6,21 +6,176 @@ use crate::ui::Tui;
 use rand::Rng;
 use std::io;
 
-#[derive(Debug,Clone,Copy,PartialEq,Eq)]pub enum GauntletModifier{None,Enraged,Fortified,ResourceDrain}
-impl GauntletModifier{pub fn description(self)->&'static str{match self{Self::None=>"Standard Encounter",Self::Enraged=>"Enraged: +25% enemy damage",Self::Fortified=>"Fortified: +40% enemy health",Self::ResourceDrain=>"Resource Drain: -5 Stamina/Mana per turn"}}}
-fn bounded(v:f64)->u32{if !v.is_finite()||v>=u32::MAX as f64{u32::MAX}else if v<=1.0{1}else{v.round() as u32}}
-pub fn calculate_gauntlet_enemy_stats(w:u32,m:GauntletModifier)->(u32,u32){let w=f64::from(w);let mut h=100.0*1.15_f64.powf(w);let mut d=20.0*1.12_f64.powf(w);match m{GauntletModifier::Fortified=>h*=1.4,GauntletModifier::Enraged=>d*=1.25,_=>{}}(bounded(h),bounded(d))}
-pub fn calculate_gauntlet_rewards(w:u32)->(u32,u32){let r=bounded(100.0*(1.0+f64::from(w)*0.25));(r,r)}
-pub fn enter_stronghold(tui:&mut Tui,s:&mut GameState)->io::Result<()>{loop{match tui.select_menu("The Stronghold",&["Classic Story Mode · 10 guardians and Lacoyx","Endless Gauntlet","View Endless High Score","Back"],Some(s))?{
-0=>{if stronghold_warning(tui,s)?{stronghold_dungeon(tui,s)?}},
-1=>{tui.show_message("Endless Gauntlet","Survive increasingly difficult waves. Retire after a victory or continue; defeat ends the run. Inventory and fleeing are disabled.",Some(s))?;if tui.select_menu("Enter the gauntlet?",&["Begin","Return to safety"],Some(s))?==0{run_endless(tui,s)?}},
-2=>tui.show_message("Endless Gauntlet Record",&format!("Best wave cleared: {}.\nReach wave 10 to unlock Obsidian Shadow.",s.stronghold_high_score),Some(s))?,_=>return Ok(())}}}
-fn award_xp(s:&mut GameState,x:u32){s.player.xp=s.player.xp.saturating_add(x).min(1_000_000);s.player.xp_until_next=s.player.xp_until_next.saturating_sub(x);if s.player.xp_until_next==0&&s.player.combat_level<MAX_PLAYER_LEVEL{s.player.level_up_combat();let n=s.player.combat_level;crate::quests::notify_event(s,&GameEvent::PlayerLeveledUp{new_level:n})}}
-fn run_endless(tui:&mut Tui,s:&mut GameState)->io::Result<()>{let mut w=1_u32;let mut rng=rand::thread_rng();loop{let m=if w<3{GauntletModifier::None}else{match rng.gen_range(0..3){0=>GauntletModifier::Enraged,1=>GauntletModifier::Fortified,_=>GauntletModifier::ResourceDrain}};let(h,d)=calculate_gauntlet_enemy_stats(w,m);let drain=if m==GauntletModifier::ResourceDrain{5}else{0};let name=format!("Gauntlet Fiend · Wave {w}");tui.show_message(&format!("Gauntlet Wave {w}"),&format!("Modifier: {}\nHealth: {h}\nMaximum attack: {d}",m.description()),Some(s))?;
-match run_engine_battle(tui,s,BattleConfig{enemy_name:&name,level:w.saturating_mul(10).max(1),enemy_hp:h,enemy_attack_power:d,allow_inventory:false,allow_flee:false,resource_drain_per_turn:drain})?{
-BattleOutcome::Victory=>{s.stronghold_high_score=s.stronghold_high_score.max(w);let(g,x)=calculate_gauntlet_rewards(w);let before=s.player.gold;s.player.gold=s.player.gold.saturating_add(g).min(MAX_GOLD);let actual=s.player.gold.saturating_sub(before);award_xp(s,x);crate::quests::notify_event(s,&GameEvent::MonsterDefeated{name:name.clone(),is_stronghold:true});tui.show_message("Wave cleared",&format!("Cleared wave {w}.\nReward: {actual} gold and {x} combat XP.\nRecord: wave {}.",s.stronghold_high_score),Some(s))?;if tui.select_menu("Continue?",&["Next wave","Retire with rewards"],Some(s))?==0{w=w.saturating_add(1)}else{return Ok(())}},
-BattleOutcome::Defeated=>{tui.show_message("Gauntlet over",&format!("Defeated on wave {w}. Best: wave {}.",s.stronghold_high_score),Some(s))?;return Ok(())},BattleOutcome::Fled=>return Ok(())}}}
-#[cfg(test)]mod gauntlet_tests{use super::*;#[test]fn modifiers_change_only_their_stat(){let(h,d)=calculate_gauntlet_enemy_stats(3,GauntletModifier::None);let(hf,df)=calculate_gauntlet_enemy_stats(3,GauntletModifier::Fortified);let(he,de)=calculate_gauntlet_enemy_stats(3,GauntletModifier::Enraged);assert!(hf>h);assert_eq!(df,d);assert_eq!(he,h);assert!(de>d)}#[test]fn reward_multiplier_is_quarter_per_wave(){assert_eq!(calculate_gauntlet_rewards(1),(125,125));assert_eq!(calculate_gauntlet_rewards(4),(200,200))}#[test]fn scaling_saturates(){let(h,d)=calculate_gauntlet_enemy_stats(u32::MAX,GauntletModifier::Fortified);assert_eq!(h,u32::MAX);assert_eq!(d,u32::MAX)}}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GauntletModifier {
+    None,
+    Enraged,
+    Fortified,
+    ResourceDrain,
+}
+impl GauntletModifier {
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::None => "Standard Encounter",
+            Self::Enraged => "Enraged: +25% enemy damage",
+            Self::Fortified => "Fortified: +40% enemy health",
+            Self::ResourceDrain => "Resource Drain: -5 Stamina/Mana per turn",
+        }
+    }
+}
+fn bounded(v: f64) -> u32 {
+    if !v.is_finite() || v >= u32::MAX as f64 {
+        u32::MAX
+    } else if v <= 1.0 {
+        1
+    } else {
+        v.round() as u32
+    }
+}
+pub fn calculate_gauntlet_enemy_stats(w: u32, m: GauntletModifier) -> (u32, u32) {
+    let w = f64::from(w);
+    let mut h = 100.0 * 1.15_f64.powf(w);
+    let mut d = 20.0 * 1.12_f64.powf(w);
+    match m {
+        GauntletModifier::Fortified => h *= 1.4,
+        GauntletModifier::Enraged => d *= 1.25,
+        _ => {}
+    }
+    (bounded(h), bounded(d))
+}
+pub fn calculate_gauntlet_rewards(w: u32) -> (u32, u32) {
+    let r = bounded(100.0 * (1.0 + f64::from(w) * 0.25));
+    (r, r)
+}
+pub fn enter_stronghold(tui: &mut Tui, s: &mut GameState) -> io::Result<()> {
+    loop {
+        match tui.select_menu(
+            "The Stronghold",
+            &[
+                "Classic Story Mode · 10 guardians and Lacoyx",
+                "Endless Gauntlet",
+                "View Endless High Score",
+                "Back",
+            ],
+            Some(s),
+        )? {
+            0 => {
+                if stronghold_warning(tui, s)? {
+                    stronghold_dungeon(tui, s)?
+                }
+            }
+            1 => {
+                tui.show_message("Endless Gauntlet","Survive increasingly difficult waves. Retire after a victory or continue; defeat ends the run. Inventory and fleeing are disabled.",Some(s))?;
+                if tui.select_menu(
+                    "Enter the gauntlet?",
+                    &["Begin", "Return to safety"],
+                    Some(s),
+                )? == 0
+                {
+                    run_endless(tui, s)?
+                }
+            }
+            2 => tui.show_message(
+                "Endless Gauntlet Record",
+                &format!(
+                    "Best wave cleared: {}.\nReach wave 10 to unlock Obsidian Shadow.",
+                    s.stronghold_high_score
+                ),
+                Some(s),
+            )?,
+            _ => return Ok(()),
+        }
+    }
+}
+fn award_xp(s: &mut GameState, x: u32) {
+    s.player.xp = s.player.xp.saturating_add(x).min(1_000_000);
+    s.player.xp_until_next = s.player.xp_until_next.saturating_sub(x);
+    if s.player.xp_until_next == 0 && s.player.combat_level < MAX_PLAYER_LEVEL {
+        s.player.level_up_combat();
+        let n = s.player.combat_level;
+        crate::quests::notify_event(s, &GameEvent::PlayerLeveledUp { new_level: n })
+    }
+}
+fn run_endless(tui: &mut Tui, s: &mut GameState) -> io::Result<()> {
+    let mut w = 1_u32;
+    let mut rng = rand::thread_rng();
+    loop {
+        let m = if w < 3 {
+            GauntletModifier::None
+        } else {
+            match rng.gen_range(0..3) {
+                0 => GauntletModifier::Enraged,
+                1 => GauntletModifier::Fortified,
+                _ => GauntletModifier::ResourceDrain,
+            }
+        };
+        let (h, d) = calculate_gauntlet_enemy_stats(w, m);
+        let drain = if m == GauntletModifier::ResourceDrain {
+            5
+        } else {
+            0
+        };
+        let name = format!("Gauntlet Fiend · Wave {w}");
+        tui.show_message(
+            &format!("Gauntlet Wave {w}"),
+            &format!(
+                "Modifier: {}\nHealth: {h}\nMaximum attack: {d}",
+                m.description()
+            ),
+            Some(s),
+        )?;
+        match run_engine_battle(
+            tui,
+            s,
+            BattleConfig {
+                enemy_name: &name,
+                level: w.saturating_mul(10).max(1),
+                enemy_hp: h,
+                enemy_attack_power: d,
+                allow_inventory: false,
+                allow_flee: false,
+                resource_drain_per_turn: drain,
+            },
+        )? {
+            BattleOutcome::Victory => {
+                s.stronghold_high_score = s.stronghold_high_score.max(w);
+                let (g, x) = calculate_gauntlet_rewards(w);
+                let before = s.player.gold;
+                s.player.gold = s.player.gold.saturating_add(g).min(MAX_GOLD);
+                let actual = s.player.gold.saturating_sub(before);
+                award_xp(s, x);
+                crate::quests::notify_event(
+                    s,
+                    &GameEvent::MonsterDefeated {
+                        name: name.clone(),
+                        is_stronghold: true,
+                    },
+                );
+                tui.show_message("Wave cleared",&format!("Cleared wave {w}.\nReward: {actual} gold and {x} combat XP.\nRecord: wave {}.",s.stronghold_high_score),Some(s))?;
+                if tui.select_menu("Continue?", &["Next wave", "Retire with rewards"], Some(s))?
+                    == 0
+                {
+                    w = w.saturating_add(1)
+                } else {
+                    return Ok(());
+                }
+            }
+            BattleOutcome::Defeated => {
+                tui.show_message(
+                    "Gauntlet over",
+                    &format!(
+                        "Defeated on wave {w}. Best: wave {}.",
+                        s.stronghold_high_score
+                    ),
+                    Some(s),
+                )?;
+                return Ok(());
+            }
+            BattleOutcome::Fled => return Ok(()),
+        }
+    }
+}
+
 pub fn stronghold_warning(tui: &mut Tui, state: &GameState) -> io::Result<bool> {
     tui.show_message(
         "Warning · The Stronghold",
@@ -177,5 +332,31 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             )
         }
         BattleOutcome::Fled => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod gauntlet_tests {
+    use super::*;
+    #[test]
+    fn modifiers_change_only_their_stat() {
+        let (h, d) = calculate_gauntlet_enemy_stats(3, GauntletModifier::None);
+        let (hf, df) = calculate_gauntlet_enemy_stats(3, GauntletModifier::Fortified);
+        let (he, de) = calculate_gauntlet_enemy_stats(3, GauntletModifier::Enraged);
+        assert!(hf > h);
+        assert_eq!(df, d);
+        assert_eq!(he, h);
+        assert!(de > d)
+    }
+    #[test]
+    fn reward_multiplier_is_quarter_per_wave() {
+        assert_eq!(calculate_gauntlet_rewards(1), (125, 125));
+        assert_eq!(calculate_gauntlet_rewards(4), (200, 200))
+    }
+    #[test]
+    fn scaling_saturates() {
+        let (h, d) = calculate_gauntlet_enemy_stats(u32::MAX, GauntletModifier::Fortified);
+        assert_eq!(h, u32::MAX);
+        assert_eq!(d, u32::MAX)
     }
 }

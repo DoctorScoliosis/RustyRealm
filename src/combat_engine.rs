@@ -167,8 +167,16 @@ impl Combatant {
 pub struct CombatEngine;
 
 impl CombatEngine {
-    pub fn is_critical_roll(chance: u32, roll: u32) -> bool { roll % 100 < chance.min(100) }
-    pub fn critical_hit_damage(base: u32, critical: bool) -> u32 { if critical { base.saturating_mul(2) } else { base } }
+    pub fn is_critical_roll(chance: u32, roll: u32) -> bool {
+        roll % 100 < chance.min(100)
+    }
+    pub fn critical_hit_damage(base: u32, critical: bool) -> u32 {
+        if critical {
+            base.saturating_mul(2)
+        } else {
+            base
+        }
+    }
 
     /// Compute post-resistance and post-defence damage with integer output.
     /// Successful dodges are the only normal path that returns zero damage.
@@ -249,10 +257,18 @@ impl CombatEngine {
         let mut logs = vec![format!("{} uses {}!", player.name, ability.name)];
         match ability_id {
             AbilityId::HeavyStrike | AbilityId::LifeDrain | AbilityId::Cleave => {
-                let scaled_damage = player.attack_power.saturating_mul(ability.damage_multiplier) / 100;
-                let critical = Self::is_critical_roll(player.critical_chance_pct, rand::thread_rng().gen_range(0..100));
+                let scaled_damage = player
+                    .attack_power
+                    .saturating_mul(ability.damage_multiplier)
+                    / 100;
+                let critical = Self::is_critical_roll(
+                    player.critical_chance_pct,
+                    rand::thread_rng().gen_range(0..100),
+                );
                 let scaled_damage = Self::critical_hit_damage(scaled_damage, critical);
-                if critical { logs.push("Critical hit! Ability damage doubled.".into()); }
+                if critical {
+                    logs.push("Critical hit! Ability damage doubled.".into());
+                }
                 let (damage, damage_logs) = Self::calculate_damage(
                     scaled_damage,
                     ability.damage_type,
@@ -411,9 +427,11 @@ mod tests {
 
     #[test]
     fn critical_helpers_respect_chance_and_saturate() {
-        assert!(CombatEngine::is_critical_roll(25,24)); assert!(!CombatEngine::is_critical_roll(25,25));
-        assert!(!CombatEngine::is_critical_roll(0,0)); assert_eq!(CombatEngine::critical_hit_damage(100,true),200);
-        assert_eq!(CombatEngine::critical_hit_damage(u32::MAX,true),u32::MAX);
+        assert!(CombatEngine::is_critical_roll(25, 24));
+        assert!(!CombatEngine::is_critical_roll(25, 25));
+        assert!(!CombatEngine::is_critical_roll(0, 0));
+        assert_eq!(CombatEngine::critical_hit_damage(100, true), 200);
+        assert_eq!(CombatEngine::critical_hit_damage(u32::MAX, true), u32::MAX);
     }
     #[test]
     fn abilities_reject_insufficient_resources_without_deducting_anything() {

@@ -117,7 +117,11 @@ impl Tui {
                     .iter()
                     .enumerate()
                     .map(|(i, option)| {
-                        let prefix = if i < 9 { format!("{}) ", i + 1) } else { "   ".to_string() };
+                        let prefix = if i < 9 {
+                            format!("{}) ", i + 1)
+                        } else {
+                            "   ".to_string()
+                        };
                         let line = if let Some(rest) = option.strip_prefix('[') {
                             if let Some((rarity, name)) = rest.split_once("] ") {
                                 let color = match rarity {
@@ -130,7 +134,10 @@ impl Tui {
                                 };
                                 Line::from(vec![
                                     Span::raw(prefix),
-                                    Span::styled(format!("[{rarity}] "), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                                    Span::styled(
+                                        format!("[{rarity}] "),
+                                        Style::default().fg(color).add_modifier(Modifier::BOLD),
+                                    ),
                                     Span::raw(name.to_string()),
                                 ])
                             } else {
@@ -494,7 +501,11 @@ fn render_sidebar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
         Paragraph::new(format!(
             "{}{} · Combat {}",
             state.player.username,
-            state.active_title.as_deref().map(|t| format!(" · {t}")).unwrap_or_default(),
+            state
+                .active_title
+                .as_deref()
+                .map(|t| format!(" · {t}"))
+                .unwrap_or_default(),
             state.player.combat_level
         ))
         .style(
@@ -552,24 +563,44 @@ fn render_sidebar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
 }
 
 fn render_topbar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
-    let title = state.active_title.as_deref().map(|t| format!(" · {t}")).unwrap_or_default();
+    let title = state
+        .active_title
+        .as_deref()
+        .map(|t| format!(" · {t}"))
+        .unwrap_or_default();
     let text = format!(
         " {}{}  ·  Lv {}  ·  HP {}/{}  ·  Gold {}  ·  {} ",
-        state.player.username, title, state.player.combat_level, state.player.hp,
-        state.player.max_hp, state.player.gold, state.player.weapon.name(),
+        state.player.username,
+        title,
+        state.player.combat_level,
+        state.player.hp,
+        state.player.max_hp,
+        state.player.gold,
+        state.player.weapon.name(),
     );
     frame.render_widget(
         Paragraph::new(text)
             .alignment(Alignment::Center)
-            .style(Style::default().fg(theme_color(Some(state))).bg(Color::DarkGray))
+            .style(
+                Style::default()
+                    .fg(theme_color(Some(state)))
+                    .bg(Color::DarkGray),
+            )
             .block(Block::default().borders(Borders::ALL)),
         area,
     );
 }
 
 fn render_compact_header(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
-    let title = state.active_title.as_deref().map(|t| format!(" · {t}")).unwrap_or_default();
-    let text = format!("Lv{} HP:{}/{} G:{}{}", state.player.combat_level, state.player.hp, state.player.max_hp, state.player.gold, title);
+    let title = state
+        .active_title
+        .as_deref()
+        .map(|t| format!(" · {t}"))
+        .unwrap_or_default();
+    let text = format!(
+        "Lv{} HP:{}/{} G:{}{}",
+        state.player.combat_level, state.player.hp, state.player.max_hp, state.player.gold, title
+    );
     frame.render_widget(
         Paragraph::new(text).style(Style::default().fg(theme_color(Some(state)))),
         area,

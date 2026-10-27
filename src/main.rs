@@ -175,7 +175,11 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
         let newly_unlocked = crate::achievements::evaluate_achievements(state);
         if !newly_unlocked.is_empty() {
-            let notice = newly_unlocked.iter().map(|a| format!("{} — {}", a.title, a.description)).collect::<Vec<_>>().join("\n\n");
+            let notice = newly_unlocked
+                .iter()
+                .map(|a| format!("{} — {}", a.title, a.description))
+                .collect::<Vec<_>>()
+                .join("\n\n");
             tui.show_message("Achievement unlocked", &notice, Some(state))?;
         }
         crate::quests::check_and_refresh_quests(state);
@@ -241,7 +245,11 @@ fn general_store(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     "{} · owned {} · buy {}g / sell {}g",
                     item.name(),
                     state.player.get_item_count(*item),
-                    crate::mastery::vendor_price(state, crate::economy::calculate_dynamic_buy_price(state, *item), 0),
+                    crate::mastery::vendor_price(
+                        state,
+                        crate::economy::calculate_dynamic_buy_price(state, *item),
+                        0
+                    ),
                     crate::economy::calculate_dynamic_sell_price(state, *item)
                 )
             })

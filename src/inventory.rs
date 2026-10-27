@@ -22,8 +22,16 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
                 "Total level: {}",
                 state.player.skills.total_level() + state.player.combat_level
             ),
-            format!("Weapon: [{}] {}", state.player.weapon.rarity(), state.player.weapon.name()),
-            format!("Armour: [{}] {}", state.player.armour.rarity(), state.player.armour.name()),
+            format!(
+                "Weapon: [{}] {}",
+                state.player.weapon.rarity(),
+                state.player.weapon.name()
+            ),
+            format!(
+                "Armour: [{}] {}",
+                state.player.armour.rarity(),
+                state.player.armour.name()
+            ),
             String::new(),
             "Items".to_string(),
         ];

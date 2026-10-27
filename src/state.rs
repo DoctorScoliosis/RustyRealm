@@ -1,5 +1,6 @@
 use crate::data::{
-    ArmourTier, ItemType, MasteryPerkId, WeaponTier, MAX_BANK_GOLD, MAX_GOLD, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL,
+    ArmourTier, ItemType, MasteryPerkId, WeaponTier, MAX_BANK_GOLD, MAX_GOLD, MAX_PLAYER_LEVEL,
+    MAX_SKILL_LEVEL,
 };
 use crate::economy::MarketState;
 use crate::event::WorldEvent;
@@ -11,9 +12,15 @@ fn default_stamina() -> u32 {
     100
 }
 
-fn default_mana() -> u32 { 50 }
-fn default_theme() -> String { "Classic".to_string() }
-fn default_unlocked_themes() -> Vec<String> { vec!["Classic".to_string()] }
+fn default_mana() -> u32 {
+    50
+}
+fn default_theme() -> String {
+    "Classic".to_string()
+}
+fn default_unlocked_themes() -> Vec<String> {
+    vec!["Classic".to_string()]
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
@@ -275,14 +282,22 @@ pub struct GameState {
     /// Added with defaults for backward-compatible progression saves.
     #[serde(default)]
     pub market_state: MarketState,
-    #[serde(default)] pub stronghold_high_score: u32,
-    #[serde(default)] pub lacoyx_defeated: bool,
-    #[serde(default)] pub unlocked_achievements: Vec<String>,
-    #[serde(default)] pub unlocked_titles: Vec<String>,
-    #[serde(default)] pub active_title: Option<String>,
-    #[serde(default = "default_unlocked_themes")] pub unlocked_themes: Vec<String>,
-    #[serde(default = "default_theme")] pub active_theme: String,
-    #[serde(default)] pub mastery_perks: Vec<MasteryPerkId>,
+    #[serde(default)]
+    pub stronghold_high_score: u32,
+    #[serde(default)]
+    pub lacoyx_defeated: bool,
+    #[serde(default)]
+    pub unlocked_achievements: Vec<String>,
+    #[serde(default)]
+    pub unlocked_titles: Vec<String>,
+    #[serde(default)]
+    pub active_title: Option<String>,
+    #[serde(default = "default_unlocked_themes")]
+    pub unlocked_themes: Vec<String>,
+    #[serde(default = "default_theme")]
+    pub active_theme: String,
+    #[serde(default)]
+    pub mastery_perks: Vec<MasteryPerkId>,
 }
 
 impl GameState {

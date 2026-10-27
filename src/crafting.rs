@@ -604,10 +604,11 @@ mod tests {
         let mut state = state();
         state.player.skills.smithing.level = 5;
         state.player.add_item(ItemType::Ingots, 2);
-        state.mastery_perks.push(crate::data::MasteryPerkId::MasterArtisan);
+        state
+            .mastery_perks
+            .push(crate::data::MasteryPerkId::MasterArtisan);
         execute_recipe(&mut state, "smith_iron_sword").unwrap();
         assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
         assert!(state.player.inventory_weapons.contains(&WeaponTier::Iron));
     }
-
 }
