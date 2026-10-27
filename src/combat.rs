@@ -88,7 +88,7 @@ pub fn wander_gielinor(state: &mut GameState) {
                     crate::ui::wait_for_enter();
                 }
 
-                if health <= 0 {
+                if health == 0 {
                     handle_victory(state, npc_type);
                     return;
                 }
@@ -119,7 +119,7 @@ pub fn wander_gielinor(state: &mut GameState) {
             
             state.player.hp = state.player.hp.saturating_sub(npc_dmg);
             
-            if state.player.hp <= 0 {
+            if state.player.hp == 0 {
                 println!("\nYou died.");
                 crate::ui::wait_for_enter();
                 state.player.hp = state.player.max_hp;
