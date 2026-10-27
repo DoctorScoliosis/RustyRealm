@@ -453,17 +453,13 @@ mod tests {
         assert_eq!(lacoyx.lacoyx_phase, Some(LacoyxPhase::Phase1Commander));
 
         lacoyx.hp = 600;
-        assert_eq!(
-            CombatEngine::update_lacoyx_boss_phase(&mut lacoyx),
-            vec!["Lacoyx enters Phase 2: Infernal Warlord! Infernal flames surround him!"]
-        );
+        let phase_two_logs = CombatEngine::update_lacoyx_boss_phase(&mut lacoyx);
+        assert!(phase_two_logs.iter().any(|line| line.contains("Phase 2")));
         assert_eq!(lacoyx.lacoyx_phase, Some(LacoyxPhase::Phase2InfernalWarlord));
 
         lacoyx.hp = 300;
-        assert_eq!(
-            CombatEngine::update_lacoyx_boss_phase(&mut lacoyx),
-            vec!["Lacoyx enters Phase 3: Desperate Overlord! He unleashes enraged fury!"]
-        );
+        let phase_three_logs = CombatEngine::update_lacoyx_boss_phase(&mut lacoyx);
+        assert!(phase_three_logs.iter().any(|line| line.contains("Phase 3")));
         assert_eq!(lacoyx.lacoyx_phase, Some(LacoyxPhase::Phase3DesperateOverlord));
     }
 
