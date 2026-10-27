@@ -20,16 +20,30 @@ pub enum BattleOutcome {
 
 /// Run a tactical encounter against any existing NPC. Encounter rules live in
 /// CombatEngine; this function handles the TUI, player resources and save state.
+pub struct BattleConfig<'a> {
+    pub enemy_name: &'a str,
+    pub level: u32,
+    pub enemy_hp: u32,
+    pub enemy_attack_power: u32,
+    pub allow_inventory: bool,
+    pub allow_flee: bool,
+}
+
+/// Run a tactical encounter against any existing NPC. Encounter rules live in
+/// CombatEngine; this function handles the TUI, player resources and save state.
 pub fn run_engine_battle(
     tui: &mut Tui,
     state: &mut GameState,
-    enemy_name: &str,
-    level: u32,
-    enemy_hp: u32,
-    enemy_attack_power: u32,
-    allow_inventory: bool,
-    allow_flee: bool,
+    config: BattleConfig<'_>,
 ) -> io::Result<BattleOutcome> {
+    let BattleConfig {
+        enemy_name,
+        level,
+        enemy_hp,
+        enemy_attack_power,
+        allow_inventory,
+        allow_flee,
+    } = config;
     let mut player = Combatant::from_player(&state.player);
     let mut enemy = Combatant::new_monster(enemy_name, level, enemy_hp);
     enemy.attack_power = enemy_attack_power.max(1);
@@ -167,11 +181,15 @@ pub fn run_engine_battle(
             } else {
                 0.0
             };
+            let phase_label = enemy
+                .lacoyx_phase
+                .map(|phase| format!("{} · ", phase.name()))
+                .unwrap_or_default();
             frame.render_widget(
                 Gauge::default()
                     .block(
                         Block::default()
-                            .title(format!(" {} · Level {} ", enemy.name, level))
+                            .title(format!(" {phase_label}{} · Level {} ", enemy.name, level))
                             .borders(Borders::ALL),
                     )
                     .gauge_style(Style::default().fg(Color::Magenta))
@@ -445,12 +463,14 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     match run_engine_battle(
         tui,
         state,
-        npc_type.name(),
-        level,
-        health,
-        npc_type.max_damage(),
-        true,
-        true,
+        BattleConfig {
+            enemy_name: npc_type.name(),
+            level,
+            enemy_hp: health,
+            enemy_attack_power: npc_type.max_damage(),
+            allow_inventory: true,
+            allow_flee: true,
+        },
     )? {
         BattleOutcome::Victory => handle_victory(tui, state, npc_type),
         BattleOutcome::Fled => {
