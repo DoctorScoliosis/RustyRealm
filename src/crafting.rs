@@ -504,6 +504,23 @@ mod tests {
     }
 
     #[test]
+    fn missing_second_ingredient_preserves_all_inputs_and_xp() {
+        let mut state = state();
+        state.player.skills.woodcutting.level = 5;
+        state.player.add_item(ItemType::Logs, 2);
+        let xp_before = state.player.skills.woodcutting.current_xp;
+
+        assert!(matches!(
+            execute_recipe(&mut state, "fletch_bow"),
+            Err(CraftingError::InsufficientIngredients { item: ItemType::Thread, .. })
+        ));
+        assert_eq!(state.player.get_item_count(ItemType::Logs), 2);
+        assert_eq!(state.player.get_item_count(ItemType::Thread), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Bows), 0);
+        assert_eq!(state.player.skills.woodcutting.current_xp, xp_before);
+    }
+
+    #[test]
     fn gourmet_feast_consumes_raw_food_and_seeds() {
         let mut state = state();
         state.player.skills.cooking.level = 10;
