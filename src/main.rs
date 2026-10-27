@@ -175,7 +175,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             12 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
-                    .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+                    .map_err(|error| io::Error::other(error.to_string()))?;
                 return Ok(());
             }
         }
