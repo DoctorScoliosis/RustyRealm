@@ -24,7 +24,7 @@ pub fn bank_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         );
         tui.show_text("RealmBank", &content, Some(state))?;
 
-        let mut options = vec![
+        let options = vec![
             "Account 1", "Account 2", "Account 3", "Account 4", "Account 5", "Exit bank",
         ];
         let choice = tui.select_menu("Select an account", &options, Some(state))?;
