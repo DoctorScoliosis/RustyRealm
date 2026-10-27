@@ -149,10 +149,11 @@ fn change_weapon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         let new_weapon = state.player.inventory_weapons[choice];
         if state.player.weapon == new_weapon {
             tui.show_message("Already equipped", "You already have that weapon equipped.", Some(state))?;
-        } else {
-            state.player.weapon = new_weapon;
-            tui.show_message("Weapon equipped", &format!("You have equipped {}.", new_weapon.name()), Some(state))?;
+            continue;
         }
+
+        state.player.weapon = new_weapon;
+        tui.show_message("Weapon equipped", &format!("You have equipped {}.", new_weapon.name()), Some(state))?;
         return Ok(());
     }
 }
@@ -181,10 +182,11 @@ fn change_armour(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         let new_armour = state.player.inventory_armour[choice];
         if state.player.armour == new_armour {
             tui.show_message("Already equipped", "You already have that armour equipped.", Some(state))?;
-        } else {
-            state.player.armour = new_armour;
-            tui.show_message("Armour equipped", &format!("You have equipped {}.", new_armour.name()), Some(state))?;
+            continue;
         }
+
+        state.player.armour = new_armour;
+        tui.show_message("Armour equipped", &format!("You have equipped {}.", new_armour.name()), Some(state))?;
         return Ok(());
     }
 }
