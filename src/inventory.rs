@@ -45,6 +45,8 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
             ItemType::GoblinMail,
             ItemType::Potions,
             ItemType::Bows,
+            ItemType::Thread,
+            ItemType::GourmetFeast,
         ];
         for item in item_types {
             lines.push(format!(
