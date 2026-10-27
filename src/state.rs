@@ -1,6 +1,7 @@
 use crate::data::{
     ArmourTier, ItemType, WeaponTier, MAX_BANK_GOLD, MAX_GOLD, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL,
 };
+use crate::economy::MarketState;
 use crate::event::WorldEvent;
 use crate::quests::Quest;
 use chrono::{DateTime, Utc};
@@ -271,6 +272,9 @@ pub struct GameState {
     pub active_quests: Vec<Quest>,
     #[serde(default = "WorldEvent::none")]
     pub active_world_event: WorldEvent,
+    /// Added with a default so existing character saves load without migration.
+    #[serde(default)]
+    pub market_state: MarketState,
 }
 
 impl GameState {
@@ -279,6 +283,7 @@ impl GameState {
             player,
             active_quests: Vec::new(),
             active_world_event: WorldEvent::none(),
+            market_state: MarketState::new(),
         };
         crate::quests::check_and_refresh_quests(&mut state);
         state
