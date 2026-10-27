@@ -25,9 +25,10 @@ pub fn weapon_shop(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .filter(|&&item| item == *tier)
                     .count();
                 format!(
-                    "{} · {} gold · level {} · owned {}",
+                    "[{}] {} · {} gold · level {} · owned {}",
+                    tier.rarity(),
                     tier.name(),
-                    tier.buy_price(),
+                    crate::mastery::vendor_price(state, tier.buy_price(), 0),
                     tier.level_required(),
                     owned
                 )
@@ -67,9 +68,10 @@ fn weapon_shop_page_2(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .filter(|&&item| item == *tier)
                     .count();
                 format!(
-                    "{} · {} gold · level {} · owned {}",
+                    "[{}] {} · {} gold · level {} · owned {}",
+                    tier.rarity(),
                     tier.name(),
-                    tier.buy_price(),
+                    crate::mastery::vendor_price(state, tier.buy_price(), 0),
                     tier.level_required(),
                     owned
                 )
@@ -92,6 +94,7 @@ fn weapon_shop_page_2(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 }
 
 fn try_buy_weapon(tui: &mut Tui, state: &mut GameState, tier: WeaponTier) -> io::Result<()> {
+    let price = crate::mastery::vendor_price(state, tier.buy_price(), 0);
     if state.player.combat_level < tier.level_required() {
         tui.show_message(
             "Level requirement not met",
@@ -103,7 +106,7 @@ fn try_buy_weapon(tui: &mut Tui, state: &mut GameState, tier: WeaponTier) -> io:
         )?;
         return Ok(());
     }
-    if state.player.gold < tier.buy_price() {
+    if state.player.gold < price {
         tui.show_message(
             "Purchase failed",
             "You do not have enough money.",
@@ -111,7 +114,7 @@ fn try_buy_weapon(tui: &mut Tui, state: &mut GameState, tier: WeaponTier) -> io:
         )?;
         return Ok(());
     }
-    state.player.gold -= tier.buy_price();
+    state.player.gold -= price;
     state.player.inventory_weapons.push(tier);
     tui.show_message(
         "Weapon purchased",
@@ -146,9 +149,10 @@ pub fn armour_shop(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .filter(|&&item| item == *tier)
                     .count();
                 format!(
-                    "{} · {} gold · level {} · owned {}",
+                    "[{}] {} · {} gold · level {} · owned {}",
+                    tier.rarity(),
                     tier.name(),
-                    tier.buy_price(),
+                    crate::mastery::vendor_price(state, tier.buy_price(), 0),
                     tier.level_required(),
                     owned
                 )
@@ -188,9 +192,10 @@ fn armour_shop_page_2(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .filter(|&&item| item == *tier)
                     .count();
                 format!(
-                    "{} · {} gold · level {} · owned {}",
+                    "[{}] {} · {} gold · level {} · owned {}",
+                    tier.rarity(),
                     tier.name(),
-                    tier.buy_price(),
+                    crate::mastery::vendor_price(state, tier.buy_price(), 0),
                     tier.level_required(),
                     owned
                 )
@@ -213,6 +218,7 @@ fn armour_shop_page_2(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 }
 
 fn try_buy_armour(tui: &mut Tui, state: &mut GameState, tier: ArmourTier) -> io::Result<()> {
+    let price = crate::mastery::vendor_price(state, tier.buy_price(), 0);
     if state.player.combat_level < tier.level_required() {
         tui.show_message(
             "Level requirement not met",
@@ -224,7 +230,7 @@ fn try_buy_armour(tui: &mut Tui, state: &mut GameState, tier: ArmourTier) -> io:
         )?;
         return Ok(());
     }
-    if state.player.gold < tier.buy_price() {
+    if state.player.gold < price {
         tui.show_message(
             "Purchase failed",
             "You do not have enough money.",
@@ -232,7 +238,7 @@ fn try_buy_armour(tui: &mut Tui, state: &mut GameState, tier: ArmourTier) -> io:
         )?;
         return Ok(());
     }
-    state.player.gold -= tier.buy_price();
+    state.player.gold -= price;
     state.player.inventory_armour.push(tier);
     tui.show_message(
         "Armour purchased",
@@ -532,7 +538,9 @@ fn max_shop_weapons(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
         let options = [
             format!(
-                "Elysian Blade · 3,000,000 gold · owned {}",
+                "[{}] Elysian Blade · {} gold · owned {}",
+                WeaponTier::Elysian.rarity(),
+                crate::mastery::vendor_price(state, 3_000_000, 0),
                 state
                     .player
                     .inventory_weapons
@@ -541,7 +549,9 @@ fn max_shop_weapons(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .count()
             ),
             format!(
-                "Arcane Blade · 400,000 gold · owned {}",
+                "[{}] Arcane Blade · {} gold · owned {}",
+                WeaponTier::Arcane.rarity(),
+                crate::mastery::vendor_price(state, 400_000, 0),
                 state
                     .player
                     .inventory_weapons
@@ -550,7 +560,9 @@ fn max_shop_weapons(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .count()
             ),
             format!(
-                "Spectral Blade · 5,000,000 gold · owned {}",
+                "[{}] Spectral Blade · {} gold · owned {}",
+                WeaponTier::Spectral.rarity(),
+                crate::mastery::vendor_price(state, 5_000_000, 0),
                 state
                     .player
                     .inventory_weapons
@@ -582,8 +594,9 @@ fn try_buy_max_weapon(
     tui: &mut Tui,
     state: &mut GameState,
     tier: WeaponTier,
-    price: u32,
+    base_price: u32,
 ) -> io::Result<()> {
+    let price = crate::mastery::vendor_price(state, base_price, 0);
     if state.player.gold < price {
         tui.show_message(
             "Purchase failed",
