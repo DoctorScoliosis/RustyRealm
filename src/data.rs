@@ -115,6 +115,16 @@ impl WeaponTier {
         }
     }
 
+    pub fn rarity(&self) -> &'static str {
+        match self {
+            WeaponTier::BareHands | WeaponTier::Wooden => "Common",
+            WeaponTier::Stone | WeaponTier::Bronze => "Uncommon",
+            WeaponTier::Iron | WeaponTier::Steel => "Rare",
+            WeaponTier::Gold | WeaponTier::Crystal => "Epic",
+            _ => "Legendary",
+        }
+    }
+
     pub fn level_required(&self) -> u32 {
         match self {
             WeaponTier::BareHands => 1,
@@ -236,6 +246,16 @@ impl ArmourTier {
             ArmourTier::Chaotic => 50000,
             ArmourTier::Mythical => 1000000,
             ArmourTier::Alydril => 1750000,
+        }
+    }
+
+    pub fn rarity(&self) -> &'static str {
+        match self {
+            ArmourTier::None | ArmourTier::Cloth => "Common",
+            ArmourTier::Chain | ArmourTier::Bronze => "Uncommon",
+            ArmourTier::Iron | ArmourTier::Steel => "Rare",
+            ArmourTier::Gold | ArmourTier::Crystal => "Epic",
+            _ => "Legendary",
         }
     }
 
