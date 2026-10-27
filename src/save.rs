@@ -147,7 +147,11 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Save
 fn compute_checksum(state: &GameState) -> Result<String, SaveError> {
     // Player::password_hash is #[serde(skip)], so authentication data is not
     // duplicated in the payload checksum or written into the game-state object.
-    let payload = serde_json::to_vec(state)?;
+    // Canonicalise through serde_json::Value before hashing. Player.items is a
+    // HashMap, whose iteration order is not stable across save/load or processes;
+    // hashing direct serialisation could otherwise reject an unchanged save.
+    let canonical_payload = serde_json::to_value(state)?;
+    let payload = serde_json::to_vec(&canonical_payload)?;
     let mut hasher = Sha256::new();
     hasher.update(payload);
     Ok(format!("{:x}", hasher.finalize()))
