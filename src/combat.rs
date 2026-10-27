@@ -443,6 +443,18 @@ fn encounter_kind_from_roll(roll: u8) -> WanderEncounterKind {
     }
 }
 
+fn scale_elite_stat(base: u32) -> u32 {
+    base.saturating_add(base / 2).saturating_add(base % 2)
+}
+
+fn encounter_gold_reward(base_reward: u32, is_elite: bool) -> u32 {
+    if is_elite {
+        base_reward.saturating_mul(2)
+    } else {
+        base_reward
+    }
+}
+
 pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let mut rng = rand::thread_rng();
     let encounter_kind = encounter_kind_from_roll(rng.gen_range(0..100));
@@ -454,7 +466,7 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
     let is_elite = encounter_kind == WanderEncounterKind::EliteMonster;
 
-    // Pick an ordinary encounter after the non-combat encounter checks.
+    // Pick the base monster; elite encounters scale its stats below.
     let npc_roll = rng.gen_range(1..=13);
     let npc_type = match npc_roll {
         1 => NpcType::Goblin,
@@ -491,17 +503,17 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     };
 
     let health = if is_elite {
-        base_health.saturating_mul(3) / 2
+        scale_elite_stat(base_health)
     } else {
         base_health
     };
     let level = if is_elite {
-        base_level.saturating_mul(3).saturating_add(1) / 2
+        scale_elite_stat(base_level)
     } else {
         base_level
     };
     let attack_power = if is_elite {
-        npc_type.max_damage().saturating_mul(3) / 2
+        scale_elite_stat(npc_type.max_damage())
     } else {
         npc_type.max_damage()
     };
@@ -637,11 +649,7 @@ fn handle_victory(
     is_elite: bool,
 ) -> io::Result<()> {
     let base_gold_gain = rand::thread_rng().gen_range(1..=1000) + 1000;
-    let requested_gold_gain = if is_elite {
-        base_gold_gain.saturating_mul(2)
-    } else {
-        base_gold_gain
-    };
+    let requested_gold_gain = encounter_gold_reward(base_gold_gain, is_elite);
     let gold_before = state.player.gold;
     state.player.gold = state
         .player
@@ -700,14 +708,35 @@ mod encounter_tests {
     use super::*;
 
     #[test]
-    fn wandering_encounter_rolls_use_the_documented_probabilities() {
-        assert_eq!(encounter_kind_from_roll(0), WanderEncounterKind::Merchant);
-        assert_eq!(encounter_kind_from_roll(14), WanderEncounterKind::Merchant);
-        assert_eq!(encounter_kind_from_roll(15), WanderEncounterKind::EliteMonster);
-        assert_eq!(encounter_kind_from_roll(29), WanderEncounterKind::EliteMonster);
-        assert_eq!(encounter_kind_from_roll(30), WanderEncounterKind::TreasurePuzzle);
-        assert_eq!(encounter_kind_from_roll(39), WanderEncounterKind::TreasurePuzzle);
-        assert_eq!(encounter_kind_from_roll(40), WanderEncounterKind::StandardBattle);
-        assert_eq!(encounter_kind_from_roll(99), WanderEncounterKind::StandardBattle);
+    fn wandering_encounter_rolls_match_the_documented_probabilities() {
+        let mut merchant = 0;
+        let mut elite = 0;
+        let mut treasure = 0;
+        let mut standard = 0;
+
+        for roll in 0_u8..100 {
+            match encounter_kind_from_roll(roll) {
+                WanderEncounterKind::Merchant => merchant += 1,
+                WanderEncounterKind::EliteMonster => elite += 1,
+                WanderEncounterKind::TreasurePuzzle => treasure += 1,
+                WanderEncounterKind::StandardBattle => standard += 1,
+            }
+        }
+
+        assert_eq!((merchant, elite, treasure, standard), (15, 15, 10, 60));
+    }
+
+    #[test]
+    fn elite_stats_are_scaled_to_one_and_a_half_with_safe_rounding() {
+        assert_eq!(scale_elite_stat(100), 150);
+        assert_eq!(scale_elite_stat(75), 113);
+        assert_eq!(scale_elite_stat(u32::MAX), u32::MAX);
+    }
+
+    #[test]
+    fn elite_victories_double_the_base_gold_reward() {
+        assert_eq!(encounter_gold_reward(1250, false), 1250);
+        assert_eq!(encounter_gold_reward(1250, true), 2500);
+        assert_eq!(encounter_gold_reward(u32::MAX, true), u32::MAX);
     }
 }
