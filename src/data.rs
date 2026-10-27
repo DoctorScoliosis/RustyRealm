@@ -326,7 +326,6 @@ impl NpcType {
         }
     }
 
-
     pub fn base_health(&self) -> u32 {
         match self {
             NpcType::StrongholdMage => 750,

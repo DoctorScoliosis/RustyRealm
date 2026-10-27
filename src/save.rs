@@ -313,15 +313,14 @@ fn save_to_path(state: &GameState, path: &Path) -> Result<(), SaveError> {
 }
 
 pub fn save_game(state: &GameState) -> Result<(), SaveError> {
-    let path = get_save_dir()?.join(format!("{}.json", sanitize_username(&state.player.username)));
+    let path = get_save_dir()?.join(format!(
+        "{}.json",
+        sanitize_username(&state.player.username)
+    ));
     save_to_path(state, &path)
 }
 
-fn load_game_at(
-    path: &Path,
-    username: &str,
-    password: &str,
-) -> Result<GameState, SaveError> {
+fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState, SaveError> {
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
         return Err(SaveError::InvalidUsername);
@@ -592,8 +591,14 @@ mod tests {
         assert_eq!(loaded.player.max_hp, 1000);
         assert_eq!(loaded.player.hp, 1000);
         assert_eq!(loaded.player.gold, crate::data::MAX_GOLD);
-        assert_eq!(loaded.player.bank_accounts[0].gold, crate::data::MAX_BANK_GOLD);
-        assert_eq!(loaded.player.skills.woodcutting.level, crate::data::MAX_SKILL_LEVEL);
+        assert_eq!(
+            loaded.player.bank_accounts[0].gold,
+            crate::data::MAX_BANK_GOLD
+        );
+        assert_eq!(
+            loaded.player.skills.woodcutting.level,
+            crate::data::MAX_SKILL_LEVEL
+        );
         assert_eq!(loaded.player.skills.woodcutting.xp_remaining, 0);
 
         let _ = fs::remove_dir_all(dir);

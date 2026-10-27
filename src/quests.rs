@@ -35,7 +35,8 @@ fn generate_daily_quests(state: &mut GameState) {
     });
 
     let kill_targets = [10, 50, 100, 250, 500, 1000];
-    let target_kills = kill_targets.iter()
+    let target_kills = kill_targets
+        .iter()
         .find(|&&target| target > state.player.stronghold_kill_count)
         .copied()
         .unwrap_or(1000);
@@ -65,10 +66,15 @@ fn generate_daily_quests(state: &mut GameState) {
         is_completed: total_lvl >= target_total,
     });
 
-    let completed_quests: Vec<Quest> = state.player.quests_completed.iter().map(|id| Quest {
-        id: id.clone(),
-        is_completed: true,
-    }).collect();
+    let completed_quests: Vec<Quest> = state
+        .player
+        .quests_completed
+        .iter()
+        .map(|id| Quest {
+            id: id.clone(),
+            is_completed: true,
+        })
+        .collect();
 
     let mut all_quests = new_quests;
     for quest in completed_quests {
@@ -117,9 +123,15 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let lowest_skill = skills.iter().min_by_key(|&&(_, level)| level).unwrap();
     let target_skill = (lowest_skill.1 + 10).min(100);
     if lowest_skill.1 >= target_skill {
-        completed_quests.push(format!("Reach level {} in {}", target_skill, lowest_skill.0));
+        completed_quests.push(format!(
+            "Reach level {} in {}",
+            target_skill, lowest_skill.0
+        ));
     } else {
-        active_quests.push(format!("Reach level {} in {}", target_skill, lowest_skill.0));
+        active_quests.push(format!(
+            "Reach level {} in {}",
+            target_skill, lowest_skill.0
+        ));
     }
 
     let target_total = (total_lvl + 50).min(637);
@@ -132,12 +144,20 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let active_text = if active_quests.is_empty() {
         "  None! Check back tomorrow for new quests.".to_string()
     } else {
-        active_quests.iter().map(|quest| format!("  • {}", quest)).collect::<Vec<_>>().join("\n")
+        active_quests
+            .iter()
+            .map(|quest| format!("  • {}", quest))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     let completed_text = if completed_quests.is_empty() {
         "  None yet. Keep playing!".to_string()
     } else {
-        completed_quests.iter().map(|quest| format!("  ✓ {}", quest)).collect::<Vec<_>>().join("\n")
+        completed_quests
+            .iter()
+            .map(|quest| format!("  ✓ {}", quest))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     let content = format!(
         "Active quests\n{}\n\nCompleted quests\n{}\n\nQuests refresh daily based on your current progress.",

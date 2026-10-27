@@ -18,7 +18,10 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
             format!("Gold: {}", state.player.gold),
             format!("EXP: {}", state.player.xp),
             format!("EXP until next level: {}", xp_until),
-            format!("Total level: {}", state.player.skills.total_level() + state.player.combat_level),
+            format!(
+                "Total level: {}",
+                state.player.skills.total_level() + state.player.combat_level
+            ),
             format!("Weapon: {}", state.player.weapon.name()),
             format!("Armour: {}", state.player.armour.name()),
             String::new(),
@@ -26,46 +29,104 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
         ];
 
         let item_types = [
-            ItemType::Bait, ItemType::Gemstones, ItemType::Seeds, ItemType::MagicOrbs,
-            ItemType::Fur, ItemType::RawFood, ItemType::Ore, ItemType::HugeBones,
-            ItemType::Logs, ItemType::DragonHides, ItemType::Food, ItemType::RunicTablets,
-            ItemType::Ingots, ItemType::GoblinMail, ItemType::Potions, ItemType::Bows,
+            ItemType::Bait,
+            ItemType::Gemstones,
+            ItemType::Seeds,
+            ItemType::MagicOrbs,
+            ItemType::Fur,
+            ItemType::RawFood,
+            ItemType::Ore,
+            ItemType::HugeBones,
+            ItemType::Logs,
+            ItemType::DragonHides,
+            ItemType::Food,
+            ItemType::RunicTablets,
+            ItemType::Ingots,
+            ItemType::GoblinMail,
+            ItemType::Potions,
+            ItemType::Bows,
         ];
         for item in item_types {
-            lines.push(format!("{:<18} {}", item.name(), state.player.get_item_count(item)));
+            lines.push(format!(
+                "{:<18} {}",
+                item.name(),
+                state.player.get_item_count(item)
+            ));
         }
 
         lines.push(String::new());
         lines.push("Weapons".to_string());
         let weapon_tiers = [
-            WeaponTier::Wooden, WeaponTier::Stone, WeaponTier::Bronze, WeaponTier::Iron,
-            WeaponTier::Steel, WeaponTier::Gold, WeaponTier::Crystal, WeaponTier::Sacred,
-            WeaponTier::Runic, WeaponTier::Infernal, WeaponTier::Omega, WeaponTier::Chaotic,
-            WeaponTier::Mythical, WeaponTier::Alydril,
+            WeaponTier::Wooden,
+            WeaponTier::Stone,
+            WeaponTier::Bronze,
+            WeaponTier::Iron,
+            WeaponTier::Steel,
+            WeaponTier::Gold,
+            WeaponTier::Crystal,
+            WeaponTier::Sacred,
+            WeaponTier::Runic,
+            WeaponTier::Infernal,
+            WeaponTier::Omega,
+            WeaponTier::Chaotic,
+            WeaponTier::Mythical,
+            WeaponTier::Alydril,
         ];
         for tier in weapon_tiers {
-            let count = state.player.inventory_weapons.iter().filter(|&&owned| owned == tier).count();
+            let count = state
+                .player
+                .inventory_weapons
+                .iter()
+                .filter(|&&owned| owned == tier)
+                .count();
             lines.push(format!("{:<24} {}", tier.name(), count));
         }
 
         lines.push(String::new());
         lines.push("Armour".to_string());
         let armour_tiers = [
-            ArmourTier::Cloth, ArmourTier::Chain, ArmourTier::Bronze, ArmourTier::Iron,
-            ArmourTier::Steel, ArmourTier::Gold, ArmourTier::Crystal, ArmourTier::Sacred,
-            ArmourTier::Runic, ArmourTier::Infernal, ArmourTier::Omega, ArmourTier::Chaotic,
-            ArmourTier::Mythical, ArmourTier::Alydril,
+            ArmourTier::Cloth,
+            ArmourTier::Chain,
+            ArmourTier::Bronze,
+            ArmourTier::Iron,
+            ArmourTier::Steel,
+            ArmourTier::Gold,
+            ArmourTier::Crystal,
+            ArmourTier::Sacred,
+            ArmourTier::Runic,
+            ArmourTier::Infernal,
+            ArmourTier::Omega,
+            ArmourTier::Chaotic,
+            ArmourTier::Mythical,
+            ArmourTier::Alydril,
         ];
         for tier in armour_tiers {
-            let count = state.player.inventory_armour.iter().filter(|&&owned| owned == tier).count();
+            let count = state
+                .player
+                .inventory_armour
+                .iter()
+                .filter(|&&owned| owned == tier)
+                .count();
             lines.push(format!("{:<24} {}", tier.name(), count));
         }
         tui.show_text("Final Realm · Inventory", &lines.join("\n"), Some(state))?;
 
         let options = if in_combat {
-            ["Return to battle", "Drink potion", "Eat food", "Change weapon", "Change armour"]
+            [
+                "Return to battle",
+                "Drink potion",
+                "Eat food",
+                "Change weapon",
+                "Change armour",
+            ]
         } else {
-            ["Back", "Heal", "Change weapon", "Change armour", "View levels"]
+            [
+                "Back",
+                "Heal",
+                "Change weapon",
+                "Change armour",
+                "View levels",
+            ]
         };
         let choice = tui.select_menu("Inventory actions", &options, Some(state))?;
         if in_combat {
@@ -82,7 +143,11 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
                 0 => return Ok(()),
                 1 => {
                     state.player.hp = state.player.max_hp;
-                    tui.show_message("Healed", "You have been healed back to full health.", Some(state))?;
+                    tui.show_message(
+                        "Healed",
+                        "You have been healed back to full health.",
+                        Some(state),
+                    )?;
                 }
                 2 => change_weapon(tui, state)?,
                 3 => change_armour(tui, state)?,
@@ -104,7 +169,10 @@ fn drink_potion(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     state.player.hp = (state.player.hp + heal).min(state.player.max_hp);
     tui.show_message(
         "Potion used",
-        &format!("You drink a potion and heal {} health.\nYou now have {}/{} health.", heal, state.player.hp, state.player.max_hp),
+        &format!(
+            "You drink a potion and heal {} health.\nYou now have {}/{} health.",
+            heal, state.player.hp, state.player.max_hp
+        ),
         Some(state),
     )
 }
@@ -120,19 +188,29 @@ fn eat_food(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     state.player.hp = (state.player.hp + heal).min(state.player.max_hp);
     tui.show_message(
         "Food eaten",
-        &format!("You eat some food and heal {} health.\nYou now have {}/{} health.", heal, state.player.hp, state.player.max_hp),
+        &format!(
+            "You eat some food and heal {} health.\nYou now have {}/{} health.",
+            heal, state.player.hp, state.player.max_hp
+        ),
         Some(state),
     )
 }
 
 fn change_weapon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     if state.player.inventory_weapons.is_empty() {
-        tui.show_message("No weapons", "You have no weapons in your inventory.", Some(state))?;
+        tui.show_message(
+            "No weapons",
+            "You have no weapons in your inventory.",
+            Some(state),
+        )?;
         return Ok(());
     }
 
     loop {
-        let labels: Vec<String> = state.player.inventory_weapons.iter()
+        let labels: Vec<String> = state
+            .player
+            .inventory_weapons
+            .iter()
             .enumerate()
             .map(|(index, tier)| format!("{} · {}", index + 1, tier.name()))
             .collect();
@@ -148,24 +226,39 @@ fn change_weapon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         }
         let new_weapon = state.player.inventory_weapons[choice];
         if state.player.weapon == new_weapon {
-            tui.show_message("Already equipped", "You already have that weapon equipped.", Some(state))?;
+            tui.show_message(
+                "Already equipped",
+                "You already have that weapon equipped.",
+                Some(state),
+            )?;
             continue;
         }
 
         state.player.weapon = new_weapon;
-        tui.show_message("Weapon equipped", &format!("You have equipped {}.", new_weapon.name()), Some(state))?;
+        tui.show_message(
+            "Weapon equipped",
+            &format!("You have equipped {}.", new_weapon.name()),
+            Some(state),
+        )?;
         return Ok(());
     }
 }
 
 fn change_armour(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     if state.player.inventory_armour.is_empty() {
-        tui.show_message("No armour", "You have no armour in your inventory.", Some(state))?;
+        tui.show_message(
+            "No armour",
+            "You have no armour in your inventory.",
+            Some(state),
+        )?;
         return Ok(());
     }
 
     loop {
-        let labels: Vec<String> = state.player.inventory_armour.iter()
+        let labels: Vec<String> = state
+            .player
+            .inventory_armour
+            .iter()
             .enumerate()
             .map(|(index, tier)| format!("{} · {}", index + 1, tier.name()))
             .collect();
@@ -181,12 +274,20 @@ fn change_armour(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         }
         let new_armour = state.player.inventory_armour[choice];
         if state.player.armour == new_armour {
-            tui.show_message("Already equipped", "You already have that armour equipped.", Some(state))?;
+            tui.show_message(
+                "Already equipped",
+                "You already have that armour equipped.",
+                Some(state),
+            )?;
             continue;
         }
 
         state.player.armour = new_armour;
-        tui.show_message("Armour equipped", &format!("You have equipped {}.", new_armour.name()), Some(state))?;
+        tui.show_message(
+            "Armour equipped",
+            &format!("You have equipped {}.", new_armour.name()),
+            Some(state),
+        )?;
         return Ok(());
     }
 }

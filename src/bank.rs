@@ -25,14 +25,23 @@ pub fn bank_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         tui.show_text("RealmBank", &content, Some(state))?;
 
         let options = vec![
-            "Account 1", "Account 2", "Account 3", "Account 4", "Account 5", "Exit bank",
+            "Account 1",
+            "Account 2",
+            "Account 3",
+            "Account 4",
+            "Account 5",
+            "Exit bank",
         ];
         let choice = tui.select_menu("Select an account", &options, Some(state))?;
         if choice >= 5 {
             return Ok(());
         }
         if state.player.bank_accounts[choice].is_closed {
-            tui.show_message("Account unavailable", "This account is full and closed.", Some(state))?;
+            tui.show_message(
+                "Account unavailable",
+                "This account is full and closed.",
+                Some(state),
+            )?;
             continue;
         }
         deposit_withdraw(tui, state, choice)?;
@@ -49,24 +58,37 @@ fn deposit_withdraw(tui: &mut Tui, state: &mut GameState, acc_idx: usize) -> io:
         )?;
         match choice {
             0 => {
-                let amount_text = tui.prompt_input("Amount to deposit, or all", false, Some(state))?;
+                let amount_text =
+                    tui.prompt_input("Amount to deposit, or all", false, Some(state))?;
                 let to_deposit = if amount_text.eq_ignore_ascii_case("all") {
                     state.player.gold
                 } else {
                     match amount_text.parse::<u32>() {
                         Ok(amount) => amount,
                         Err(_) => {
-                            tui.show_message("Invalid amount", "Enter a positive number or all.", Some(state))?;
+                            tui.show_message(
+                                "Invalid amount",
+                                "Enter a positive number or all.",
+                                Some(state),
+                            )?;
                             continue;
                         }
                     }
                 };
                 if to_deposit == 0 {
-                    tui.show_message("Nothing to deposit", "You have no gold to deposit.", Some(state))?;
+                    tui.show_message(
+                        "Nothing to deposit",
+                        "You have no gold to deposit.",
+                        Some(state),
+                    )?;
                     continue;
                 }
                 if to_deposit > state.player.gold {
-                    tui.show_message("Deposit failed", "You do not have enough gold.", Some(state))?;
+                    tui.show_message(
+                        "Deposit failed",
+                        "You do not have enough gold.",
+                        Some(state),
+                    )?;
                     continue;
                 }
 
@@ -76,20 +98,32 @@ fn deposit_withdraw(tui: &mut Tui, state: &mut GameState, acc_idx: usize) -> io:
                     let overflow = new_bank_gold.saturating_sub(MAX_ACCOUNT_GOLD);
                     state.player.bank_accounts[acc_idx].gold = MAX_ACCOUNT_GOLD;
                     state.player.bank_accounts[acc_idx].is_closed = true;
-                    state.player.gold = state.player.gold.saturating_add(overflow).saturating_sub(to_deposit);
+                    state.player.gold = state
+                        .player
+                        .gold
+                        .saturating_add(overflow)
+                        .saturating_sub(to_deposit);
                     tui.show_message(
                         "Account is full",
-                        &format!("The account is now full and closed. {} gold was returned to you.", overflow),
+                        &format!(
+                            "The account is now full and closed. {} gold was returned to you.",
+                            overflow
+                        ),
                         Some(state),
                     )?;
                 } else {
                     state.player.bank_accounts[acc_idx].gold = new_bank_gold;
                     state.player.gold = state.player.gold.saturating_sub(to_deposit);
-                    tui.show_message("Deposit complete", &format!("Deposited {} gold.", to_deposit), Some(state))?;
+                    tui.show_message(
+                        "Deposit complete",
+                        &format!("Deposited {} gold.", to_deposit),
+                        Some(state),
+                    )?;
                 }
             }
             1 => {
-                let amount_text = tui.prompt_input("Amount to withdraw, or all", false, Some(state))?;
+                let amount_text =
+                    tui.prompt_input("Amount to withdraw, or all", false, Some(state))?;
                 let available = state.player.bank_accounts[acc_idx].gold;
                 let to_withdraw = if amount_text.eq_ignore_ascii_case("all") {
                     available
@@ -97,27 +131,44 @@ fn deposit_withdraw(tui: &mut Tui, state: &mut GameState, acc_idx: usize) -> io:
                     match amount_text.parse::<u32>() {
                         Ok(amount) => amount,
                         Err(_) => {
-                            tui.show_message("Invalid amount", "Enter a positive number or all.", Some(state))?;
+                            tui.show_message(
+                                "Invalid amount",
+                                "Enter a positive number or all.",
+                                Some(state),
+                            )?;
                             continue;
                         }
                     }
                 };
                 if to_withdraw == 0 {
-                    tui.show_message("Nothing to withdraw", "The account is empty or the amount is zero.", Some(state))?;
+                    tui.show_message(
+                        "Nothing to withdraw",
+                        "The account is empty or the amount is zero.",
+                        Some(state),
+                    )?;
                     continue;
                 }
                 if to_withdraw > available {
-                    tui.show_message("Withdrawal failed", "The account does not have enough gold.", Some(state))?;
+                    tui.show_message(
+                        "Withdrawal failed",
+                        "The account does not have enough gold.",
+                        Some(state),
+                    )?;
                     continue;
                 }
 
                 state.player.gold = state.player.gold.saturating_add(to_withdraw);
-                state.player.bank_accounts[acc_idx].gold =
-                    state.player.bank_accounts[acc_idx].gold.saturating_sub(to_withdraw);
+                state.player.bank_accounts[acc_idx].gold = state.player.bank_accounts[acc_idx]
+                    .gold
+                    .saturating_sub(to_withdraw);
                 if state.player.bank_accounts[acc_idx].gold < MAX_ACCOUNT_GOLD {
                     state.player.bank_accounts[acc_idx].is_closed = false;
                 }
-                tui.show_message("Withdrawal complete", &format!("Withdrew {} gold.", to_withdraw), Some(state))?;
+                tui.show_message(
+                    "Withdrawal complete",
+                    &format!("Withdrew {} gold.", to_withdraw),
+                    Some(state),
+                )?;
             }
             _ => return Ok(()),
         }

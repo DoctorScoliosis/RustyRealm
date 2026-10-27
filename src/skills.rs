@@ -78,18 +78,34 @@ impl SkillKind {
 
 pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let skills = [
-        SkillKind::Woodcutting, SkillKind::Cooking, SkillKind::Fishing,
-        SkillKind::Mining, SkillKind::Smithing, SkillKind::Thieving,
+        SkillKind::Woodcutting,
+        SkillKind::Cooking,
+        SkillKind::Fishing,
+        SkillKind::Mining,
+        SkillKind::Smithing,
+        SkillKind::Thieving,
     ];
     loop {
-        let labels: Vec<String> = skills.iter().map(|skill| {
-            let data = skill.data(state);
-            format!("{} · level {} · {} XP / threshold {}", skill.name(), data.level, data.current_xp, data.xp_threshold)
-        }).collect();
+        let labels: Vec<String> = skills
+            .iter()
+            .map(|skill| {
+                let data = skill.data(state);
+                format!(
+                    "{} · level {} · {} XP / threshold {}",
+                    skill.name(),
+                    data.level,
+                    data.current_xp,
+                    data.xp_threshold
+                )
+            })
+            .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
         let choice = tui.select_menu(
-            &format!("Skill Plot · total skill level {}", state.player.skills.total_level()),
+            &format!(
+                "Skill Plot · total skill level {}",
+                state.player.skills.total_level()
+            ),
             &options,
             Some(state),
         )?;
@@ -106,9 +122,20 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
         let data = skill.data(state);
         let detail = format!(
             "{} · level {} · XP {} · remaining {}",
-            skill.name(), data.level, data.current_xp, data.xp_remaining
+            skill.name(),
+            data.level,
+            data.current_xp,
+            data.xp_remaining
         );
-        let action_label = format!("{}{}", skill.action(), if status.is_empty() { String::new() } else { format!(" — {}", status) });
+        let action_label = format!(
+            "{}{}",
+            skill.action(),
+            if status.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", status)
+            }
+        );
         let action_options = [action_label.as_str(), "Back"];
         let choice = tui.select_menu(&detail, &action_options, Some(state))?;
         if choice != 0 {
@@ -127,7 +154,15 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         let new_level = skill.data(state).level;
                         tui.show_message(
                             "Skill level up",
-                            &format!("Congratulations, your Woodcutting level is now {}{}.", new_level, if new_level >= MAX_SKILL_LEVEL { " (maximum level)" } else { "" }),
+                            &format!(
+                                "Congratulations, your Woodcutting level is now {}{}.",
+                                new_level,
+                                if new_level >= MAX_SKILL_LEVEL {
+                                    " (maximum level)"
+                                } else {
+                                    ""
+                                }
+                            ),
                             Some(state),
                         )?;
                     }
@@ -137,7 +172,11 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             SkillKind::Cooking => {
                 let raw_food = state.player.get_item_count(ItemType::RawFood);
                 if raw_food == 0 {
-                    tui.show_message("Missing materials", "You do not have enough raw food to cook.", Some(state))?;
+                    tui.show_message(
+                        "Missing materials",
+                        "You do not have enough raw food to cook.",
+                        Some(state),
+                    )?;
                     continue;
                 }
                 if skill.data(state).level >= MAX_SKILL_LEVEL {
@@ -149,7 +188,19 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::Food, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
-                        tui.show_message("Skill level up", &format!("Congratulations, your Cooking level is now {}{}.", new_level, if new_level >= MAX_SKILL_LEVEL { " (maximum level)" } else { "" }), Some(state))?;
+                        tui.show_message(
+                            "Skill level up",
+                            &format!(
+                                "Congratulations, your Cooking level is now {}{}.",
+                                new_level,
+                                if new_level >= MAX_SKILL_LEVEL {
+                                    " (maximum level)"
+                                } else {
+                                    ""
+                                }
+                            ),
+                            Some(state),
+                        )?;
                     }
                     "You cooked some food.".to_string()
                 }
@@ -157,7 +208,11 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             SkillKind::Fishing => {
                 let bait = state.player.get_item_count(ItemType::Bait);
                 if bait == 0 {
-                    tui.show_message("Missing materials", "You do not have enough bait to fish.", Some(state))?;
+                    tui.show_message(
+                        "Missing materials",
+                        "You do not have enough bait to fish.",
+                        Some(state),
+                    )?;
                     continue;
                 }
                 if skill.data(state).level >= MAX_SKILL_LEVEL {
@@ -169,7 +224,19 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::RawFood, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
-                        tui.show_message("Skill level up", &format!("Congratulations, your Fishing level is now {}{}.", new_level, if new_level >= MAX_SKILL_LEVEL { " (maximum level)" } else { "" }), Some(state))?;
+                        tui.show_message(
+                            "Skill level up",
+                            &format!(
+                                "Congratulations, your Fishing level is now {}{}.",
+                                new_level,
+                                if new_level >= MAX_SKILL_LEVEL {
+                                    " (maximum level)"
+                                } else {
+                                    ""
+                                }
+                            ),
+                            Some(state),
+                        )?;
                     }
                     "You caught a fish.".to_string()
                 }
@@ -182,7 +249,19 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::Ore, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
-                        tui.show_message("Skill level up", &format!("Congratulations, your Mining level is now {}{}.", new_level, if new_level >= MAX_SKILL_LEVEL { " (maximum level)" } else { "" }), Some(state))?;
+                        tui.show_message(
+                            "Skill level up",
+                            &format!(
+                                "Congratulations, your Mining level is now {}{}.",
+                                new_level,
+                                if new_level >= MAX_SKILL_LEVEL {
+                                    " (maximum level)"
+                                } else {
+                                    ""
+                                }
+                            ),
+                            Some(state),
+                        )?;
                     }
                     "You mined some ore.".to_string()
                 }
@@ -190,7 +269,11 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             SkillKind::Smithing => {
                 let ore = state.player.get_item_count(ItemType::Ore);
                 if ore == 0 {
-                    tui.show_message("Missing materials", "You do not have enough ore to smith an ingot.", Some(state))?;
+                    tui.show_message(
+                        "Missing materials",
+                        "You do not have enough ore to smith an ingot.",
+                        Some(state),
+                    )?;
                     continue;
                 }
                 if skill.data(state).level >= MAX_SKILL_LEVEL {
@@ -202,7 +285,19 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.add_item(ItemType::Ingots, 1);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
-                        tui.show_message("Skill level up", &format!("Congratulations, your Smithing level is now {}{}.", new_level, if new_level >= MAX_SKILL_LEVEL { " (maximum level)" } else { "" }), Some(state))?;
+                        tui.show_message(
+                            "Skill level up",
+                            &format!(
+                                "Congratulations, your Smithing level is now {}{}.",
+                                new_level,
+                                if new_level >= MAX_SKILL_LEVEL {
+                                    " (maximum level)"
+                                } else {
+                                    ""
+                                }
+                            ),
+                            Some(state),
+                        )?;
                     }
                     "You smithed an ingot.".to_string()
                 }
@@ -215,7 +310,19 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     state.player.gold = state.player.gold.saturating_add(10).min(MAX_GOLD);
                     if award_xp(skill.data_mut(state)) {
                         let new_level = skill.data(state).level;
-                        tui.show_message("Skill level up", &format!("Congratulations, your Thieving level is now {}{}.", new_level, if new_level >= MAX_SKILL_LEVEL { " (maximum level)" } else { "" }), Some(state))?;
+                        tui.show_message(
+                            "Skill level up",
+                            &format!(
+                                "Congratulations, your Thieving level is now {}{}.",
+                                new_level,
+                                if new_level >= MAX_SKILL_LEVEL {
+                                    " (maximum level)"
+                                } else {
+                                    ""
+                                }
+                            ),
+                            Some(state),
+                        )?;
                     }
                     "You stole some coins.".to_string()
                 }

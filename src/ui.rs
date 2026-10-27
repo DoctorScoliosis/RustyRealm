@@ -51,7 +51,10 @@ impl Tui {
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
         terminal.clear()?;
-        Ok(Self { terminal, _guard: guard })
+        Ok(Self {
+            terminal,
+            _guard: guard,
+        })
     }
 
     /// Draw a fresh frame using the terminal's current dimensions.
@@ -100,7 +103,11 @@ impl Tui {
                 if title_height > 0 {
                     let header = Paragraph::new(title)
                         .alignment(Alignment::Center)
-                        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                        .style(
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        )
                         .block(Block::default().borders(Borders::ALL));
                     frame.render_widget(header, chunks[index]);
                     index += 1;
@@ -120,7 +127,15 @@ impl Tui {
                     .collect();
 
                 let list = List::new(visible_options)
-                    .block(Block::default().title(if title_height == 0 { title } else { " Options " }).borders(Borders::ALL))
+                    .block(
+                        Block::default()
+                            .title(if title_height == 0 {
+                                title
+                            } else {
+                                " Options "
+                            })
+                            .borders(Borders::ALL),
+                    )
                     .highlight_style(
                         Style::default()
                             .fg(Color::Black)
@@ -144,28 +159,58 @@ impl Tui {
 
             match event::read()? {
                 Event::Resize(_, _) => continue,
-                Event::Key(KeyEvent { code: KeyCode::Up, .. })
-                | Event::Key(KeyEvent { code: KeyCode::Char('k'), .. }) => {
-                    selected = if selected == 0 { options.len() - 1 } else { selected - 1 };
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    ..
+                }) => {
+                    selected = if selected == 0 {
+                        options.len() - 1
+                    } else {
+                        selected - 1
+                    };
                 }
-                Event::Key(KeyEvent { code: KeyCode::Down, .. })
-                | Event::Key(KeyEvent { code: KeyCode::Char('j'), .. }) => {
-                    selected = if selected + 1 >= options.len() { 0 } else { selected + 1 };
+                Event::Key(KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('j'),
+                    ..
+                }) => {
+                    selected = if selected + 1 >= options.len() {
+                        0
+                    } else {
+                        selected + 1
+                    };
                 }
-                Event::Key(KeyEvent { code: KeyCode::Enter, .. }) => return Ok(selected),
-                Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => {
-                    let back_index = options.iter().position(|option| {
-                        let label = option.to_ascii_lowercase();
-                        label.contains("back")
-                            || label.contains("exit")
-                            || label.contains("leave")
-                            || label.contains("return")
-                            || label.contains("flee")
-                            || label.contains("cancel")
-                    }).unwrap_or(options.len() - 1);
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => return Ok(selected),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Esc, ..
+                }) => {
+                    let back_index = options
+                        .iter()
+                        .position(|option| {
+                            let label = option.to_ascii_lowercase();
+                            label.contains("back")
+                                || label.contains("exit")
+                                || label.contains("leave")
+                                || label.contains("return")
+                                || label.contains("flee")
+                                || label.contains("cancel")
+                        })
+                        .unwrap_or(options.len() - 1);
                     return Ok(back_index);
-                },
-                Event::Key(KeyEvent { code: KeyCode::Char(c), .. }) if c.is_ascii_digit() => {
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c),
+                    ..
+                }) if c.is_ascii_digit() => {
                     let digit = c.to_digit(10).unwrap_or(0) as usize;
                     if digit > 0 && digit <= options.len() && digit <= 9 {
                         return Ok(digit - 1);
@@ -194,7 +239,11 @@ impl Tui {
                 let inner = block.inner(popup);
                 frame.render_widget(block, popup);
 
-                let shown = if masked { "*".repeat(input.chars().count()) } else { input.clone() };
+                let shown = if masked {
+                    "*".repeat(input.chars().count())
+                } else {
+                    input.clone()
+                };
                 let paragraph = Paragraph::new(format!("> {}", shown))
                     .style(Style::default().fg(Color::White))
                     .wrap(Wrap { trim: true });
@@ -202,22 +251,37 @@ impl Tui {
 
                 if inner.width > 0 && inner.height > 0 {
                     let input_cells = input.chars().count();
-                    let cursor_x = inner.x.saturating_add(2).saturating_add(input_cells.min(inner.width.saturating_sub(3) as usize) as u16);
+                    let cursor_x = inner.x.saturating_add(2).saturating_add(
+                        input_cells.min(inner.width.saturating_sub(3) as usize) as u16,
+                    );
                     frame.set_cursor(cursor_x.min(inner.x + inner.width - 1), inner.y);
                 }
             })?;
 
             match event::read()? {
                 Event::Resize(_, _) => continue,
-                Event::Key(KeyEvent { code: KeyCode::Enter, .. }) => {
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
                     if masked {
                         return Ok(input);
                     }
                     return Ok(input.trim().to_string());
-                },
-                Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => return Ok(String::new()),
-                Event::Key(KeyEvent { code: KeyCode::Char(c), .. }) => input.push(c),
-                Event::Key(KeyEvent { code: KeyCode::Backspace, .. }) => { input.pop(); }
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Esc, ..
+                }) => return Ok(String::new()),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(c),
+                    ..
+                }) => input.push(c),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Backspace,
+                    ..
+                }) => {
+                    input.pop();
+                }
                 _ => {}
             }
         }
@@ -249,13 +313,32 @@ impl Tui {
 
             match event::read()? {
                 Event::Resize(_, _) => continue,
-                Event::Key(KeyEvent { code: KeyCode::Up, .. }) => scroll = scroll.saturating_sub(1),
-                Event::Key(KeyEvent { code: KeyCode::Down, .. }) => scroll = scroll.saturating_add(1),
-                Event::Key(KeyEvent { code: KeyCode::PageUp, .. }) => scroll = scroll.saturating_sub(8),
-                Event::Key(KeyEvent { code: KeyCode::PageDown, .. }) => scroll = scroll.saturating_add(8),
-                Event::Key(KeyEvent { code: KeyCode::Enter, .. })
-                | Event::Key(KeyEvent { code: KeyCode::Esc, .. })
-                | Event::Key(KeyEvent { code: KeyCode::Char(' '), .. }) => return Ok(()),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                }) => scroll = scroll.saturating_sub(1),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                }) => scroll = scroll.saturating_add(1),
+                Event::Key(KeyEvent {
+                    code: KeyCode::PageUp,
+                    ..
+                }) => scroll = scroll.saturating_sub(8),
+                Event::Key(KeyEvent {
+                    code: KeyCode::PageDown,
+                    ..
+                }) => scroll = scroll.saturating_add(8),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Esc, ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char(' '),
+                    ..
+                }) => return Ok(()),
                 _ => {}
             }
         }
@@ -273,11 +356,19 @@ impl Tui {
             self.render_screen(state, |frame, area, _| {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(3), Constraint::Min(1), Constraint::Length(if area.height >= 5 { 2 } else { 0 })])
+                    .constraints([
+                        Constraint::Length(3),
+                        Constraint::Min(1),
+                        Constraint::Length(if area.height >= 5 { 2 } else { 0 }),
+                    ])
                     .split(area);
                 let header = Paragraph::new(title)
                     .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    .style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
                     .block(Block::default().borders(Borders::ALL));
                 frame.render_widget(header, chunks[0]);
                 let body = Paragraph::new(content)
@@ -296,12 +387,28 @@ impl Tui {
 
             match event::read()? {
                 Event::Resize(_, _) => continue,
-                Event::Key(KeyEvent { code: KeyCode::Up, .. }) => scroll = scroll.saturating_sub(1),
-                Event::Key(KeyEvent { code: KeyCode::Down, .. }) => scroll = scroll.saturating_add(1),
-                Event::Key(KeyEvent { code: KeyCode::PageUp, .. }) => scroll = scroll.saturating_sub(8),
-                Event::Key(KeyEvent { code: KeyCode::PageDown, .. }) => scroll = scroll.saturating_add(8),
-                Event::Key(KeyEvent { code: KeyCode::Enter, .. })
-                | Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => return Ok(()),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                }) => scroll = scroll.saturating_sub(1),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                }) => scroll = scroll.saturating_add(1),
+                Event::Key(KeyEvent {
+                    code: KeyCode::PageUp,
+                    ..
+                }) => scroll = scroll.saturating_sub(8),
+                Event::Key(KeyEvent {
+                    code: KeyCode::PageDown,
+                    ..
+                }) => scroll = scroll.saturating_add(8),
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Esc, ..
+                }) => return Ok(()),
                 _ => {}
             }
         }
@@ -358,19 +465,33 @@ fn render_sidebar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
     frame.render_widget(block, area);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(2), Constraint::Length(3), Constraint::Length(3), Constraint::Min(1)])
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(1),
+        ])
         .split(inner);
 
     frame.render_widget(
-        Paragraph::new(format!("{} · Combat {}", state.player.username, state.player.combat_level))
-            .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-            .wrap(Wrap { trim: true }),
+        Paragraph::new(format!(
+            "{} · Combat {}",
+            state.player.username, state.player.combat_level
+        ))
+        .style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+        .wrap(Wrap { trim: true }),
         chunks[0],
     );
 
     let hp_ratio = if state.player.max_hp > 0 {
         (state.player.hp as f64 / state.player.max_hp as f64).clamp(0.0, 1.0)
-    } else { 0.0 };
+    } else {
+        0.0
+    };
     frame.render_widget(
         Gauge::default()
             .block(Block::default().title(" HP "))
@@ -383,8 +504,11 @@ fn render_sidebar(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
     let xp_ratio = if state.player.combat_level >= crate::data::MAX_PLAYER_LEVEL {
         1.0
     } else if state.player.orig_xp_threshold > 0 {
-        (1.0 - state.player.xp_until_next as f64 / state.player.orig_xp_threshold as f64).clamp(0.0, 1.0)
-    } else { 0.0 };
+        (1.0 - state.player.xp_until_next as f64 / state.player.orig_xp_threshold as f64)
+            .clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     frame.render_widget(
         Gauge::default()
             .block(Block::default().title(" EXP "))
@@ -432,7 +556,10 @@ fn render_compact_header(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
         "Lv{} HP:{}/{} G:{}",
         state.player.combat_level, state.player.hp, state.player.max_hp, state.player.gold
     );
-    frame.render_widget(Paragraph::new(text).style(Style::default().fg(Color::Yellow)), area);
+    frame.render_widget(
+        Paragraph::new(text).style(Style::default().fg(Color::Yellow)),
+        area,
+    );
 }
 
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -445,11 +572,19 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 
     let vertical = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(top), Constraint::Percentage(percent_y), Constraint::Percentage(bottom)])
+        .constraints([
+            Constraint::Percentage(top),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage(bottom),
+        ])
         .split(area);
     Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(left), Constraint::Percentage(percent_x), Constraint::Percentage(right)])
+        .constraints([
+            Constraint::Percentage(left),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage(right),
+        ])
         .split(vertical[1])[1]
 }
 
@@ -478,15 +613,17 @@ mod tests {
             let backend = TestBackend::new(width, height);
             let mut terminal = Terminal::new(backend).unwrap();
             let rendered = Cell::new(Rect::default());
-            terminal.draw(|frame| {
-                let full = frame.size();
-                render_responsive_base(frame, full, Some(&state), |frame, content, _| {
-                    rendered.set(content);
-                    assert!(content.x.saturating_add(content.width) <= full.width);
-                    assert!(content.y.saturating_add(content.height) <= full.height);
-                    frame.render_widget(Paragraph::new("Responsive content"), content);
-                });
-            }).unwrap();
+            terminal
+                .draw(|frame| {
+                    let full = frame.size();
+                    render_responsive_base(frame, full, Some(&state), |frame, content, _| {
+                        rendered.set(content);
+                        assert!(content.x.saturating_add(content.width) <= full.width);
+                        assert!(content.y.saturating_add(content.height) <= full.height);
+                        frame.render_widget(Paragraph::new("Responsive content"), content);
+                    });
+                })
+                .unwrap();
 
             let content = rendered.get();
             assert_eq!(content.x, expected_x, "content x at {}x{}", width, height);

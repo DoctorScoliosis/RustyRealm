@@ -36,7 +36,12 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
 
     tui.show_message(
         "The Stronghold",
-        &format!("You continue into the Stronghold and encounter a level {} {} with {} health.", level, npc_type.name(), health),
+        &format!(
+            "You continue into the Stronghold and encounter a level {} {} with {} health.",
+            level,
+            npc_type.name(),
+            health
+        ),
         Some(state),
     )?;
 
@@ -63,7 +68,10 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
             state.player.level_up_combat();
             tui.show_message(
                 "Combat level up",
-                &format!("You are now combat level {} and have {} health.", state.player.combat_level, state.player.hp),
+                &format!(
+                    "You are now combat level {} and have {} health.",
+                    state.player.combat_level, state.player.hp
+                ),
                 Some(state),
             )?;
         }
@@ -82,7 +90,11 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
         state.player.hp = state.player.hp.saturating_sub(npc_dmg);
 
         if state.player.hp == 0 {
-            tui.show_message("Defeated", "You died. Your Stronghold progress has been reset.", Some(state))?;
+            tui.show_message(
+                "Defeated",
+                "You died. Your Stronghold progress has been reset.",
+                Some(state),
+            )?;
             state.player.stronghold_kill_count = 0;
             state.player.hp = state.player.max_hp;
             return Ok(());
@@ -90,7 +102,12 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
 
         tui.show_message(
             "Stronghold · Enemy attack",
-            &format!("The {} deals {} damage to you.\nYou have {} health left.", npc_type.name(), npc_dmg, state.player.hp),
+            &format!(
+                "The {} deals {} damage to you.\nYou have {} health left.",
+                npc_type.name(),
+                npc_dmg,
+                state.player.hp
+            ),
             Some(state),
         )?;
     }
@@ -106,7 +123,9 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
 
     let mut result = format!(
         "You defeated the {} and gained {} gold.\nStronghold progress: {}/10.",
-        npc_type.name(), gold_gain, state.player.stronghold_kill_count
+        npc_type.name(),
+        gold_gain,
+        state.player.stronghold_kill_count
     );
     if healing {
         result.push_str("\n\nA wave of healing energy restores your health.");
@@ -126,7 +145,10 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
     tui.show_message(
         "Lacoyx's Throne Room",
-        &format!("You enter Lacoyx's throne room. The level {} War Commander has {} health.", level, health),
+        &format!(
+            "You enter Lacoyx's throne room. The level {} War Commander has {} health.",
+            level, health
+        ),
         Some(state),
     )?;
 
@@ -144,7 +166,10 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
         tui.show_message(
             "Lacoyx · Player attack",
-            &format!("You deal {} damage to Lacoyx.\nLacoyx has {} health left.\nYou gain {} EXP.", damage, health, atk_xp),
+            &format!(
+                "You deal {} damage to Lacoyx.\nLacoyx has {} health left.\nYou gain {} EXP.",
+                damage, health, atk_xp
+            ),
             Some(state),
         )?;
 
@@ -177,7 +202,11 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         state.player.hp = state.player.hp.saturating_sub(npc_dmg);
 
         if state.player.hp == 0 {
-            tui.show_message("Defeated", "You died. Your Stronghold progress has been reset.", Some(state))?;
+            tui.show_message(
+                "Defeated",
+                "You died. Your Stronghold progress has been reset.",
+                Some(state),
+            )?;
             state.player.stronghold_kill_count = 0;
             state.player.hp = state.player.max_hp;
             return Ok(());
@@ -185,7 +214,10 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
         tui.show_message(
             "Lacoyx attacks",
-            &format!("Lacoyx deals {} damage to you.\nYou have {} health left.", npc_dmg, state.player.hp),
+            &format!(
+                "Lacoyx deals {} damage to you.\nYou have {} health left.",
+                npc_dmg, state.player.hp
+            ),
             Some(state),
         )?;
     }

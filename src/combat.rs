@@ -44,7 +44,12 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let mut health = base_health;
     tui.show_message(
         "Wandering Gielinor",
-        &format!("You encounter a level {} {} with {} health.", level, npc_type.name(), health),
+        &format!(
+            "You encounter a level {} {} with {} health.",
+            level,
+            npc_type.name(),
+            health
+        ),
         Some(state),
     )?;
 
@@ -71,7 +76,10 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     "Attack",
                     &format!(
                         "You deal {} damage to the {}.\nIt has {} health left.\nYou gain {} EXP.",
-                        damage, npc_type.name(), health, atk_xp
+                        damage,
+                        npc_type.name(),
+                        health,
+                        atk_xp
                     ),
                     Some(state),
                 )?;
@@ -80,7 +88,10 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     state.player.level_up_combat();
                     tui.show_message(
                         "Combat level up",
-                        &format!("You are now combat level {} and have {} health.", state.player.combat_level, state.player.hp),
+                        &format!(
+                            "You are now combat level {} and have {} health.",
+                            state.player.combat_level, state.player.hp
+                        ),
                         Some(state),
                     )?;
                 }
@@ -111,14 +122,27 @@ pub fn wander_gielinor(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
             state.player.hp = state.player.hp.saturating_sub(npc_dmg);
             if state.player.hp == 0 {
-                tui.show_message("Defeated", &format!("The {} dealt {} damage. You died and were revived at full health.", npc_type.name(), npc_dmg), Some(state))?;
+                tui.show_message(
+                    "Defeated",
+                    &format!(
+                        "The {} dealt {} damage. You died and were revived at full health.",
+                        npc_type.name(),
+                        npc_dmg
+                    ),
+                    Some(state),
+                )?;
                 state.player.hp = state.player.max_hp;
                 return Ok(());
             }
 
             tui.show_message(
                 "Enemy attack",
-                &format!("The {} deals {} damage to you.\nYou have {} health left.", npc_type.name(), npc_dmg, state.player.hp),
+                &format!(
+                    "The {} deals {} damage to you.\nYou have {} health left.",
+                    npc_type.name(),
+                    npc_dmg,
+                    state.player.hp
+                ),
                 Some(state),
             )?;
         }
