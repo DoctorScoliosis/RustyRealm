@@ -354,7 +354,11 @@ mod tests {
     use crate::state::{GameState, Player};
 
     fn state() -> GameState {
-        GameState::new(Player::new("MarketHero".into(), String::new()))
+        let mut state = GameState::new(Player::new("MarketHero".into(), String::new()));
+        // Keep transaction expectations deterministic regardless of the current
+        // day's generated world event. Event pricing has dedicated tests below.
+        state.active_world_event = WorldEvent::none();
+        state
     }
 
     #[test]
