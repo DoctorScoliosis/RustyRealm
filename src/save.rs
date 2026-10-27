@@ -651,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn version_two_saves_without_new_quest_fields_keep_valid_checksums() {
+    fn version_two_saves_without_new_fields_keep_valid_checksums() {
         let dir = test_dir("quest-fields-compat");
         let path = dir.join("player.json");
         let state = test_state("questcompat", "secret");
