@@ -1,4 +1,4 @@
-use crate::data::{ArmourTier, ItemType, WeaponTier};
+use crate::data::{ArmourTier, ItemType, WeaponTier, MAX_GOLD};
 use crate::state::GameState;
 use crate::ui::Tui;
 use std::io;
@@ -405,7 +405,11 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 "Weapon s{} · {} · sell for {} gold",
                 index + 1,
                 tier.name(),
-                tier.sell_price()
+                crate::economy::calculate_dynamic_equipment_sell_price(
+                    state,
+                    tier.sell_price(),
+                    tier.buy_price()
+                )
             ));
             choices.push(SellChoice::Weapon(index));
         }
@@ -414,7 +418,11 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 "Armour a{} · {} · sell for {} gold",
                 index + 1,
                 tier.name(),
-                tier.sell_price()
+                crate::economy::calculate_dynamic_equipment_sell_price(
+                    state,
+                    tier.sell_price(),
+                    tier.buy_price()
+                )
             ));
             choices.push(SellChoice::Armour(index));
         }
@@ -438,11 +446,25 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         let (name, price) = match selected {
             SellChoice::Weapon(index) => {
                 let tier = state.player.inventory_weapons[index];
-                (tier.name().to_string(), tier.sell_price())
+                (
+                    tier.name().to_string(),
+                    crate::economy::calculate_dynamic_equipment_sell_price(
+                        state,
+                        tier.sell_price(),
+                        tier.buy_price(),
+                    ),
+                )
             }
             SellChoice::Armour(index) => {
                 let tier = state.player.inventory_armour[index];
-                (tier.name().to_string(), tier.sell_price())
+                (
+                    tier.name().to_string(),
+                    crate::economy::calculate_dynamic_equipment_sell_price(
+                        state,
+                        tier.sell_price(),
+                        tier.buy_price(),
+                    ),
+                )
             }
         };
         let confirmation = tui.select_menu(
@@ -451,6 +473,15 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             Some(state),
         )?;
         if confirmation != 0 {
+            continue;
+        }
+
+        if u64::from(state.player.gold) + u64::from(price) > u64::from(MAX_GOLD) {
+            tui.show_message(
+                "Sale unavailable",
+                "Your gold balance is too close to its limit to accept this sale. Spend some gold first.",
+                Some(state),
+            )?;
             continue;
         }
 
@@ -463,6 +494,7 @@ fn sell_to_smuggler(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             }
         }
         state.player.gold += price;
+        state.market_state.record_equipment_trade(-1);
         tui.show_message(
             "Sale complete",
             &format!("You sold the {} for {} gold.", name, price),

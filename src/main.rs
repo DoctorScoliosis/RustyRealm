@@ -3,6 +3,7 @@ mod combat;
 mod combat_engine;
 mod crafting;
 mod data;
+mod economy;
 mod event;
 mod inventory;
 mod quests;
@@ -203,6 +204,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 return Ok(());
             }
         }
+        state.market_state.advance_turn();
     }
 }
 
@@ -234,8 +236,8 @@ fn general_store(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     "{} · owned {} · buy {}g / sell {}g",
                     item.name(),
                     state.player.get_item_count(*item),
-                    item.buy_price(),
-                    item.sell_price()
+                    crate::economy::calculate_dynamic_buy_price(state, *item),
+                    crate::economy::calculate_dynamic_sell_price(state, *item)
                 )
             })
             .collect();
@@ -267,35 +269,27 @@ fn buy_sell_item(tui: &mut Tui, state: &mut GameState, item: ItemType) -> io::Re
         match choice {
             0 => {
                 let amount_text = tui.prompt_input("Amount to buy", false, Some(state))?;
-                let Ok(amount) = amount_text.parse::<u32>() else {
-                    continue;
+                let amount = match amount_text.parse::<u32>() {
+                    Ok(value) => value,
+                    Err(_) => {
+                        tui.show_message(
+                            "Purchase failed",
+                            "Enter a whole number greater than zero.",
+                            Some(state),
+                        )?;
+                        continue;
+                    }
                 };
-                if amount == 0 {
-                    continue;
-                }
-                let Some(cost) = amount.checked_mul(item.buy_price()) else {
-                    tui.show_message(
-                        "Purchase failed",
-                        "That quantity is too large.",
+                match crate::economy::buy_item_transaction(state, item, amount) {
+                    Ok(cost) => tui.show_message(
+                        "Purchase complete",
+                        &format!("Bought {} {} for {} gold.", amount, item.name(), cost),
                         Some(state),
-                    )?;
-                    continue;
-                };
-                if cost > state.player.gold {
-                    tui.show_message(
-                        "Purchase failed",
-                        "You do not have enough money.",
-                        Some(state),
-                    )?;
-                    continue;
+                    )?,
+                    Err(error) => {
+                        tui.show_message("Purchase failed", &error.to_string(), Some(state))?
+                    }
                 }
-                state.player.gold -= cost;
-                state.player.add_item(item, amount);
-                tui.show_message(
-                    "Purchase complete",
-                    &format!("Bought {} {} for {} gold.", amount, item.name(), cost),
-                    Some(state),
-                )?;
             }
             1 => {
                 let amount_text =
@@ -306,32 +300,25 @@ fn buy_sell_item(tui: &mut Tui, state: &mut GameState, item: ItemType) -> io::Re
                 } else {
                     match amount_text.parse::<u32>() {
                         Ok(value) => value,
-                        Err(_) => continue,
+                        Err(_) => {
+                            tui.show_message(
+                                "Sale failed",
+                                "Enter a whole number or type all.",
+                                Some(state),
+                            )?;
+                            continue;
+                        }
                     }
                 };
-                if amount == 0 || amount > owned {
-                    tui.show_message(
-                        "Sale failed",
-                        if amount == 0 {
-                            "Enter an amount greater than zero."
-                        } else {
-                            "You do not have that many items."
-                        },
-                        Some(state),
-                    )?;
-                    continue;
-                }
-                let Some(value) = amount.checked_mul(item.sell_price()) else {
-                    tui.show_message("Sale failed", "That quantity is too large.", Some(state))?;
-                    continue;
-                };
-                if state.player.remove_item(item, amount) {
-                    state.player.gold += value;
-                    tui.show_message(
+                match crate::economy::sell_item_transaction(state, item, amount) {
+                    Ok(revenue) => tui.show_message(
                         "Sale complete",
-                        &format!("Sold {} {} for {} gold.", amount, item.name(), value),
+                        &format!("Sold {} {} for {} gold.", amount, item.name(), revenue),
                         Some(state),
-                    )?;
+                    )?,
+                    Err(error) => {
+                        tui.show_message("Sale failed", &error.to_string(), Some(state))?
+                    }
                 }
             }
             _ => return Ok(()),

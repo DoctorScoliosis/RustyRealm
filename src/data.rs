@@ -513,7 +513,9 @@ pub fn get_ability(id: AbilityId) -> Ability {
 
 /// Positive values resist damage; negative values increase damage taken.
 pub fn get_npc_resistance(npc_name: &str, damage_type: DamageType) -> i32 {
-    match (npc_name, damage_type) {
+    // Elite encounters reuse their base monster's elemental affinities.
+    let base_name = npc_name.strip_prefix("Elite ").unwrap_or(npc_name);
+    match (base_name, damage_type) {
         ("Dragon", DamageType::Fire) => 75,
         ("Dragon", DamageType::Physical) => 25,
         ("Ent", DamageType::Fire) => -50,
@@ -539,6 +541,30 @@ impl LacoyxPhase {
             Self::Phase1Commander => "Phase 1: War Commander",
             Self::Phase2InfernalWarlord => "Phase 2: Infernal Warlord",
             Self::Phase3DesperateOverlord => "Phase 3: Desperate Overlord",
+        }
+    }
+}
+
+#[cfg(test)]
+mod npc_resistance_tests {
+    use super::*;
+
+    #[test]
+    fn elite_monsters_keep_their_base_elemental_affinities() {
+        for damage_type in [
+            DamageType::Physical,
+            DamageType::Fire,
+            DamageType::Poison,
+            DamageType::Arcane,
+        ] {
+            assert_eq!(
+                get_npc_resistance("Elite Dragon", damage_type),
+                get_npc_resistance("Dragon", damage_type)
+            );
+            assert_eq!(
+                get_npc_resistance("Elite Ent", damage_type),
+                get_npc_resistance("Ent", damage_type)
+            );
         }
     }
 }
