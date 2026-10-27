@@ -526,7 +526,7 @@ mod tests {
         let quest_id = state
             .active_quests
             .iter()
-            .find(|quest| matches!(quest.objective, QuestObjective::MonsterKills { .. }))
+            .find(|quest| matches!(&quest.objective, QuestObjective::MonsterKills { .. }))
             .unwrap()
             .id
             .clone();
@@ -547,6 +547,29 @@ mod tests {
         assert_eq!(claim_quest_reward(&mut state, &quest_id), Err(QuestError::AlreadyClaimed));
         assert_eq!(state.player.gold, gold_before + 250);
         assert!(state.player.quests_completed.contains(&quest_id));
+    }
+
+    #[test]
+    fn level_events_complete_combat_and_skill_objectives() {
+        let mut state = new_state();
+        let combat = state.active_quests.iter().find(|quest|
+            matches!(&quest.objective, QuestObjective::PlayerLevel { .. })
+        ).unwrap().clone();
+        if let QuestObjective::PlayerLevel { required_level } = combat.objective {
+            notify_event(&mut state, &GameEvent::PlayerLeveledUp { new_level: required_level });
+            assert!(state.active_quests.iter().find(|quest| quest.id == combat.id).unwrap().is_completed);
+        }
+
+        let skill = state.active_quests.iter().find(|quest|
+            matches!(&quest.objective, QuestObjective::SkillLevel { .. })
+        ).unwrap().clone();
+        if let QuestObjective::SkillLevel { skill_name, required_level } = skill.objective {
+            notify_event(&mut state, &GameEvent::SkillLeveledUp {
+                skill_name,
+                new_level: required_level,
+            });
+            assert!(state.active_quests.iter().find(|quest| quest.id == skill.id).unwrap().is_completed);
+        }
     }
 
     #[test]
