@@ -1,3 +1,4 @@
+mod achievements;
 mod bank;
 mod combat;
 mod combat_engine;
@@ -6,6 +7,7 @@ mod data;
 mod economy;
 mod event;
 mod inventory;
+mod mastery;
 mod quests;
 mod save;
 mod shops;
@@ -165,11 +167,21 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         "RealmBank",
         "Quest Hall",
         "Your Inventory",
+        "Mastery & Achievements",
         "Settings",
         "Log Out",
     ];
 
     loop {
+        let newly_unlocked = crate::achievements::evaluate_achievements(state);
+        if !newly_unlocked.is_empty() {
+            let notice = newly_unlocked
+                .iter()
+                .map(|a| format!("{} — {}", a.title, a.description))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            tui.show_message("Achievement unlocked", &notice, Some(state))?;
+        }
         crate::quests::check_and_refresh_quests(state);
         if let Err(error) = crate::save::save_game(state) {
             tui.show_message(
@@ -188,16 +200,13 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             4 => general_store(tui, state)?,
             5 => shops::max_shop(tui, state)?,
             6 => shops::smuggler(tui, state)?,
-            7 => {
-                if stronghold::stronghold_warning(tui, state)? {
-                    stronghold::stronghold_dungeon(tui, state)?;
-                }
-            }
+            7 => stronghold::enter_stronghold(tui, state)?,
             8 => skills::skill_plot(tui, state)?,
             9 => bank::bank_menu(tui, state)?,
             10 => quests::quest_hall(tui, state)?,
             11 => inventory::view_inventory(tui, state, false)?,
-            12 => settings_menu(tui, state)?,
+            12 => crate::achievements::progression_menu(tui, state)?,
+            13 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
@@ -236,7 +245,11 @@ fn general_store(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     "{} · owned {} · buy {}g / sell {}g",
                     item.name(),
                     state.player.get_item_count(*item),
-                    crate::economy::calculate_dynamic_buy_price(state, *item),
+                    crate::mastery::vendor_price(
+                        state,
+                        crate::economy::calculate_dynamic_buy_price(state, *item),
+                        0
+                    ),
                     crate::economy::calculate_dynamic_sell_price(state, *item)
                 )
             })

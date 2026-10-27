@@ -35,6 +35,7 @@ pub struct Combatant {
     pub mana: u32,
     pub max_mana: u32,
     pub attack_power: u32,
+    pub critical_chance_pct: u32,
     pub status_effects: Vec<StatusEffect>,
     pub shield_wall_duration: u32,
     pub is_stunned: bool,
@@ -53,6 +54,7 @@ impl Combatant {
             mana: player.mana,
             max_mana: player.max_mana,
             attack_power: player.weapon.max_damage().max(1),
+            critical_chance_pct: 5,
             status_effects: Vec::new(),
             shield_wall_duration: 0,
             is_stunned: false,
@@ -72,6 +74,7 @@ impl Combatant {
             mana: 50,
             max_mana: 50,
             attack_power: 30,
+            critical_chance_pct: 0,
             status_effects: Vec::new(),
             shield_wall_duration: 0,
             is_stunned: false,
@@ -164,6 +167,17 @@ impl Combatant {
 pub struct CombatEngine;
 
 impl CombatEngine {
+    pub fn is_critical_roll(chance: u32, roll: u32) -> bool {
+        roll % 100 < chance.min(100)
+    }
+    pub fn critical_hit_damage(base: u32, critical: bool) -> u32 {
+        if critical {
+            base.saturating_mul(2)
+        } else {
+            base
+        }
+    }
+
     /// Compute post-resistance and post-defence damage with integer output.
     /// Successful dodges are the only normal path that returns zero damage.
     pub fn calculate_damage(
@@ -247,6 +261,14 @@ impl CombatEngine {
                     .attack_power
                     .saturating_mul(ability.damage_multiplier)
                     / 100;
+                let critical = Self::is_critical_roll(
+                    player.critical_chance_pct,
+                    rand::thread_rng().gen_range(0..100),
+                );
+                let scaled_damage = Self::critical_hit_damage(scaled_damage, critical);
+                if critical {
+                    logs.push("Critical hit! Ability damage doubled.".into());
+                }
                 let (damage, damage_logs) = Self::calculate_damage(
                     scaled_damage,
                     ability.damage_type,
@@ -403,6 +425,14 @@ mod tests {
         Combatant::from_player(&Player::new("TestHero".into(), String::new()))
     }
 
+    #[test]
+    fn critical_helpers_respect_chance_and_saturate() {
+        assert!(CombatEngine::is_critical_roll(25, 24));
+        assert!(!CombatEngine::is_critical_roll(25, 25));
+        assert!(!CombatEngine::is_critical_roll(0, 0));
+        assert_eq!(CombatEngine::critical_hit_damage(100, true), 200);
+        assert_eq!(CombatEngine::critical_hit_damage(u32::MAX, true), u32::MAX);
+    }
     #[test]
     fn abilities_reject_insufficient_resources_without_deducting_anything() {
         let mut player = player();

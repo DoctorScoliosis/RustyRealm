@@ -259,7 +259,8 @@ pub fn buy_item_transaction(
     item_type: ItemType,
     quantity: u32,
 ) -> Result<u32, EconomyError> {
-    let unit_price = calculate_dynamic_buy_price(state, item_type);
+    let retail = calculate_dynamic_buy_price(state, item_type);
+    let unit_price = crate::mastery::vendor_price(state, retail, 0);
     buy_item_transaction_at_price(state, item_type, quantity, unit_price)
 }
 

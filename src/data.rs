@@ -115,6 +115,16 @@ impl WeaponTier {
         }
     }
 
+    pub fn rarity(&self) -> &'static str {
+        match self {
+            WeaponTier::BareHands | WeaponTier::Wooden => "Common",
+            WeaponTier::Stone | WeaponTier::Bronze => "Uncommon",
+            WeaponTier::Iron | WeaponTier::Steel => "Rare",
+            WeaponTier::Gold | WeaponTier::Crystal => "Epic",
+            _ => "Legendary",
+        }
+    }
+
     pub fn level_required(&self) -> u32 {
         match self {
             WeaponTier::BareHands => 1,
@@ -236,6 +246,16 @@ impl ArmourTier {
             ArmourTier::Chaotic => 50000,
             ArmourTier::Mythical => 1000000,
             ArmourTier::Alydril => 1750000,
+        }
+    }
+
+    pub fn rarity(&self) -> &'static str {
+        match self {
+            ArmourTier::None | ArmourTier::Cloth => "Common",
+            ArmourTier::Chain | ArmourTier::Bronze => "Uncommon",
+            ArmourTier::Iron | ArmourTier::Steel => "Rare",
+            ArmourTier::Gold | ArmourTier::Crystal => "Epic",
+            _ => "Legendary",
         }
     }
 
@@ -542,6 +562,67 @@ impl LacoyxPhase {
             Self::Phase2InfernalWarlord => "Phase 2: Infernal Warlord",
             Self::Phase3DesperateOverlord => "Phase 3: Desperate Overlord",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MasteryPerkId {
+    LumberjacksGreed,
+    MasterArtisan,
+    LethalPrecision,
+    SilverTongue,
+}
+impl MasteryPerkId {
+    pub const ALL: [Self; 4] = [
+        Self::LumberjacksGreed,
+        Self::MasterArtisan,
+        Self::LethalPrecision,
+        Self::SilverTongue,
+    ];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::LumberjacksGreed => "Lumberjack's Greed",
+            Self::MasterArtisan => "Master Artisan",
+            Self::LethalPrecision => "Lethal Precision",
+            Self::SilverTongue => "Silver Tongue",
+        }
+    }
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::LumberjacksGreed => "+25% expected Woodcutting and Mining yield.",
+            Self::MasterArtisan => "-15% recipe ingredients, minimum one each.",
+            Self::LethalPrecision => "+10 percentage points critical chance (maximum 25%).",
+            Self::SilverTongue => {
+                "15% discount at gold-priced vendors; total discount caps at 30%."
+            }
+        }
+    }
+}
+pub fn get_ascii_portrait(npc_name: &str) -> Vec<&'static str> {
+    if npc_name.contains("Lacoyx") {
+        vec![
+            r"       /\\_____/\\",
+            r"      /  o   o  \\",
+            r"     ( ==  ^  == )",
+            r"      ) INFERNAL (",
+            r"     (___________)",
+        ]
+    } else if npc_name.contains("Dragon") {
+        vec![
+            r"         /\\",
+            r"    ____/  \\___",
+            r"   (  o      o )",
+            r"    \\___/\\___/",
+            r"        /  \\",
+        ]
+    } else {
+        vec![
+            r"       .-^^^-.",
+            r"      /  o o  \\",
+            r"     |    ^    |",
+            r"      \\  '-'  /",
+            r"       '-----'",
+        ]
     }
 }
 
