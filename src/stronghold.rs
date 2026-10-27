@@ -25,12 +25,13 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
 
     let mut rng = rand::thread_rng();
     let npc_roll = rng.gen_range(1..=3);
-    let (npc_type, level, health) = match npc_roll {
-        1 => (NpcType::StrongholdMage, 110, 750),
-        2 => (NpcType::StrongholdRanger, 111, 750),
-        3 => (NpcType::StrongholdWarrior, 108, 750),
-        _ => (NpcType::StrongholdMage, 110, 750),
+    let (npc_type, level) = match npc_roll {
+        1 => (NpcType::StrongholdMage, 110),
+        2 => (NpcType::StrongholdRanger, 111),
+        3 => (NpcType::StrongholdWarrior, 108),
+        _ => (NpcType::StrongholdMage, 110),
     };
+    let health = npc_type.base_health();
     let mut current_health = health;
 
     tui.show_message(
@@ -120,8 +121,8 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     state.player.hp = state.player.max_hp;
     let npc_type = NpcType::Lacoyx;
     let level = 741;
-    let mut health = 2780;
-    let xp = 5000;
+    let mut health = npc_type.base_health();
+    let xp = npc_type.base_xp();
 
     tui.show_message(
         "Lacoyx's Throne Room",
