@@ -324,7 +324,7 @@ pub fn execute_recipe(
                 state
                     .player
                     .inventory_weapons
-                    .extend(std::iter::repeat(*tier).take(*count as usize));
+                    .extend(std::iter::repeat_n(*tier, *count as usize));
             }
         }
     }
@@ -475,6 +475,61 @@ mod tests {
         assert_eq!(result.xp_awarded, 0);
         assert_eq!(state.player.skills.smithing.current_xp, xp_at_cap);
         assert_eq!(state.player.skills.smithing.level, MAX_SKILL_LEVEL);
+    }
+
+    #[test]
+    fn cooking_transforms_raw_food_using_the_recipe_engine() {
+        let mut state = state();
+        state.player.add_item(ItemType::RawFood, 1);
+
+        let result = execute_recipe(&mut state, "cook_food").unwrap();
+
+        assert_eq!(state.player.get_item_count(ItemType::RawFood), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Food), 1);
+        assert_eq!(result.xp_awarded, 41);
+    }
+
+    #[test]
+    fn fletching_consumes_logs_and_thread_and_produces_a_bow() {
+        let mut state = state();
+        state.player.skills.woodcutting.level = 5;
+        state.player.add_item(ItemType::Logs, 2);
+        state.player.add_item(ItemType::Thread, 1);
+
+        let result = execute_recipe(&mut state, "fletch_bow").unwrap();
+
+        assert_eq!(state.player.get_item_count(ItemType::Logs), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Thread), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Bows), 1);
+        assert_eq!(result.xp_awarded, 40);
+    }
+
+    #[test]
+    fn gourmet_feast_consumes_raw_food_and_seeds() {
+        let mut state = state();
+        state.player.skills.cooking.level = 10;
+        state.player.add_item(ItemType::RawFood, 2);
+        state.player.add_item(ItemType::Seeds, 1);
+
+        let result = execute_recipe(&mut state, "cook_gourmet_feast").unwrap();
+
+        assert_eq!(state.player.get_item_count(ItemType::RawFood), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Seeds), 0);
+        assert_eq!(state.player.get_item_count(ItemType::GourmetFeast), 1);
+        assert_eq!(result.xp_awarded, 85);
+    }
+
+    #[test]
+    fn recipe_xp_uses_the_existing_threshold_and_emits_a_level_up() {
+        let mut state = state();
+        state.player.skills.smithing.xp_remaining = 10;
+        state.player.add_item(ItemType::Ore, 1);
+
+        let result = execute_recipe(&mut state, "smith_ingot").unwrap();
+
+        assert_eq!(result.level_up, Some(2));
+        assert_eq!(state.player.skills.smithing.level, 2);
+        assert_eq!(state.player.skills.smithing.xp_remaining, 200);
     }
 
     #[test]
