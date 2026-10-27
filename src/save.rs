@@ -1,90 +1,666 @@
-use std::fs;
-use std::path::PathBuf;
+use std::fmt;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
 use crate::state::{GameState, Player};
 
-pub fn get_save_dir() -> PathBuf {
+const CURRENT_SAVE_VERSION: u32 = 2;
+
+#[derive(Debug)]
+pub enum SaveError {
+    Io(std::io::Error),
+    Serialization(serde_json::Error),
+    ChecksumMismatch { expected: String, computed: String },
+    UnsupportedVersion(u32),
+    AuthenticationFailed,
+    InvalidPasswordHash,
+    PasswordHashingFailed,
+    PasswordMigrationRequired,
+    Corrupted(String),
+    ProjectDirectoriesUnavailable,
+    InvalidUsername,
+    AccountExists,
+    EmptyPassword,
+    UsernameMismatch,
+}
+
+impl fmt::Display for SaveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SaveError::Io(error) => write!(f, "Save-file I/O error: {error}"),
+            SaveError::Serialization(error) => write!(f, "Save serialisation error: {error}"),
+            SaveError::ChecksumMismatch { expected, computed } => write!(
+                f,
+                "Save checksum mismatch (stored {expected}, computed {computed}); the file may be corrupted."
+            ),
+            SaveError::UnsupportedVersion(version) => {
+                write!(f, "Unsupported save format version: {version}")
+            }
+            SaveError::AuthenticationFailed => write!(f, "Invalid username or password."),
+            SaveError::InvalidPasswordHash => {
+                write!(f, "The saved password hash is missing or invalid.")
+            }
+            SaveError::PasswordHashingFailed => write!(f, "Could not securely hash the password."),
+            SaveError::PasswordMigrationRequired => write!(
+                f,
+                "This legacy save has no verifiable password hash. Explicit password migration is required."
+            ),
+            SaveError::Corrupted(reason) => write!(f, "Save file is corrupted: {reason}"),
+            SaveError::ProjectDirectoriesUnavailable => {
+                write!(f, "Could not determine the platform-specific save directory.")
+            }
+            SaveError::InvalidUsername => {
+                write!(f, "Username must contain at least one supported character.")
+            }
+            SaveError::AccountExists => write!(f, "An account with that username already exists."),
+            SaveError::EmptyPassword => write!(f, "Password cannot be empty."),
+            SaveError::UsernameMismatch => {
+                write!(f, "The save username does not match the requested account.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SaveError {}
+
+impl From<std::io::Error> for SaveError {
+    fn from(error: std::io::Error) -> Self {
+        SaveError::Io(error)
+    }
+}
+
+impl From<serde_json::Error> for SaveError {
+    fn from(error: serde_json::Error) -> Self {
+        SaveError::Serialization(error)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AuthMetadata {
+    password_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SaveEnvelope {
+    version: u32,
+    checksum: String,
+    authentication: Option<AuthMetadata>,
+    data: GameState,
+}
+
+enum ParsedSave {
+    Current(SaveEnvelope),
+    Legacy(GameState),
+}
+
+pub fn get_save_dir() -> Result<PathBuf, SaveError> {
     let proj_dirs = directories::ProjectDirs::from("com", "rustyrealm", "RustyRealm")
-        .expect("Failed to get project directories");
+        .ok_or(SaveError::ProjectDirectoriesUnavailable)?;
     let save_dir = proj_dirs.data_dir().join("saves");
-    fs::create_dir_all(&save_dir).expect("Failed to create save directory");
-    save_dir
+    fs::create_dir_all(&save_dir)?;
+    Ok(save_dir)
 }
 
 pub fn sanitize_username(username: &str) -> String {
-    username.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect::<String>().to_lowercase()
+    username
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_')
+        .collect::<String>()
+        .to_lowercase()
 }
 
-pub fn hash_password(password: &str) -> String {
+pub fn hash_password(password: &str) -> Result<String, SaveError> {
+    if password.is_empty() {
+        return Err(SaveError::EmptyPassword);
+    }
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let password_hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .expect("Failed to hash password")
-        .to_string();
-    password_hash
-}
-
-pub fn verify_password(password: &str, password_hash: &str) -> bool {
-    let parsed_hash = PasswordHash::new(password_hash).expect("Failed to parse password hash");
     Argon2::default()
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .is_ok()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|_| SaveError::PasswordHashingFailed)
 }
 
-pub fn save_game(state: &GameState) -> Result<(), String> {
-    let save_dir = get_save_dir();
-    let file_path = save_dir.join(format!("{}.json", state.player.username));
-    
-    let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
-    fs::write(file_path, json).map_err(|e| e.to_string())?;
-    
-    Ok(())
-}
-
-pub fn load_game(username: &str, password: &str) -> Result<GameState, String> {
-    let safe_username = sanitize_username(username);
-    let save_dir = get_save_dir();
-    let file_path = save_dir.join(format!("{}.json", safe_username));
-    
-    if !file_path.exists() {
-        return Err("Invalid username.".to_string());
+pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, SaveError> {
+    if password_hash.trim().is_empty() {
+        return Err(SaveError::InvalidPasswordHash);
     }
-    
-    let json = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
-    let mut state: GameState = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    
-    if !verify_password(password, &state.player.password_hash) {
-        return Err("Invalid password.".to_string());
+
+    let parsed_hash =
+        PasswordHash::new(password_hash).map_err(|_| SaveError::InvalidPasswordHash)?;
+
+    match Argon2::default().verify_password(password.as_bytes(), &parsed_hash) {
+        Ok(()) => Ok(true),
+        Err(argon2::password_hash::Error::Password) => Ok(false),
+        Err(_) => Err(SaveError::InvalidPasswordHash),
     }
-    
-    // Re-cap values on load to prevent save file tampering
-    state.player.cap_values();
-    
-    Ok(state)
 }
 
-pub fn create_account(username: &str, password: &str) -> Result<GameState, String> {
+fn compute_checksum(state: &GameState) -> Result<String, SaveError> {
+    // Player::password_hash is #[serde(skip)], so authentication data is not
+    // duplicated in the payload checksum or written into the game-state object.
+    // Canonicalise through serde_json::Value before hashing. Player.items is a
+    // HashMap, whose iteration order is not stable across save/load or processes;
+    // hashing direct serialisation could otherwise reject an unchanged save.
+    let canonical_payload = serde_json::to_value(state)?;
+    let payload = serde_json::to_vec(&canonical_payload)?;
+    let mut hasher = Sha256::new();
+    hasher.update(payload);
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn backup_path(path: &Path) -> PathBuf {
+    path.with_extension("bak")
+}
+
+fn parent_dir(path: &Path) -> &Path {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
+fn temporary_path(path: &Path, purpose: &str) -> PathBuf {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("save");
+    parent_dir(path).join(format!(
+        ".{file_name}.{purpose}.{}.{}.tmp",
+        std::process::id(),
+        now
+    ))
+}
+
+fn replace_file(temp_path: &Path, destination: &Path) -> Result<(), SaveError> {
+    #[cfg(not(windows))]
+    {
+        fs::rename(temp_path, destination)?;
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    {
+        if !destination.exists() {
+            fs::rename(temp_path, destination)?;
+            return Ok(());
+        }
+
+        // std::fs::rename cannot replace an existing destination on Windows.
+        // The active save has already been backed up when it was valid, so use
+        // a recoverable swap and restore the destination if the second rename fails.
+        let displaced = temporary_path(destination, "previous");
+        if displaced.exists() {
+            fs::remove_file(&displaced)?;
+        }
+        fs::rename(destination, &displaced)?;
+        match fs::rename(temp_path, destination) {
+            Ok(()) => {
+                let _ = fs::remove_file(displaced);
+                Ok(())
+            }
+            Err(replace_error) => match fs::rename(&displaced, destination) {
+                Ok(()) => Err(SaveError::Io(replace_error)),
+                Err(restore_error) => Err(SaveError::Corrupted(format!(
+                    "replacement failed ({replace_error}) and restoring the previous file failed ({restore_error}); a recovery copy may remain at {}",
+                    displaced.display()
+                ))),
+            },
+        }
+    }
+}
+
+fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<(), SaveError> {
+    fs::create_dir_all(parent_dir(path))?;
+    let temp = temporary_path(path, "write");
+
+    let result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+        replace_file(&temp, path)?;
+
+        // Syncing the directory is supported on Unix-like systems. It is
+        // best-effort because some platforms do not allow opening directories.
+        if let Ok(directory) = File::open(parent_dir(path)) {
+            let _ = directory.sync_all();
+        }
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    result
+}
+
+fn read_save(path: &Path) -> Result<ParsedSave, SaveError> {
+    let mut file = File::open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    match serde_json::from_str::<SaveEnvelope>(&contents) {
+        Ok(envelope) => {
+            if envelope.version != CURRENT_SAVE_VERSION {
+                return Err(SaveError::UnsupportedVersion(envelope.version));
+            }
+
+            let computed = compute_checksum(&envelope.data)?;
+            if envelope.checksum != computed {
+                return Err(SaveError::ChecksumMismatch {
+                    expected: envelope.checksum,
+                    computed,
+                });
+            }
+
+            Ok(ParsedSave::Current(envelope))
+        }
+        Err(envelope_error) => match serde_json::from_str::<GameState>(&contents) {
+            Ok(mut legacy_state) => {
+                legacy_state.player.cap_values();
+                Ok(ParsedSave::Legacy(legacy_state))
+            }
+            Err(_) => Err(SaveError::Corrupted(format!(
+                "not a recognised save envelope or legacy game-state JSON ({envelope_error})"
+            ))),
+        },
+    }
+}
+
+fn save_to_path(state: &GameState, path: &Path) -> Result<(), SaveError> {
+    let mut safe_state = state.clone();
+    safe_state.player.cap_values();
+
+    let password_hash = state.player.password_hash.trim();
+    if password_hash.is_empty() {
+        return Err(SaveError::InvalidPasswordHash);
+    }
+
+    let checksum = compute_checksum(&safe_state)?;
+    let envelope = SaveEnvelope {
+        version: CURRENT_SAVE_VERSION,
+        checksum,
+        authentication: Some(AuthMetadata {
+            password_hash: password_hash.to_owned(),
+        }),
+        data: safe_state,
+    };
+    let serialised = serde_json::to_vec_pretty(&envelope)?;
+
+    // Only refresh the backup if the active file itself is valid. Do not use a
+    // loader that falls back to .bak here: doing so could copy a corrupt active
+    // file over the last known-good backup.
+    if path.exists() && read_save(path).is_ok() {
+        let current_contents = fs::read(path)?;
+        write_file_atomically(&backup_path(path), &current_contents)?;
+    }
+
+    write_file_atomically(path, &serialised)
+}
+
+pub fn save_game(state: &GameState) -> Result<(), SaveError> {
+    let path = get_save_dir()?.join(format!("{}.json", sanitize_username(&state.player.username)));
+    save_to_path(state, &path)
+}
+
+fn load_game_at(
+    path: &Path,
+    username: &str,
+    password: &str,
+) -> Result<GameState, SaveError> {
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
-        return Err("Username must contain alphanumeric characters.".to_string());
+        return Err(SaveError::InvalidUsername);
     }
-    
-    let save_dir = get_save_dir();
-    let file_path = save_dir.join(format!("{}.json", safe_username));
-    
-    if file_path.exists() {
-        return Err("Username already exists.".to_string());
+
+    let (parsed, loaded_from_backup) = match read_save(path) {
+        Ok(save) => (save, false),
+        Err(error) if matches!(&error, SaveError::UnsupportedVersion(_)) => return Err(error),
+        Err(primary_error) => {
+            let backup = backup_path(path);
+            if !backup.exists() {
+                return Err(primary_error);
+            }
+            match read_save(&backup) {
+                Ok(save) => (save, true),
+                Err(_) => return Err(primary_error),
+            }
+        }
+    };
+
+    let mut state = match parsed {
+        ParsedSave::Legacy(state) => {
+            if sanitize_username(&state.player.username) != safe_username {
+                return Err(SaveError::UsernameMismatch);
+            }
+            return Err(SaveError::PasswordMigrationRequired);
+        }
+        ParsedSave::Current(envelope) => {
+            if sanitize_username(&envelope.data.player.username) != safe_username {
+                return Err(SaveError::UsernameMismatch);
+            }
+            let auth = envelope
+                .authentication
+                .ok_or(SaveError::PasswordMigrationRequired)?;
+            if !verify_password(password, &auth.password_hash)? {
+                return Err(SaveError::AuthenticationFailed);
+            }
+
+            let mut state = envelope.data;
+            state.player.password_hash = auth.password_hash;
+            state
+        }
+    };
+
+    state.player.cap_values();
+
+    // Restore only after a candidate backup has passed checksum and password
+    // validation. The original corrupt file is never copied over the backup.
+    if loaded_from_backup {
+        let contents = fs::read(backup_path(path))?;
+        write_file_atomically(path, &contents)?;
     }
-    
-    let password_hash = hash_password(password);
+
+    Ok(state)
+}
+
+pub fn load_game(username: &str, password: &str) -> Result<GameState, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    load_game_at(&path, &safe_username, password)
+}
+
+fn migrate_legacy_at(
+    path: &Path,
+    username: &str,
+    new_password: &str,
+) -> Result<GameState, SaveError> {
+    if new_password.is_empty() {
+        return Err(SaveError::EmptyPassword);
+    }
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+
+    let parsed = match read_save(path) {
+        Ok(save) => save,
+        Err(primary_error) => {
+            let backup = backup_path(path);
+            if !backup.exists() {
+                return Err(primary_error);
+            }
+            match read_save(&backup) {
+                Ok(save) => save,
+                Err(_) => return Err(primary_error),
+            }
+        }
+    };
+
+    let mut state = match parsed {
+        ParsedSave::Legacy(state) => state,
+        ParsedSave::Current(envelope) if envelope.authentication.is_none() => envelope.data,
+        ParsedSave::Current(_) => return Err(SaveError::AuthenticationFailed),
+    };
+
+    if sanitize_username(&state.player.username) != safe_username {
+        return Err(SaveError::UsernameMismatch);
+    }
+
+    // Legacy JSON omitted password_hash via #[serde(skip)], so the old password
+    // cannot be verified. The UI must explain this and obtain explicit consent
+    // before calling this function with a newly chosen password.
+    state.player.password_hash = hash_password(new_password)?;
+    state.player.cap_values();
+    save_to_path(&state, path)?;
+    Ok(state)
+}
+
+pub fn migrate_legacy_save(username: &str, new_password: &str) -> Result<GameState, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    migrate_legacy_at(&path, &safe_username, new_password)
+}
+
+pub fn create_account(username: &str, password: &str) -> Result<GameState, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    if password.is_empty() {
+        return Err(SaveError::EmptyPassword);
+    }
+
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    if path.exists() {
+        return Err(SaveError::AccountExists);
+    }
+
+    let password_hash = hash_password(password)?;
     let player = Player::new(safe_username, password_hash);
     let state = GameState::new(player);
-    
-    save_game(&state)?;
-    
+    save_to_path(&state, &path)?;
     Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::Player;
+
+    fn test_dir(label: &str) -> PathBuf {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "rustyrealm-save-tests-{}-{}-{}",
+            std::process::id(),
+            now,
+            label
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn test_state(username: &str, password: &str) -> GameState {
+        let hash = hash_password(password).unwrap();
+        GameState::new(Player::new(username.to_owned(), hash))
+    }
+
+    #[test]
+    fn save_load_roundtrip_preserves_state_and_authentication() {
+        let dir = test_dir("roundtrip");
+        let path = dir.join("player.json");
+        let mut state = test_state("player", "secret");
+        state.player.gold = 4321;
+        state.player.add_item(crate::data::ItemType::Logs, 7);
+
+        save_to_path(&state, &path).unwrap();
+        let loaded = load_game_at(&path, "player", "secret").unwrap();
+        assert_eq!(loaded.player.gold, 4321);
+        assert_eq!(loaded.player.get_item_count(crate::data::ItemType::Logs), 7);
+        assert!(!loaded.player.password_hash.is_empty());
+        assert!(load_game_at(&path, "player", "wrong").is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn invalid_password_hash_does_not_panic() {
+        assert!(verify_password("anything", "").is_err());
+        assert!(verify_password("anything", "not-a-password-hash").is_err());
+    }
+
+    #[test]
+    fn legacy_save_requires_explicit_password_migration() {
+        let dir = test_dir("legacy");
+        let path = dir.join("legacy.json");
+        let legacy_state = GameState::new(Player::new("legacy".into(), "discarded-hash".into()));
+        fs::write(&path, serde_json::to_vec_pretty(&legacy_state).unwrap()).unwrap();
+
+        assert!(matches!(
+            load_game_at(&path, "legacy", "old-password"),
+            Err(SaveError::PasswordMigrationRequired)
+        ));
+
+        let migrated = migrate_legacy_at(&path, "legacy", "new-password").unwrap();
+        assert_eq!(migrated.player.username, "legacy");
+        assert!(load_game_at(&path, "legacy", "new-password").is_ok());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn checksum_detects_payload_changes() {
+        let dir = test_dir("checksum");
+        let path = dir.join("player.json");
+        let state = test_state("checksum", "secret");
+        save_to_path(&state, &path).unwrap();
+
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["data"]["player"]["hp"] = serde_json::json!(17);
+        fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
+
+        assert!(matches!(
+            load_game_at(&path, "checksum", "secret"),
+            Err(SaveError::ChecksumMismatch { .. })
+        ));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn corrupt_active_save_restores_only_from_valid_backup() {
+        let dir = test_dir("backup");
+        let path = dir.join("player.json");
+        let mut state = test_state("backup", "secret");
+        state.player.gold = 100;
+        save_to_path(&state, &path).unwrap();
+
+        state.player.gold = 500;
+        save_to_path(&state, &path).unwrap();
+        assert!(backup_path(&path).exists());
+
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["data"]["player"]["gold"] = serde_json::json!(9999);
+        fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
+
+        let loaded = load_game_at(&path, "backup", "secret").unwrap();
+        assert_eq!(loaded.player.gold, 100);
+        assert!(read_save(&path).is_ok());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn validation_clamps_bad_values_without_discarding_the_character() {
+        let dir = test_dir("validation");
+        let path = dir.join("player.json");
+        let mut state = test_state("validated", "secret");
+        state.player.max_hp = 1200;
+        state.player.hp = u32::MAX;
+        state.player.gold = u32::MAX;
+        state.player.bank_accounts[0].gold = u32::MAX;
+        state.player.skills.woodcutting.level = 250;
+
+        save_to_path(&state, &path).unwrap();
+        let loaded = load_game_at(&path, "validated", "secret").unwrap();
+
+        assert_eq!(loaded.player.max_hp, 1000);
+        assert_eq!(loaded.player.hp, 1000);
+        assert_eq!(loaded.player.gold, crate::data::MAX_GOLD);
+        assert_eq!(loaded.player.bank_accounts[0].gold, crate::data::MAX_BANK_GOLD);
+        assert_eq!(loaded.player.skills.woodcutting.level, crate::data::MAX_SKILL_LEVEL);
+        assert_eq!(loaded.player.skills.woodcutting.xp_remaining, 0);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unsupported_future_version_is_not_replaced_by_an_older_backup() {
+        let dir = test_dir("future-version");
+        let path = dir.join("player.json");
+        let state = test_state("future", "secret");
+        save_to_path(&state, &path).unwrap();
+
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["version"] = serde_json::json!(CURRENT_SAVE_VERSION + 1);
+        fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
+
+        assert!(matches!(
+            load_game_at(&path, "future", "secret"),
+            Err(SaveError::UnsupportedVersion(_))
+        ));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_corrupt_active_file_does_not_overwrite_the_last_good_backup() {
+        let dir = test_dir("preserve-backup");
+        let path = dir.join("player.json");
+        let mut state = test_state("preserve", "secret");
+        state.player.gold = 123;
+        save_to_path(&state, &path).unwrap();
+
+        state.player.gold = 456;
+        save_to_path(&state, &path).unwrap();
+
+        fs::write(&path, "truncated and invalid JSON").unwrap();
+
+        // Saving a valid in-memory state can recover the active file, but the
+        // invalid active bytes must never replace the known-good backup.
+        state.player.gold = 789;
+        save_to_path(&state, &path).unwrap();
+
+        let backed_up = match read_save(&backup_path(&path)).unwrap() {
+            ParsedSave::Current(envelope) => envelope.data,
+            ParsedSave::Legacy(_) => panic!("expected a versioned backup"),
+        };
+        assert_eq!(backed_up.player.gold, 123);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn failed_save_without_authentication_leaves_existing_file_untouched() {
+        let dir = test_dir("failed-write");
+        let path = dir.join("player.json");
+        let valid = test_state("failed", "secret");
+        save_to_path(&valid, &path).unwrap();
+        let before = fs::read(&path).unwrap();
+
+        let invalid = GameState::new(Player::new("failed".into(), String::new()));
+        assert!(matches!(
+            save_to_path(&invalid, &path),
+            Err(SaveError::InvalidPasswordHash)
+        ));
+        assert_eq!(fs::read(&path).unwrap(), before);
+
+        let _ = fs::remove_dir_all(dir);
+    }
 }

@@ -60,8 +60,43 @@ fn login() -> Option<GameState> {
             print_success(&format!("Welcome back, {}!", state.player.username));
             Some(state)
         }
-        Err(e) => {
-            print_error(&e);
+        Err(crate::save::SaveError::PasswordMigrationRequired) => {
+            clear_screen();
+            println!("This save predates password-hash persistence.");
+            println!("The old password cannot be verified because no hash was stored.");
+            println!("Your entered password has NOT been accepted as proof of ownership.");
+            println!("Because this is a local save, you may explicitly choose a new password");
+            println!("to migrate it. Cancelling leaves the save unchanged.\n");
+
+            let choice = crate::ui::get_input("Set a new password for this local save? Type YES to continue: ");
+            if choice != "YES" {
+                return None;
+            }
+
+            let new_password = crate::ui::get_hidden_input("New password: ");
+            if new_password.is_empty() {
+                print_error("Password cannot be empty.");
+                return None;
+            }
+            let confirmation = crate::ui::get_hidden_input("Confirm new password: ");
+            if new_password != confirmation {
+                print_error("Passwords do not match. The save has not been changed.");
+                return None;
+            }
+
+            match crate::save::migrate_legacy_save(&username, &new_password) {
+                Ok(state) => {
+                    print_success("Legacy save migrated and password protection updated.");
+                    Some(state)
+                }
+                Err(error) => {
+                    print_error(&error.to_string());
+                    None
+                }
+            }
+        }
+        Err(error) => {
+            print_error(&error.to_string());
             None
         }
     }
@@ -87,7 +122,7 @@ fn create_account() -> Option<GameState> {
             Some(state)
         }
         Err(e) => {
-            print_error(&e);
+            print_error(&e.to_string());
             None
         }
     }

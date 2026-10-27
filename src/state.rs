@@ -147,18 +147,58 @@ impl Player {
         }
     }
 
+    /// Clamp persisted player values to valid game limits without discarding the
+    /// remainder of the player's progress.
     pub fn cap_values(&mut self) {
-        if self.hp > 1000 { self.hp = 1000; }
-        if self.combat_level > MAX_PLAYER_LEVEL { self.combat_level = MAX_PLAYER_LEVEL; }
-        if self.gold > MAX_GOLD { self.gold = MAX_GOLD; }
-        if self.xp > 1_000_000 { self.xp = 1_000_000; }
-        
-        for skill in [&mut self.skills.woodcutting, &mut self.skills.cooking, &mut self.skills.fishing, 
-                      &mut self.skills.mining, &mut self.skills.smithing, &mut self.skills.thieving] {
+        if self.combat_level == 0 {
+            self.combat_level = 1;
+        }
+        if self.combat_level > MAX_PLAYER_LEVEL {
+            self.combat_level = MAX_PLAYER_LEVEL;
+        }
+
+        if self.max_hp == 0 {
+            self.max_hp = 100;
+        }
+        if self.max_hp > 1000 {
+            self.max_hp = 1000;
+        }
+        if self.hp > self.max_hp {
+            self.hp = self.max_hp;
+        }
+
+        if self.gold > MAX_GOLD {
+            self.gold = MAX_GOLD;
+        }
+        if self.xp > 1_000_000 {
+            self.xp = 1_000_000;
+        }
+
+        for skill in [
+            &mut self.skills.woodcutting,
+            &mut self.skills.cooking,
+            &mut self.skills.fishing,
+            &mut self.skills.mining,
+            &mut self.skills.smithing,
+            &mut self.skills.thieving,
+        ] {
+            if skill.level == 0 {
+                skill.level = 1;
+            }
             if skill.level > MAX_SKILL_LEVEL {
                 skill.level = MAX_SKILL_LEVEL;
+            }
+            if skill.level >= MAX_SKILL_LEVEL {
                 skill.xp_remaining = 0;
             }
+        }
+
+        for account in &mut self.bank_accounts {
+            if account.gold > MAX_BANK_GOLD {
+                account.gold = MAX_BANK_GOLD;
+            }
+            // A full account should be closed; a non-full account can be reopened.
+            account.is_closed = account.gold >= MAX_BANK_GOLD;
         }
     }
 
