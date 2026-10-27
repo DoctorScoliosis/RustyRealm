@@ -294,6 +294,7 @@ pub fn run_engine_battle(
                     player.stamina = state.player.stamina;
                     player.max_stamina = state.player.max_stamina;
                     player.mana = state.player.mana;
+                    player.attack_power = state.player.weapon.max_damage().max(1);
                     player.max_mana = state.player.max_mana;
                     continue;
                 }
