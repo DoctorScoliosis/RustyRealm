@@ -48,13 +48,20 @@ impl fmt::Display for CraftingError {
                 item.name()
             ),
             Self::OutputOverflow(item) => {
-                write!(f, "Crafting would exceed the inventory limit for {}.", item.name())
+                write!(
+                    f,
+                    "Crafting would exceed the inventory limit for {}.",
+                    item.name()
+                )
             }
             Self::InvalidRecipeDefinition(id) => {
                 write!(f, "Recipe {id} has an invalid or overflowing quantity.")
             }
             Self::InventoryCapacity => {
-                write!(f, "There is not enough memory available to store the crafted weapon.")
+                write!(
+                    f,
+                    "There is not enough memory available to store the crafted weapon."
+                )
             }
         }
     }
@@ -289,16 +296,22 @@ pub fn execute_recipe(
                 if *count == 0 {
                     return Err(CraftingError::InvalidRecipeDefinition(recipe.id.clone()));
                 }
-                weapon_output_count = weapon_output_count
-                    .checked_add(usize::try_from(*count).map_err(|_| {
-                        CraftingError::InvalidRecipeDefinition(recipe.id.clone())
-                    })?)
-                    .ok_or_else(|| CraftingError::InvalidRecipeDefinition(recipe.id.clone()))?;
+                weapon_output_count =
+                    weapon_output_count
+                        .checked_add(usize::try_from(*count).map_err(|_| {
+                            CraftingError::InvalidRecipeDefinition(recipe.id.clone())
+                        })?)
+                        .ok_or_else(|| CraftingError::InvalidRecipeDefinition(recipe.id.clone()))?;
             }
         }
     }
     for (item, count) in &output_totals {
-        if state.player.get_item_count(*item).checked_add(*count).is_none() {
+        if state
+            .player
+            .get_item_count(*item)
+            .checked_add(*count)
+            .is_none()
+        {
             return Err(CraftingError::OutputOverflow(*item));
         }
     }
@@ -512,7 +525,10 @@ mod tests {
 
         assert!(matches!(
             execute_recipe(&mut state, "fletch_bow"),
-            Err(CraftingError::InsufficientIngredients { item: ItemType::Thread, .. })
+            Err(CraftingError::InsufficientIngredients {
+                item: ItemType::Thread,
+                ..
+            })
         ));
         assert_eq!(state.player.get_item_count(ItemType::Logs), 2);
         assert_eq!(state.player.get_item_count(ItemType::Thread), 0);

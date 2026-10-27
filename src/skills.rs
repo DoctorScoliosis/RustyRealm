@@ -129,7 +129,6 @@ pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
-
 /// Execute a recipe and report the actual transaction result to the player.
 fn run_recipe(tui: &mut Tui, state: &mut GameState, recipe_id: &str) -> io::Result<String> {
     match execute_recipe(state, recipe_id) {
@@ -184,11 +183,9 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             .collect();
         let mut options = vec![action_label];
         options.extend(
-            recipes
-                .iter()
-                .map(|recipe| {
-                    format!("Craft: {} (Req Lvl {})", recipe.name, recipe.required_level)
-                }),
+            recipes.iter().map(|recipe| {
+                format!("Craft: {} (Req Lvl {})", recipe.name, recipe.required_level)
+            }),
         );
         options.push("Back".into());
         let option_refs: Vec<&str> = options.iter().map(String::as_str).collect();
