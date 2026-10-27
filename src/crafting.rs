@@ -255,6 +255,7 @@ pub fn execute_recipe(
         });
     }
 
+    let master_artisan = crate::mastery::has_perk(state, crate::data::MasteryPerkId::MasterArtisan);
     // Aggregate requirements first so duplicate inputs cannot bypass validation.
     let mut input_totals: HashMap<ItemType, u32> = HashMap::new();
     for (item, count) in &recipe.inputs {
@@ -265,6 +266,11 @@ pub fn execute_recipe(
         *total = total
             .checked_add(*count)
             .ok_or_else(|| CraftingError::InvalidRecipeDefinition(recipe.id.clone()))?;
+    }
+    if master_artisan {
+        for required in input_totals.values_mut() {
+            *required = crate::mastery::discounted_ingredient_count(*required);
+        }
     }
     for (item, required) in &input_totals {
         let available = state.player.get_item_count(*item);
@@ -593,4 +599,15 @@ mod tests {
         assert_eq!(get_recipes_for_skill("cOoKiNg").len(), 2);
         assert_eq!(get_recipes_for_skill("woodcutting").len(), 1);
     }
+    #[test]
+    fn master_artisan_reduces_iron_sword_ingredient_requirement() {
+        let mut state = state();
+        state.player.skills.smithing.level = 5;
+        state.player.add_item(ItemType::Ingots, 2);
+        state.mastery_perks.push(crate::data::MasteryPerkId::MasterArtisan);
+        execute_recipe(&mut state, "smith_iron_sword").unwrap();
+        assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
+        assert!(state.player.inventory_weapons.contains(&WeaponTier::Iron));
+    }
+
 }
