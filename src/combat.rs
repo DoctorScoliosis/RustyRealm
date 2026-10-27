@@ -180,10 +180,10 @@ pub fn run_engine_battle(
             } else {
                 0.0
             };
-            let phase_label = enemy
-                .lacoyx_phase
-                .map(|phase| format!("{} · ", phase.name()))
-                .unwrap_or_default();
+            let phase_label = match enemy.lacoyx_phase {
+                Some(phase) => format!("{} · ", phase.name()),
+                None => String::new(),
+            };
             frame.render_widget(
                 Gauge::default()
                     .block(
