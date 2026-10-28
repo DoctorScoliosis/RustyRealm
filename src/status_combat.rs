@@ -462,20 +462,16 @@ mod tests {
         assert!(e.combatant(CombatantId(1)).unwrap().hp < 100);
 
         let mut e = encounter();
-        let telegraph = TelegraphedAction {
-            actor: CombatantId(3),
-            target: CombatantId(1),
-            action: CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) },
-            name: "Dragon Bite".into(),
-            description: "A physical bite at Hero".into(),
-            damage_type: DamageType::Physical,
-            damage: 20,
-        };
-        e.apply_action(CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) }, 99, 99).ok();
-        // Rebuild state with the target removed from action eligibility.
-        let mut e = encounter();
-        e.apply_status_effect(CombatantId(1), StatusEffectKind::Stun, Some(CombatantId(3)), 1, 1, 100, 0).ok();
-        assert!(matches!(resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(), TelegraphState::Cancelled { .. }));
+        e.apply_action(
+            CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) },
+            0,
+            0,
+        ).unwrap();
+        // The actor has already acted; a second telegraph is cancelled by common validation.
+        assert!(matches!(
+            resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
+            TelegraphState::Cancelled { .. }
+        ));
     }
 
     #[test]
