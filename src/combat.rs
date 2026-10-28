@@ -729,11 +729,7 @@ mod encounter_tests {
         );
         assert!(!WANDERING_ENEMIES.iter().any(|npc| matches!(
             *npc,
-            NpcType::Human
-                | NpcType::Farmer
-                | NpcType::Bear
-                | NpcType::Rat
-                | NpcType::Thief
+            NpcType::Human | NpcType::Farmer | NpcType::Bear | NpcType::Rat | NpcType::Thief
         )));
     }
 
