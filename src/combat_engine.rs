@@ -117,6 +117,12 @@ impl Combatant {
         while index < self.status_effects.len() {
             let effect = &mut self.status_effects[index];
             match effect.kind {
+                StatusEffectKind::Slow
+                | StatusEffectKind::Mark
+                | StatusEffectKind::WeakenedDefences => {
+                    // These tactical effects are consumed by the Section 13
+                    // party-combat domain; legacy battles do not use attributes.
+                }
                 StatusEffectKind::Bleed => {
                     self.hp = self.hp.saturating_sub(effect.potency);
                     logs.push(format!(

@@ -8,6 +8,11 @@
 use crate::data::{get_ability, AbilityId};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
+use crate::status_combat::{
+    apply_status, defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects,
+    StatusApplication, StatusEffect, StatusEffectKind, StatusResistance, StatusTick,
+    MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
+};
 use std::collections::HashSet;
 
 pub const MIN_STAT: i16 = 0;
@@ -215,6 +220,10 @@ pub struct EncounterCombatant {
     pub mastery_attributes: CombatAttributes,
     pub attributes: CombatAttributes,
     pub attack_range: RangeProfile,
+    /// Shared effects apply equally to players, companions, and enemies.
+    pub status_effects: Vec<StatusEffect>,
+    /// Status resistance is separate from damage defence.
+    pub status_resistance: StatusResistance,
 }
 impl EncounterCombatant {
     pub fn new(
@@ -252,7 +261,19 @@ impl EncounterCombatant {
             mastery_attributes: CombatAttributes::default(),
             attributes: CombatAttributes::default(),
             attack_range: RangeProfile::MELEE,
+            status_effects: Vec::new(),
+            status_resistance: StatusResistance { resistance_pct: 0 },
         };
+        if allegiance == Allegiance::Enemies {
+            let profile = crate::status_combat::EnemyProfile::for_name(&c.name);
+            if matches!(
+                profile.archetype,
+                crate::status_combat::EnemyArchetype::RangedPressure
+                    | crate::status_combat::EnemyArchetype::StatusSpecialist
+            ) {
+                c.attack_range = RangeProfile::RANGED;
+            }
+        }
         c.recalculate_attributes();
         c
     }
@@ -281,6 +302,15 @@ impl EncounterCombatant {
     }
     pub fn can_act(&self) -> bool {
         self.condition == CombatantCondition::Ready && self.hp > 0
+    }
+    pub fn slow_penalty(&self) -> i16 {
+        slow_penalty(&self.status_effects)
+    }
+    pub fn mark_hit_bonus(&self) -> u8 {
+        mark_hit_bonus(&self.status_effects)
+    }
+    pub fn defence_vulnerability_pct(&self) -> u8 {
+        defence_vulnerability_pct(&self.status_effects)
     }
     fn sync_condition(&mut self) {
         if self.hp == 0 {
@@ -408,7 +438,10 @@ impl Encounter {
                 .iter()
                 .find(|c| c.id == *id)
                 .expect("ID from combatant roster");
-            (std::cmp::Reverse(c.attributes.speed), c.id)
+            (
+                std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())),
+                c.id,
+            )
         });
         let positions = combatants
             .iter()
@@ -577,8 +610,9 @@ impl Encounter {
         };
         (70_i16 + (attacker.attributes.accuracy - BASE_STAT) / 2
             - (defender.attributes.evasion - BASE_STAT) / 2
-            - penalty)
-            .clamp(MIN_HIT_CHANCE as i16, MAX_HIT_CHANCE as i16) as u8
+            - penalty
+            + i16::from(defender.mark_hit_bonus()))
+        .clamp(MIN_HIT_CHANCE as i16, MAX_HIT_CHANCE as i16) as u8
     }
     pub fn legal_targets(
         &self,
@@ -630,6 +664,64 @@ impl Encounter {
             .then_some(id)
         })
     }
+    /// Apply status ticks at the start of the selected combatant's activation.
+    /// A status inflicted during an action therefore begins ticking next activation.
+    pub fn tick_current_actor_statuses(&mut self) -> Vec<(CombatantId, StatusTick)> {
+        let Some(id) = self.current_actor() else {
+            return Vec::new();
+        };
+        let (ticks, defeated, stunned) = {
+            let Some(actor) = self.combatant_mut(id) else {
+                return Vec::new();
+            };
+            let ticks = tick_status_effects(&mut actor.status_effects);
+            for tick in &ticks {
+                if let StatusTick::Damage { amount, .. } = tick {
+                    actor.hp = actor.hp.saturating_sub(*amount);
+                    actor.sync_condition();
+                }
+            }
+            let defeated = !actor.can_act();
+            let stunned = ticks.iter().any(|tick| matches!(tick, StatusTick::Stunned));
+            (ticks, defeated, stunned)
+        };
+        if defeated || stunned {
+            self.consume_turn(id);
+            self.refresh_outcome();
+        }
+        ticks.into_iter().map(|tick| (id, tick)).collect()
+    }
+
+    /// Status application shares the same typed storage for every combatant role.
+    pub fn apply_status_effect(
+        &mut self,
+        target_id: CombatantId,
+        kind: StatusEffectKind,
+        source: Option<CombatantId>,
+        potency: u32,
+        duration: u32,
+        chance_pct: u8,
+        roll: u32,
+    ) -> Result<StatusApplication, EncounterError> {
+        let target = self
+            .combatant_mut(target_id)
+            .ok_or(EncounterError::MissingTarget(target_id))?;
+        let effect = StatusEffect {
+            kind,
+            source,
+            potency: potency.min(MAX_EFFECT_POTENCY),
+            remaining_activations: duration.min(MAX_EFFECT_DURATION),
+            application_chance_pct: chance_pct.min(100),
+        };
+        let result = crate::status_combat::apply_status(
+            &mut target.status_effects,
+            effect,
+            target.status_resistance.resistance_pct,
+            roll,
+        );
+        Ok(result)
+    }
+
     fn consume_turn(&mut self, actor: CombatantId) {
         self.acted_this_round.insert(actor);
         if let Some(idx) = self.initiative.iter().position(|id| *id == actor) {
@@ -642,6 +734,10 @@ impl Encounter {
         if !remaining {
             self.acted_this_round.clear();
             self.round = self.round.saturating_add(1);
+            self.initiative.sort_by_key(|id| {
+                let c = self.combatant(*id).expect("initiative ID from roster");
+                (std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())), c.id)
+            });
             self.turn_index = 0;
         }
     }
@@ -663,6 +759,34 @@ impl Encounter {
         }
         if self.acted_this_round.contains(&actor_id) {
             return Err(EncounterError::TurnAlreadyUsed(actor_id));
+        }
+        let stunned = self.combatant(actor_id).is_some_and(|actor| {
+            actor
+                .status_effects
+                .iter()
+                .any(|effect| effect.kind == StatusEffectKind::Stun)
+        });
+        if stunned {
+            let actor = self.combatant_mut(actor_id).expect("actor validated");
+            let ticks = tick_status_effects(&mut actor.status_effects);
+            for tick in &ticks {
+                if let StatusTick::Damage { amount, .. } = tick {
+                    actor.hp = actor.hp.saturating_sub(*amount);
+                }
+            }
+            actor.sync_condition();
+            self.consume_turn(actor_id);
+            self.refresh_outcome();
+            return Ok(ActionResult {
+                actor: actor_id,
+                target: None,
+                damage: 0,
+                healing: 0,
+                outcome: self.outcome,
+                hit: None,
+                hit_chance: None,
+                message: "stunned; activation skipped",
+            });
         }
         if matches!(&action, CombatAction::Retreat { .. }) {
             self.consume_turn(actor_id);
@@ -774,10 +898,16 @@ impl Encounter {
         let crit_chance = (5_i16 + source.class.definition().critical).clamp(0, 25) as u32;
         let critical = hit && critical_roll % 100 < crit_chance;
         let scaled = if critical { raw.saturating_mul(2) } else { raw };
+        let vulnerability = u64::from(target.defence_vulnerability_pct());
+        let vulnerable_scaled =
+            (u64::from(scaled) * (100 + vulnerability) / 100).min(u64::from(u32::MAX)) as u32;
         let damage = if !hit || scaled == 0 {
             0
         } else {
-            scaled.saturating_sub(target.defence).max(1).min(target.hp)
+            vulnerable_scaled
+                .saturating_sub(target.defence)
+                .max(1)
+                .min(target.hp)
         };
         if let Some(def) = &ability {
             let source = self
@@ -796,6 +926,32 @@ impl Encounter {
                 .expect("target validated");
             target.hp -= damage;
             target.sync_condition();
+        }
+        if hit && self.combatant(target_id).is_some_and(EncounterCombatant::can_act) {
+            let source_is_enemy = self
+                .combatant(actor_id)
+                .is_some_and(|source| source.allegiance == Allegiance::Enemies);
+            let payload = if source_is_enemy {
+                let source_name = &self.combatant(actor_id).expect("actor validated").name;
+                crate::status_combat::EnemyProfile::for_name(source_name).status_payload
+            } else {
+                match ability_id {
+                    Some(AbilityId::HeavyStrike) => Some((StatusEffectKind::Bleed, 2, 6, 100)),
+                    Some(AbilityId::Cleave) => Some((StatusEffectKind::Stun, 1, 1, 100)),
+                    _ => None,
+                }
+            };
+            if let Some((kind, duration, potency, chance_pct)) = payload {
+                let _ = self.apply_status_effect(
+                    target_id,
+                    kind,
+                    Some(actor_id),
+                    potency,
+                    duration,
+                    chance_pct,
+                    critical_roll,
+                )?;
+            }
         }
         self.consume_turn(actor_id);
         self.refresh_outcome();
@@ -947,6 +1103,39 @@ mod tests {
         );
         assert_eq!(e, before);
     }
+    #[test]
+    fn shared_status_lifecycle_ticks_all_combatant_roles_and_skips_stun() {
+        let mut e = encounter();
+        assert_eq!(e.current_actor(), Some(CombatantId(1)));
+        e.apply_status_effect(CombatantId(1), StatusEffectKind::Poison, Some(CombatantId(3)), 7, 2, 100, 0).unwrap();
+        let ticks = e.tick_current_actor_statuses();
+        assert!(ticks.iter().any(|(_, tick)| matches!(tick, StatusTick::Damage { amount: 7, .. })));
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 93);
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().status_effects[0].remaining_activations, 1);
+
+        e.apply_status_effect(CombatantId(1), StatusEffectKind::Stun, Some(CombatantId(3)), 1, 1, 100, 0).unwrap();
+        // Poison ticks again at this activation; Stun then consumes the activation.
+        let ticks = e.tick_current_actor_statuses();
+        assert!(ticks.iter().any(|(_, tick)| matches!(tick, StatusTick::Stunned)));
+        assert_ne!(e.current_actor(), Some(CombatantId(1)));
+    }
+
+    #[test]
+    fn enemy_status_payload_is_applied_through_the_common_resolver() {
+        let mut e = encounter();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
+        e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
+        // Section 12's hit roll is explicit; this hit is deterministic.
+        e.apply_action(
+            CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) },
+            0,
+            0,
+        ).unwrap();
+        assert!(e.combatant(CombatantId(1)).unwrap().status_effects.iter().any(|effect| {
+            effect.kind == StatusEffectKind::Burn
+        }));
+    }
+
     #[test]
     fn partial_knockout_does_not_end_combat() {
         let mut e = encounter();
@@ -1205,6 +1394,111 @@ mod tests {
                 RangeBand::Far
             ))
         );
+    }
+
+    #[test]
+    fn status_application_refreshes_and_ticks_across_all_combatant_sources() {
+        let mut e = encounter();
+        for target in [CombatantId(1), CombatantId(2), CombatantId(3)] {
+            assert_eq!(
+                e.apply_status_effect(
+                    target,
+                    StatusEffectKind::Poison,
+                    Some(CombatantId(3)),
+                    4,
+                    2,
+                    100,
+                    0,
+                )
+                .unwrap(),
+                StatusApplication::Applied
+            );
+            assert_eq!(e.combatant(target).unwrap().status_effects.len(), 1);
+        }
+        assert_eq!(
+            e.apply_status_effect(
+                CombatantId(1),
+                StatusEffectKind::Poison,
+                Some(CombatantId(3)),
+                2,
+                4,
+                100,
+                0,
+            )
+            .unwrap(),
+            StatusApplication::Refreshed
+        );
+        let hero = e.combatant(CombatantId(1)).unwrap();
+        assert_eq!(hero.status_effects[0].potency, 4);
+        assert_eq!(hero.status_effects[0].remaining_activations, 4);
+    }
+
+    #[test]
+    fn resisted_status_does_not_mutate_effect_list() {
+        let mut e = encounter();
+        e.combatant_mut(CombatantId(1)).unwrap().status_resistance =
+            StatusResistance { resistance_pct: 90 };
+        assert_eq!(
+            e.apply_status_effect(
+                CombatantId(1),
+                StatusEffectKind::Burn,
+                Some(CombatantId(3)),
+                5,
+                2,
+                50,
+                0,
+            )
+            .unwrap(),
+            StatusApplication::Applied
+        );
+        e.combatant_mut(CombatantId(2)).unwrap().status_resistance =
+            StatusResistance { resistance_pct: 90 };
+        let before_second = e.combatant(CombatantId(2)).unwrap().status_effects.clone();
+        assert_eq!(
+            e.apply_status_effect(
+                CombatantId(2),
+                StatusEffectKind::Burn,
+                Some(CombatantId(3)),
+                5,
+                2,
+                50,
+                6,
+            )
+            .unwrap(),
+            StatusApplication::Resisted
+        );
+        assert_eq!(
+            e.combatant(CombatantId(2)).unwrap().status_effects,
+            before_second
+        );
+    }
+    #[test]
+    fn marked_targets_are_easier_to_hit_and_slow_reorders_next_round() {
+        let mut e = encounter();
+        let base = {
+            let attacker = e.combatant(CombatantId(1)).unwrap();
+            let defender = e.combatant(CombatantId(3)).unwrap();
+            Encounter::hit_chance(attacker, defender, RangeBand::Melee)
+        };
+        e.apply_status_effect(CombatantId(3), StatusEffectKind::Mark, Some(CombatantId(1)), 1, 2, 100, 0).unwrap();
+        let marked = {
+            let attacker = e.combatant(CombatantId(1)).unwrap();
+            let defender = e.combatant(CombatantId(3)).unwrap();
+            Encounter::hit_chance(attacker, defender, RangeBand::Melee)
+        };
+        assert_eq!(marked, (base + 5).min(MAX_HIT_CHANCE));
+
+        let mut e = encounter();
+        let initial_first = e.current_actor().unwrap();
+        assert_eq!(initial_first, CombatantId(1));
+        e.apply_status_effect(CombatantId(1), StatusEffectKind::Slow, Some(CombatantId(3)), 2, 3, 100, 0).unwrap();
+        // End this round in the existing deterministic actor order.
+        e.apply_action(CombatAction::Defend { actor: CombatantId(1) }, 0, 0).unwrap();
+        while let Some(actor) = e.current_actor() {
+            e.apply_action(CombatAction::Defend { actor }, 0, 0).unwrap();
+        }
+        assert_eq!(e.round(), 2);
+        assert_ne!(e.current_actor(), Some(CombatantId(1)));
     }
 
     #[test]

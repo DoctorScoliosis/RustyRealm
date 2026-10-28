@@ -15,6 +15,7 @@ mod save;
 mod shops;
 mod skills;
 mod state;
+mod status_combat;
 mod stronghold;
 mod ui;
 // Some world queries are reserved for later gameplay slices; remove this
