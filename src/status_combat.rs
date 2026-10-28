@@ -376,7 +376,11 @@ pub fn resolve_telegraph(
 ) -> Result<TelegraphState, EncounterError> {
     let actor = encounter.combatant(telegraph.actor);
     let target = encounter.combatant(telegraph.target);
-    if actor.is_none_or(|a| !a.can_act()) || target.is_none_or(|t| !t.can_act() || t.allegiance == actor.unwrap().allegiance) {
+    let valid = match (actor, target) {
+        (Some(a), Some(t)) => a.can_act() && t.can_act() && t.allegiance != a.allegiance,
+        _ => false,
+    };
+    if !valid {
         return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
     }
     match encounter.apply_action(telegraph.action.clone(), hit_roll, critical_roll) {
