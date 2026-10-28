@@ -1232,6 +1232,47 @@ mod tests {
     }
 
     #[test]
+    fn status_application_respects_resistance_and_caps_duration_and_potency() {
+        let mut e = encounter();
+        e.combatant_mut(CombatantId(3))
+            .unwrap()
+            .status_resistance
+            .resistance_pct = 100;
+
+        assert_eq!(
+            e.apply_status_effect(
+                CombatantId(3),
+                StatusEffectKind::Poison,
+                Some(CombatantId(1)),
+                u32::MAX,
+                u32::MAX,
+                100,
+                10,
+            )
+            .unwrap(),
+            StatusApplication::Resisted
+        );
+        assert!(e.combatant(CombatantId(3)).unwrap().status_effects.is_empty());
+
+        assert_eq!(
+            e.apply_status_effect(
+                CombatantId(3),
+                StatusEffectKind::Poison,
+                Some(CombatantId(1)),
+                u32::MAX,
+                u32::MAX,
+                100,
+                9,
+            )
+            .unwrap(),
+            StatusApplication::Applied
+        );
+        let effect = &e.combatant(CombatantId(3)).unwrap().status_effects[0];
+        assert_eq!(effect.potency, MAX_EFFECT_POTENCY);
+        assert_eq!(effect.remaining_activations, MAX_EFFECT_DURATION);
+    }
+
+    #[test]
     fn enemy_status_payload_is_applied_through_the_common_resolver() {
         let mut e = encounter();
         e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
