@@ -18,7 +18,6 @@ use crate::party_combat::{
     RangeBand, RangeProfile,
 };
 
-
 /// Apply/refresh one effect using caller-provided 0..99 roll and resistance.
 /// The current effect set is changed only after duration/chance checks pass.
 pub fn apply_status(
@@ -76,7 +75,9 @@ pub fn tick_status_effects(effects: &mut Vec<StatusEffect>) -> Vec<StatusTick> {
                 });
             }
             StatusEffectKind::Stun => ticks.push(StatusTick::Stunned),
-            StatusEffectKind::Slow | StatusEffectKind::Mark | StatusEffectKind::WeakenedDefences => {}
+            StatusEffectKind::Slow
+            | StatusEffectKind::Mark
+            | StatusEffectKind::WeakenedDefences => {}
         }
         effect.remaining_activations = effect.remaining_activations.saturating_sub(1);
     }
@@ -334,7 +335,9 @@ pub fn propose_enemy_action(
         (penalty, tactical)
     };
     let tied: Vec<_> = targets.into_iter().filter(|target| {
-        let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
+        let range = encounter
+            .range_between(actor_id, target.id)
+            .unwrap_or(RangeBand::Far);
         let penalty = if profile.preferred_range.allows(range) { 0 } else { 1 };
         let tactical = match profile.tendency {
             EnemyTendency::PreferDamagedTargets => target.hp,
@@ -345,7 +348,9 @@ pub fn propose_enemy_action(
         (penalty, tactical) == best_key
     }).collect();
     let target = tied[(roll as usize) % tied.len()];
-    let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
+    let range = encounter
+        .range_between(actor_id, target.id)
+        .unwrap_or(RangeBand::Far);
     let intended_action = if profile.preferred_range.allows(range) {
         if !profile.abilities.is_empty() && roll % 3 == 0 {
             CombatAction::UseAbility {
