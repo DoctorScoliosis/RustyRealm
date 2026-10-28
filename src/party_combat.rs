@@ -6,6 +6,7 @@
 //! Position uses encounter-owned range bands, not grid coordinates.
 
 use crate::data::{get_ability, AbilityId};
+use crate::status_combat::{defence_vulnerability_pct, mark_hit_bonus, slow_penalty, StatusEffect, StatusEffectKind, StatusResistance, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
 use std::collections::HashSet;
@@ -215,6 +216,10 @@ pub struct EncounterCombatant {
     pub mastery_attributes: CombatAttributes,
     pub attributes: CombatAttributes,
     pub attack_range: RangeProfile,
+    /// Shared effects apply equally to players, companions, and enemies.
+    pub status_effects: Vec<StatusEffect>,
+    /// Status resistance is separate from damage defence.
+    pub status_resistance: StatusResistance,
 }
 impl EncounterCombatant {
     pub fn new(
@@ -252,6 +257,8 @@ impl EncounterCombatant {
             mastery_attributes: CombatAttributes::default(),
             attributes: CombatAttributes::default(),
             attack_range: RangeProfile::MELEE,
+            status_effects: Vec::new(),
+            status_resistance: StatusResistance { resistance_pct: 0 },
         };
         c.recalculate_attributes();
         c
@@ -282,6 +289,9 @@ impl EncounterCombatant {
     pub fn can_act(&self) -> bool {
         self.condition == CombatantCondition::Ready && self.hp > 0
     }
+    pub fn slow_penalty(&self) -> i16 { slow_penalty(&self.status_effects) }
+    pub fn mark_hit_bonus(&self) -> u8 { mark_hit_bonus(&self.status_effects) }
+    pub fn defence_vulnerability_pct(&self) -> u8 { defence_vulnerability_pct(&self.status_effects) }
     fn sync_condition(&mut self) {
         if self.hp == 0 {
             self.condition = CombatantCondition::KnockedOut;
@@ -408,7 +418,7 @@ impl Encounter {
                 .iter()
                 .find(|c| c.id == *id)
                 .expect("ID from combatant roster");
-            (std::cmp::Reverse(c.attributes.speed), c.id)
+            (std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())), c.id)
         });
         let positions = combatants
             .iter()
@@ -577,7 +587,7 @@ impl Encounter {
         };
         (70_i16 + (attacker.attributes.accuracy - BASE_STAT) / 2
             - (defender.attributes.evasion - BASE_STAT) / 2
-            - penalty)
+            - penalty + i16::from(attacker.mark_hit_bonus()))
             .clamp(MIN_HIT_CHANCE as i16, MAX_HIT_CHANCE as i16) as u8
     }
     pub fn legal_targets(
@@ -659,6 +669,9 @@ impl Encounter {
             .combatant(actor_id)
             .ok_or(EncounterError::MissingActor(actor_id))?;
         if !actor.can_act() {
+            return Err(EncounterError::ActorIneligible(actor_id));
+        }
+        if actor.status_effects.iter().any(|e| e.kind == StatusEffectKind::Stun) {
             return Err(EncounterError::ActorIneligible(actor_id));
         }
         if self.acted_this_round.contains(&actor_id) {
@@ -774,10 +787,12 @@ impl Encounter {
         let crit_chance = (5_i16 + source.class.definition().critical).clamp(0, 25) as u32;
         let critical = hit && critical_roll % 100 < crit_chance;
         let scaled = if critical { raw.saturating_mul(2) } else { raw };
+        let vulnerability = u64::from(target.defence_vulnerability_pct());
+        let vulnerable_scaled = (u64::from(scaled) * (100 + vulnerability) / 100).min(u64::from(u32::MAX)) as u32;
         let damage = if !hit || scaled == 0 {
             0
         } else {
-            scaled.saturating_sub(target.defence).max(1).min(target.hp)
+            vulnerable_scaled.saturating_sub(target.defence).max(1).min(target.hp)
         };
         if let Some(def) = &ability {
             let source = self
