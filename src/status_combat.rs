@@ -306,10 +306,22 @@ fn target_priority(profile: &EnemyProfile, target: &EncounterCombatant) -> u32 {
         EnemyTendency::PreferDamagedTargets => target.hp,
         EnemyTendency::PreferLowDefenceTargets => target.defence,
         EnemyTendency::PreferMarkedTargets => {
-            if target.status_effects.iter().any(|e| e.kind == StatusEffectKind::Mark) { 0 } else { 1 }
+            if target
+                .status_effects
+                .iter()
+                .any(|e| e.kind == StatusEffectKind::Mark)
+            {
+                0
+            } else {
+                1
+            }
         }
         EnemyTendency::PreferStatusFreeTargets => {
-            if target.status_effects.is_empty() { 0 } else { 1 }
+            if target.status_effects.is_empty() {
+                0
+            } else {
+                1
+            }
         }
     }
 }
@@ -341,7 +353,10 @@ pub fn propose_enemy_action(
     let actor = encounter.combatant(actor_id)?;
     if actor.allegiance != Allegiance::Enemies
         || !actor.can_act()
-        || actor.status_effects.iter().any(|e| e.kind == StatusEffectKind::Stun)
+        || actor
+            .status_effects
+            .iter()
+            .any(|e| e.kind == StatusEffectKind::Stun)
     {
         return None;
     }
@@ -365,7 +380,9 @@ pub fn propose_enemy_action(
     if targets.is_empty() {
         let target = hostiles.into_iter().min_by_key(|target| {
             (
-                encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far),
+                encounter
+                    .range_between(actor_id, target.id)
+                    .unwrap_or(RangeBand::Far),
                 target.id,
             )
         })?;
@@ -373,21 +390,37 @@ pub fn propose_enemy_action(
         action = CombatAction::Move { actor: actor_id };
     } else {
         targets.sort_by_key(|target| {
-            let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
-            (range_preference(&profile, range), target_priority(&profile, target), target.id)
+            let range = encounter
+                .range_between(actor_id, target.id)
+                .unwrap_or(RangeBand::Far);
+            (
+                range_preference(&profile, range),
+                target_priority(&profile, target),
+                target.id,
+            )
         });
         let best = targets.first()?;
         let best_key = (
             range_preference(
                 &profile,
-                encounter.range_between(actor_id, best.id).unwrap_or(RangeBand::Far),
+                encounter
+                    .range_between(actor_id, best.id)
+                    .unwrap_or(RangeBand::Far),
             ),
             target_priority(&profile, best),
         );
-        let tied: Vec<_> = targets.into_iter().filter(|target| {
-            let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
-            (range_preference(&profile, range), target_priority(&profile, target)) == best_key
-        }).collect();
+        let tied: Vec<_> = targets
+            .into_iter()
+            .filter(|target| {
+                let range = encounter
+                    .range_between(actor_id, target.id)
+                    .unwrap_or(RangeBand::Far);
+                (
+                    range_preference(&profile, range),
+                    target_priority(&profile, target),
+                ) == best_key
+            })
+            .collect();
         let target = tied[(roll as usize) % tied.len()];
         selected_target = target.id;
         action = if !profile.abilities.is_empty() && roll % 3 == 0 {
@@ -397,7 +430,10 @@ pub fn propose_enemy_action(
                 ability: profile.abilities[(roll as usize / 3) % profile.abilities.len()],
             }
         } else {
-            CombatAction::BasicAttack { actor: actor_id, target: target.id }
+            CombatAction::BasicAttack {
+                actor: actor_id,
+                target: target.id,
+            }
         };
     }
 
@@ -409,7 +445,10 @@ pub fn propose_enemy_action(
                 target: selected_target,
                 action: action.clone(),
                 name: format!("{} prepares an attack", actor.name),
-                description: format!("{} prepares {:?} against {}.", actor.name, action, target.name),
+                description: format!(
+                    "{} prepares {:?} against {}.",
+                    actor.name, action, target.name
+                ),
             })
         }
         _ => None,
@@ -429,13 +468,19 @@ pub fn resolve_telegraph(
     critical_roll: u32,
 ) -> Result<TelegraphState, EncounterError> {
     let Some(actor) = encounter.combatant(telegraph.actor) else {
-        return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
+        return Ok(TelegraphState::Cancelled {
+            name: telegraph.name,
+            reason: "actor or target is no longer valid",
+        });
     };
     let Some(target) = encounter.combatant(telegraph.target) else {
         return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
     };
     if !actor.can_act()
-        || actor.status_effects.iter().any(|e| e.kind == StatusEffectKind::Stun)
+        || actor
+            .status_effects
+            .iter()
+            .any(|e| e.kind == StatusEffectKind::Stun)
         || !target.can_act()
         || target.allegiance == actor.allegiance
     {
@@ -443,7 +488,18 @@ pub fn resolve_telegraph(
     }
     match encounter.apply_action(telegraph.action.clone(), hit_roll, critical_roll) {
         Ok(_) => Ok(TelegraphState::Resolved(telegraph)),
-        Err(EncounterError::ActorIneligible(_) | EncounterError::MissingActor(_) | EncounterError::MissingTarget(_) | EncounterError::TargetIneligible(_) | EncounterError::WrongAllegiance | EncounterError::OutOfRange { .. } | EncounterError::TurnAlreadyUsed(_)) => Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "action is no longer legal" }),
+        Err(
+            EncounterError::ActorIneligible(_)
+            | EncounterError::MissingActor(_)
+            | EncounterError::MissingTarget(_)
+            | EncounterError::TargetIneligible(_)
+            | EncounterError::WrongAllegiance
+            | EncounterError::OutOfRange { .. }
+            | EncounterError::TurnAlreadyUsed(_),
+        ) => Ok(TelegraphState::Cancelled {
+            name: telegraph.name,
+            reason: "action is no longer legal",
+        }),
         Err(error) => Err(error),
     }
 }
