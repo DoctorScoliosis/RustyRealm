@@ -1,6 +1,6 @@
 # Section 9 — World Model and Connected Locations
 
-**Status:** Slice 9.1 implemented and locally verified. Slice 9.2 implemented on the working branch; local verification pending. Slice 9.3 remains open.  
+**Status:** Slice 9.1 implemented and locally verified. Slice 9.2 implemented; tests and Clippy locally verified, final formatting check pending after a formatting-only follow-up. Slice 9.3 remains open.  
 **Branch:** `work/world-model-foundation`
 
 ## Goal
@@ -19,7 +19,7 @@ This is an implementation brief, not a claim that save persistence or the travel
 - Initial local validation (2026-10-28): `cargo test --package rustyrealm` passed all 73 tests (0 failures). The first `cargo fmt --check` report included formatting differences in `src/combat.rs` and `src/world.rs`; a later rerun found three residual `rustfmt` differences in `src/world.rs`, corrected in follow-up commit `9ae8b54`. Rerun the check against the latest branch head to confirm.
 - Initial `cargo clippy --package rustyrealm --tests` completed with a warning for unused `ItemType::sell_price` and four `unnecessary_map_or` suggestions in this module. The four world-module cases have been changed to `is_some_and` / `is_none_or`. Rerun Clippy to confirm those warnings are resolved; the existing `sell_price` warning remains to be reviewed separately.
 - Final local verification (2026-10-28): `cargo fmt --check` passed with no output; `cargo test --package rustyrealm` passed all 73 tests (0 failures); `cargo clippy --package rustyrealm --tests` completed with only the pre-existing unused `ItemType::sell_price` warning. `git status --short --branch` reported `work/world-model-foundation...origin/work/world-model-foundation` with no working-tree changes.
-- Slice 9.2 adds `GameState.current_location` as a stable `LocationId`, defaulting to `village_start` for new games and JSON saves missing the field. Save tests now cover a non-default location round trip, version-2 checksum compatibility when the field is absent, and legacy JSON migration with preservation of representative character progression. Local verification is pending; no terminal travel UI has been added, as that belongs to Slice 9.3.
+- Slice 9.2 adds `GameState.current_location` as a stable `LocationId`, defaulting to `village_start` for new games and JSON saves missing the field. Save tests cover a non-default location round trip, version-2 checksum compatibility when the field is absent, and legacy JSON migration with preservation of representative character progression. Local verification (2026-10-28): `cargo test --package rustyrealm` passed 74 tests (0 failures), and `cargo clippy --package rustyrealm --tests` completed with only the existing unused `ItemType::sell_price` warning. `cargo fmt --check` reported one formatting-only difference in `src/save.rs`; this has been corrected in follow-up commit `4983ad9`, and the formatting check must be rerun. No terminal travel UI has been added, as that belongs to Slice 9.3.
 
 ## Repository context
 
