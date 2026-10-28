@@ -12,10 +12,10 @@
 //!
 //! This module is domain-only: it has no UI or terminal dependencies.
 
-use crate::data::{AbilityId, DamageType};
+use crate::data::AbilityId;
 use crate::party_combat::{
     Allegiance, CombatAction, CombatantId, Encounter, EncounterCombatant, EncounterError,
-    RangeBand, RangeProfile,
+    RangeBand,
 };
 
 /// Apply/refresh one effect using caller-provided 0..99 roll and resistance.
@@ -140,12 +140,6 @@ pub enum StatusEffectKind {
     WeakenedDefences,
 }
 
-impl StatusEffectKind {
-    pub fn is_damage_over_time(self) -> bool {
-        matches!(self, Self::Poison | Self::Bleed | Self::Burn)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusEffect {
     pub kind: StatusEffectKind,
@@ -201,12 +195,17 @@ pub enum EnemyTendency {
     PreferStatusFreeTargets,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreferredRange {
+    Melee,
+    Far,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnemyProfile {
     pub archetype: EnemyArchetype,
-    pub preferred_range: RangeProfile,
+    pub preferred_range: PreferredRange,
     pub abilities: Vec<AbilityId>,
-    pub damage_type: DamageType,
     pub status_payload: Option<(StatusEffectKind, u32, u32, u8)>,
     pub tendency: EnemyTendency,
 }
@@ -219,7 +218,7 @@ impl EnemyProfile {
         match base {
             "Dragon" | "Elemental" | "Mage" | "Sorcerer" => Self {
                 archetype: EnemyArchetype::StatusSpecialist,
-                preferred_range: RangeProfile::RANGED,
+                preferred_range: PreferredRange::Far,
                 abilities: vec![AbilityId::LifeDrain],
                 damage_type: if base == "Dragon" || base == "Elemental" {
                     DamageType::Fire
@@ -242,7 +241,6 @@ impl EnemyProfile {
                 archetype: EnemyArchetype::StatusSpecialist,
                 preferred_range: RangeProfile::RANGED,
                 abilities: vec![AbilityId::LifeDrain],
-                damage_type: DamageType::Arcane,
                 status_payload: Some((StatusEffectKind::Slow, 2, 1, 35)),
                 tendency: EnemyTendency::PreferStatusFreeTargets,
             },
@@ -250,13 +248,12 @@ impl EnemyProfile {
                 archetype: EnemyArchetype::RangedPressure,
                 preferred_range: RangeProfile::RANGED,
                 abilities: vec![AbilityId::HeavyStrike],
-                damage_type: DamageType::Physical,
                 status_payload: Some((StatusEffectKind::Mark, 2, 1, 40)),
                 tendency: EnemyTendency::PreferMarkedTargets,
             },
             "Stronghold Warrior" | "Giant" | "Rockbeast" | "Ent" => Self {
                 archetype: EnemyArchetype::AggressiveMelee,
-                preferred_range: RangeProfile::MELEE,
+                preferred_range: PreferredRange::Melee,
                 abilities: vec![AbilityId::HeavyStrike, AbilityId::Cleave],
                 damage_type: DamageType::Physical,
                 status_payload: Some((StatusEffectKind::WeakenedDefences, 2, 1, 25)),
@@ -327,13 +324,13 @@ fn target_priority(profile: &EnemyProfile, target: &EncounterCombatant) -> u32 {
 }
 
 fn range_preference(profile: &EnemyProfile, range: RangeBand) -> u8 {
-    match profile.archetype {
-        EnemyArchetype::AggressiveMelee | EnemyArchetype::DefensiveProtector => match range {
+    match profile.preferred_range {
+        PreferredRange::Melee => match range {
             RangeBand::Melee => 0,
             RangeBand::Near => 1,
             RangeBand::Far => 2,
         },
-        EnemyArchetype::RangedPressure | EnemyArchetype::StatusSpecialist => match range {
+        PreferredRange::Far => match range {
             RangeBand::Far => 0,
             RangeBand::Near => 1,
             RangeBand::Melee => 2,
@@ -545,7 +542,6 @@ mod tests {
             20,
             10,
         );
-        enemy.attack_range = RangeProfile::RANGED;
         Encounter::new(vec![hero, companion, enemy]).unwrap()
     }
 
