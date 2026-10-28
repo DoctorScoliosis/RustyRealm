@@ -33,21 +33,25 @@ pub fn apply_status(
     incoming.remaining_activations = incoming.remaining_activations.min(MAX_EFFECT_DURATION);
     incoming.potency = incoming.potency.min(MAX_EFFECT_POTENCY);
     incoming.application_chance_pct = incoming.application_chance_pct.min(MAX_EFFECT_CHANCE_PCT);
-    let chance = StatusResistance::effective_chance(
-        incoming.application_chance_pct,
-        resistance_pct,
-    );
+    let chance =
+        StatusResistance::effective_chance(incoming.application_chance_pct, resistance_pct);
     if roll % 100 >= u32::from(chance) {
-        return if resistance_pct.min(MAX_STATUS_RESISTANCE_PCT) > 0 && incoming.application_chance_pct > 0 {
+        return if resistance_pct.min(MAX_STATUS_RESISTANCE_PCT) > 0
+            && incoming.application_chance_pct > 0
+        {
             StatusApplication::Resisted
         } else {
             StatusApplication::FailedChance
         };
     }
     if let Some(current) = effects.iter_mut().find(|e| e.kind == incoming.kind) {
-        current.remaining_activations = current.remaining_activations.max(incoming.remaining_activations);
+        current.remaining_activations = current
+            .remaining_activations
+            .max(incoming.remaining_activations);
         current.potency = current.potency.max(incoming.potency);
-        current.application_chance_pct = current.application_chance_pct.max(incoming.application_chance_pct);
+        current.application_chance_pct = current
+            .application_chance_pct
+            .max(incoming.application_chance_pct);
         if incoming.source.is_some() {
             current.source = incoming.source;
         }
@@ -88,7 +92,8 @@ pub fn tick_status_effects(effects: &mut Vec<StatusEffect>) -> Vec<StatusTick> {
 }
 
 pub fn slow_penalty(effects: &[StatusEffect]) -> i16 {
-    let potency: u32 = effects.iter()
+    let potency: u32 = effects
+        .iter()
         .filter(|e| e.kind == StatusEffectKind::Slow)
         .map(|e| e.potency.min(2))
         .sum();
@@ -96,14 +101,16 @@ pub fn slow_penalty(effects: &[StatusEffect]) -> i16 {
 }
 
 pub fn mark_hit_bonus(effects: &[StatusEffect]) -> u8 {
-    effects.iter()
+    effects
+        .iter()
         .filter(|e| e.kind == StatusEffectKind::Mark)
         .fold(0_u32, |sum, e| sum.saturating_add(e.potency.min(3).saturating_mul(5)))
         .min(u32::from(MAX_MARK_HIT_BONUS)) as u8
 }
 
 pub fn defence_vulnerability_pct(effects: &[StatusEffect]) -> u8 {
-    effects.iter()
+    effects
+        .iter()
         .filter(|e| e.kind == StatusEffectKind::WeakenedDefences)
         .fold(0_u32, |sum, e| sum.saturating_add(e.potency.min(2).saturating_mul(25)))
         .min(u32::from(MAX_DEFENCE_VULNERABILITY_PCT)) as u8
@@ -299,7 +306,9 @@ pub fn propose_enemy_action(
         return None;
     }
     targets.sort_by_key(|target| {
-        let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
+        let range = encounter
+            .range_between(actor_id, target.id)
+            .unwrap_or(RangeBand::Far);
         let range_penalty = if profile.preferred_range.allows(range) { 0 } else { 1 };
         let tactical = match profile.tendency {
             EnemyTendency::PreferDamagedTargets => target.hp,
@@ -312,7 +321,9 @@ pub fn propose_enemy_action(
     // The roll rotates only among equal-policy candidates, preserving reproducibility.
     let best_key = {
         let target = targets[0];
-        let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
+        let range = encounter
+        .range_between(actor_id, target.id)
+        .unwrap_or(RangeBand::Far);
         let penalty = if profile.preferred_range.allows(range) { 0 } else { 1 };
         let tactical = match profile.tendency {
             EnemyTendency::PreferDamagedTargets => target.hp,
@@ -343,7 +354,10 @@ pub fn propose_enemy_action(
                 ability: profile.abilities[(roll as usize / 3) % profile.abilities.len()],
             }
         } else {
-            CombatAction::BasicAttack { actor: actor_id, target: target.id }
+            CombatAction::BasicAttack {
+                actor: actor_id,
+                target: target.id,
+            }
         }
     } else {
         CombatAction::Move { actor: actor_id }
@@ -361,7 +375,10 @@ pub fn propose_enemy_action(
         _ => None,
     };
     Some(EnemyDecision {
-        intended: IntendedAction { action: intended_action, telegraph },
+        intended: IntendedAction {
+            action: intended_action,
+            telegraph,
+        },
         selected_target: target.id,
     })
 }
@@ -381,11 +398,24 @@ pub fn resolve_telegraph(
         _ => false,
     };
     if !valid {
-        return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
+        return Ok(TelegraphState::Cancelled {
+            name: telegraph.name,
+            reason: "actor or target is no longer valid",
+        });
     }
     match encounter.apply_action(telegraph.action.clone(), hit_roll, critical_roll) {
         Ok(_) => Ok(TelegraphState::Resolved(telegraph)),
-        Err(EncounterError::MissingActor(_) | EncounterError::MissingTarget(_) | EncounterError::TargetIneligible(_) | EncounterError::WrongAllegiance | EncounterError::OutOfRange { .. } | EncounterError::TurnAlreadyUsed(_)) => Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "action is no longer legal" }),
+        Err(
+            EncounterError::MissingActor(_)
+            | EncounterError::MissingTarget(_)
+            | EncounterError::TargetIneligible(_)
+            | EncounterError::WrongAllegiance
+            | EncounterError::OutOfRange { .. }
+            | EncounterError::TurnAlreadyUsed(_),
+        ) => Ok(TelegraphState::Cancelled {
+            name: telegraph.name,
+            reason: "action is no longer legal",
+        }),
         Err(error) => Err(error),
     }
 }
@@ -412,12 +442,24 @@ mod tests {
     #[test]
     fn status_duration_and_stacking_policy_are_deterministic() {
         let mut effects = Vec::new();
-        assert_eq!(apply_status(&mut effects, effect(StatusEffectKind::Poison, 2, 3), 0, 0), StatusApplication::Applied);
-        assert_eq!(apply_status(&mut effects, effect(StatusEffectKind::Poison, 4, 2), 0, 0), StatusApplication::Refreshed);
+        assert_eq!(
+            apply_status(&mut effects, effect(StatusEffectKind::Poison, 2, 3), 0, 0),
+            StatusApplication::Applied
+        );
+        assert_eq!(
+            apply_status(&mut effects, effect(StatusEffectKind::Poison, 4, 2), 0, 0),
+            StatusApplication::Refreshed
+        );
         assert_eq!(effects.len(), 1);
         assert_eq!(effects[0].remaining_activations, 4);
         assert_eq!(effects[0].potency, 3);
-        assert_eq!(tick_status_effects(&mut effects), vec![StatusTick::Damage { kind: StatusEffectKind::Poison, amount: 3 }]);
+        assert_eq!(
+            tick_status_effects(&mut effects),
+            vec![StatusTick::Damage {
+                kind: StatusEffectKind::Poison,
+                amount: 3
+            }]
+        );
         assert_eq!(effects[0].remaining_activations, 3);
     }
     #[test]
@@ -447,7 +489,11 @@ mod tests {
         assert_eq!(effects.len(), 3, "duration-two effects remain for one more activation");
         let _ = tick_status_effects(&mut effects);
         assert!(effects.is_empty());
-        let effects = vec![effect(StatusEffectKind::Slow, 2, u32::MAX), effect(StatusEffectKind::Mark, 2, u32::MAX), effect(StatusEffectKind::WeakenedDefences, 2, u32::MAX)];
+        let effects = vec![
+            effect(StatusEffectKind::Slow, 2, u32::MAX),
+            effect(StatusEffectKind::Mark, 2, u32::MAX),
+            effect(StatusEffectKind::WeakenedDefences, 2, u32::MAX),
+        ];
         assert_eq!(slow_penalty(&effects), MAX_SLOW_INITIATIVE_PENALTY);
         assert_eq!(mark_hit_bonus(&effects), MAX_MARK_HIT_BONUS);
         assert_eq!(
