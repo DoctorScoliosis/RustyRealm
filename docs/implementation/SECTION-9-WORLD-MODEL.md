@@ -16,7 +16,9 @@ This is an implementation brief, not a claim that save persistence or the travel
 - The initial region includes Oakhaven Village, three adjacent landmarks, a dangerous route through Whispering Woods, Sunken Ruins, and Goblin Caves.
 - Added eight unit tests covering initial content, direct versus transitive reachability, route-cost ordering, nearest-settlement route costs and tie-breaking, disconnected locations, invalid definitions, and atomic bidirectional-route insertion.
 - Registered the module in `src/main.rs`. A documented temporary `dead_code` allowance is in place until the world APIs are consumed by later state/UI integration.
-- **Not yet run in this environment:** `cargo fmt --check`, `cargo test --package rustyrealm`, and `cargo clippy --package rustyrealm --tests`. The current environment has no Rust toolchain. Treat tests as authored, not passed, until the commands run locally.
+- Initial local validation (2026-10-28): `cargo test --package rustyrealm` passed all 73 tests (0 failures). `cargo fmt --check` reported formatting differences in `src/combat.rs` and `src/world.rs`; formatting corrections have been applied in follow-up commits. Rerun the check to confirm.
+- Initial `cargo clippy --package rustyrealm --tests` completed with a warning for unused `ItemType::sell_price` and four `unnecessary_map_or` suggestions in this module. The four world-module cases have been changed to `is_some_and` / `is_none_or`. Rerun Clippy to confirm those warnings are resolved; the existing `sell_price` warning remains to be reviewed separately.
+- The updated source has not yet been rechecked by the developer after these follow-up commits. Do not mark the checks clean until they are rerun locally.
 - No changes have been made to `GameState`, save migration, or terminal travel UI. Those belong to slices 9.2 and 9.3.
 
 ## Repository context
