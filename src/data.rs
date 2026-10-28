@@ -455,27 +455,6 @@ pub enum DamageType {
     Arcane,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum StatusEffectKind {
-    Bleed,
-    Poison,
-    Burn,
-    Stun,
-    Slow,
-    Mark,
-    WeakenedDefences,
-}
-
-/// Legacy combat-engine status storage. The Section 13 shared lifecycle lives
-/// in status_combat::StatusEffect; this data shape remains for save/API
-/// compatibility while legacy battle flows are migrated incrementally.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StatusEffect {
-    pub kind: StatusEffectKind,
-    pub duration: u32,
-    pub potency: u32,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AbilityId {
     HeavyStrike,
