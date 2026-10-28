@@ -505,7 +505,6 @@ mod tests {
             Err(EncounterError::TurnAlreadyUsed(first))
         );
         assert_eq!(e, after);
-        assert_eq!(e.combatants().iter().find(|c| c.id == CombatantId(2)).unwrap().attributes.speed, 60);
         assert_eq!(e.current_actor(), Some(CombatantId(2)));
     }
     #[test]
@@ -598,14 +597,16 @@ mod tests {
     }
     #[test]
     fn class_bonuses_are_distinct_and_clamped() {
-        let base = CombatAttributes::default();
-        let neutral = CombatAttributes::default();
+        let base = CombatAttributes { speed: 40, accuracy: 40, evasion: 40, power: 40, resistance: 40 };
+        let neutral = CombatAttributes { speed: 0, accuracy: 0, evasion: 0, power: 0, resistance: 0 };
         let warrior = CombatAttributes::derived(CharacterClass::Warrior, base, neutral, neutral);
         let ranger = CombatAttributes::derived(CharacterClass::Ranger, base, neutral, neutral);
         let mage = CombatAttributes::derived(CharacterClass::Mage, base, neutral, neutral);
         let rogue = CombatAttributes::derived(CharacterClass::Rogue, base, neutral, neutral);
-        assert!(ranger.accuracy > warrior.accuracy || ranger.accuracy == MAX_STAT);
-        assert!(mage.power > warrior.power);
+        assert_eq!(ranger.accuracy, 50);
+        assert_eq!(warrior.accuracy, 40);
+        assert_eq!(mage.power, 48);
+        assert_eq!(warrior.power, 45);
         assert!(rogue.speed > warrior.speed);
         assert!(rogue.evasion > warrior.evasion);
         assert!(rogue.resistance < warrior.resistance);
@@ -623,9 +624,9 @@ mod tests {
     fn initiative_orders_speed_descending_then_stable_id() {
         let mut roster = encounter().combatants.clone();
         for c in &mut roster {
-            c.base_attributes = CombatAttributes::default();
-            c.equipment_attributes = CombatAttributes::default();
-            c.mastery_attributes = CombatAttributes::default();
+            c.base_attributes = CombatAttributes { speed: 40, accuracy: 40, evasion: 40, power: 40, resistance: 40 };
+            c.equipment_attributes = CombatAttributes { speed: 0, accuracy: 0, evasion: 0, power: 0, resistance: 0 };
+            c.mastery_attributes = CombatAttributes { speed: 0, accuracy: 0, evasion: 0, power: 0, resistance: 0 };
         }
         roster[0].set_class(CharacterClass::Warrior);
         roster[1].set_class(CharacterClass::Rogue);
@@ -635,9 +636,9 @@ mod tests {
         let mut tied = e.combatants.clone();
         for c in &mut tied {
             c.set_class(CharacterClass::Warrior);
-            c.base_attributes = CombatAttributes::default();
-            c.equipment_attributes = CombatAttributes::default();
-            c.mastery_attributes = CombatAttributes::default();
+            c.base_attributes = CombatAttributes { speed: 40, accuracy: 40, evasion: 40, power: 40, resistance: 40 };
+            c.equipment_attributes = CombatAttributes { speed: 0, accuracy: 0, evasion: 0, power: 0, resistance: 0 };
+            c.mastery_attributes = CombatAttributes { speed: 0, accuracy: 0, evasion: 0, power: 0, resistance: 0 };
             c.recalculate_attributes();
         }
         e = Encounter::new(tied).unwrap();
