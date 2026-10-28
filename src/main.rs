@@ -475,7 +475,10 @@ fn companion_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 }
 
 fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
-    use crate::party::{all_companion_definitions, CompanionCondition, PartyManager};
+    use crate::party::{
+        all_companion_definitions, build_roster_actions, resolve_roster_action,
+        PartyManager, RosterAction,
+    };
 
     let definitions = all_companion_definitions();
 
@@ -526,6 +529,10 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         if let Some(companion) = recruited {
             // Show companion details and options
             let in_party = state.party.contains(def.id);
+            let can_add_to_party = !in_party
+                && companion.can_join_party()
+                && state.party.has_room();
+
             let mut detail = format!(
                 "Name: {}\nRole: {}\nCondition: {}\nHP: {}/{}\nAttack: {}\nDefence: {}\nWeapon: {}\nArmour: {}",
                 def.name,
@@ -542,52 +549,45 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 detail.push_str("\n\nCurrently in active party.");
             }
 
-            let mut actions = vec!["Details"];
-            if in_party {
-                actions.push("Remove from Party");
-            } else if (companion.condition == CompanionCondition::Available || companion.condition == CompanionCondition::Active)
-                && state.party.has_room()
-            {
-                actions.push("Add to Party");
-            }
-            actions.push("Dismiss");
-            actions.push("Back");
+            let actions = build_roster_actions(in_party, can_add_to_party);
+            let action_labels: Vec<&str> = actions.iter().map(|a| a.label()).collect();
 
-            let action_choice = tui.select_menu(def.name, &actions, Some(state))?;
-            match action_choice {
-                0 => {
+            let action_choice = tui.select_menu(def.name, &action_labels, Some(state))?;
+            let resolved = resolve_roster_action(&actions, action_choice);
+
+            match resolved {
+                RosterAction::Details => {
                     tui.show_message(def.name, &detail, Some(state))?;
                 }
-                1 => {
-                    if in_party {
-                        match PartyManager::remove_from_party(&mut state.party, def.id) {
-                            Ok(()) => tui.show_message(
-                                "Party updated",
-                                &format!("{} removed from the party.", def.name),
-                                Some(state),
-                            )?,
-                            Err(e) => tui.show_message(
-                                "Could not remove",
-                                &e.to_string(),
-                                Some(state),
-                            )?,
-                        }
-                    } else {
-                        match PartyManager::add_to_party(&mut state.party, &state.companions, def.id) {
-                            Ok(()) => tui.show_message(
-                                "Party updated",
-                                &format!("{} added to the party.", def.name),
-                                Some(state),
-                            )?,
-                            Err(e) => tui.show_message(
-                                "Could not add",
-                                &e.to_string(),
-                                Some(state),
-                            )?,
-                        }
+                RosterAction::RemoveFromParty => {
+                    match PartyManager::remove_from_party(&mut state.party, def.id) {
+                        Ok(()) => tui.show_message(
+                            "Party updated",
+                            &format!("{} removed from the party.", def.name),
+                            Some(state),
+                        )?,
+                        Err(e) => tui.show_message(
+                            "Could not remove",
+                            &e.to_string(),
+                            Some(state),
+                        )?,
                     }
                 }
-                2 => {
+                RosterAction::AddToParty => {
+                    match PartyManager::add_to_party(&mut state.party, &state.companions, def.id) {
+                        Ok(()) => tui.show_message(
+                            "Party updated",
+                            &format!("{} added to the party.", def.name),
+                            Some(state),
+                        )?,
+                        Err(e) => tui.show_message(
+                            "Could not add",
+                            &e.to_string(),
+                            Some(state),
+                        )?,
+                    }
+                }
+                RosterAction::Dismiss => {
                     match PartyManager::dismiss(&mut state.companions, &mut state.party, def.id) {
                         Ok(()) => tui.show_message(
                             "Companion dismissed",
@@ -601,7 +601,9 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                         )?,
                     }
                 }
-                _ => {}
+                RosterAction::Back => {
+                    // Return to roster selection without modifying any state.
+                }
             }
         } else {
             // Not recruited - show recruitment option
@@ -655,7 +657,9 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 }
 
 fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
-    use crate::party::PartyManager;
+    use crate::party::{
+        build_party_menu_actions, resolve_party_menu_action, PartyManager, PartyMenuAction,
+    };
 
     loop {
         let party_members: Vec<String> = state
@@ -679,10 +683,13 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             })
             .collect();
 
+        let member_count = party_members.len();
+        let menu_actions = build_party_menu_actions(member_count);
+
+        // Build display labels that match the menu_actions list exactly.
+        // When the party is empty, show "No companions in party" as an
+        // informational line in the title instead of a selectable entry.
         let mut labels: Vec<String> = party_members.clone();
-        if labels.is_empty() {
-            labels.push("No companions in party".to_string());
-        }
         labels.push(format!(
             "Add companion ({}/{})",
             state.party.companion_count(),
@@ -691,83 +698,89 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         labels.push("Back".to_string());
 
         let options: Vec<&str> = labels.iter().map(String::as_str).collect();
-        let title = format!(
-            "Active Party · {} companion{}",
-            state.party.companion_count(),
-            if state.party.companion_count() == 1 { "" } else { "s" }
-        );
+        let title = if member_count == 0 {
+            "Active Party · no companions · select Add companion or Back".to_string()
+        } else {
+            format!(
+                "Active Party · {} companion{}",
+                state.party.companion_count(),
+                if state.party.companion_count() == 1 { "" } else { "s" }
+            )
+        };
         let choice = tui.select_menu(&title, &options, Some(state))?;
 
-        let member_count = if party_members.is_empty() { 0 } else { party_members.len() };
+        let resolved = resolve_party_menu_action(&menu_actions, choice);
 
-        if choice == member_count {
-            // Add companion
-            let available: Vec<_> = state
-                .companions
-                .iter()
-                .filter(|c| c.can_join_party() && !state.party.contains(c.id))
-                .collect();
-            if available.is_empty() {
-                tui.show_message(
-                    "No companions available",
-                    "All recruited companions are already in the party, unavailable, or you have no companions.",
-                    Some(state),
-                )?;
-                continue;
-            }
-            let add_labels: Vec<String> = available
-                .iter()
-                .map(|c| {
-                    format!(
-                        "{} · {} · HP {}/{}",
-                        c.display_name(),
-                        c.role().name(),
-                        c.current_hp,
-                        c.max_hp
-                    )
-                })
-                .collect();
-            let mut add_options: Vec<&str> = add_labels.iter().map(String::as_str).collect();
-            add_options.push("Back");
-            let add_choice = tui.select_menu("Add to Party", &add_options, Some(state))?;
-            if add_choice < available.len() {
-                let id = available[add_choice].id;
-                match PartyManager::add_to_party(&mut state.party, &state.companions, id) {
+        match resolved {
+            PartyMenuAction::Member(index) => {
+                // Remove companion from party
+                let id = state.party.members()[index];
+                let name = state
+                    .companions
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|c| c.display_name())
+                    .unwrap_or("Unknown");
+                match PartyManager::remove_from_party(&mut state.party, id) {
                     Ok(()) => {
                         tui.show_message(
                             "Party updated",
-                            &format!("{} added to the party.", available[add_choice].display_name()),
+                            &format!("{} removed from the party.", name),
                             Some(state),
                         )?;
                     }
                     Err(e) => {
-                        tui.show_message("Could not add", &e.to_string(), Some(state))?;
+                        tui.show_message("Could not remove", &e.to_string(), Some(state))?;
                     }
                 }
             }
-        } else if choice == member_count + 1 {
-            // Back
-            return Ok(());
-        } else if choice < member_count {
-            // Remove companion
-            let id = state.party.members()[choice];
-            let name = state
-                .companions
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| c.display_name())
-                .unwrap_or("Unknown");
-            match PartyManager::remove_from_party(&mut state.party, id) {
-                Ok(()) => {
+            PartyMenuAction::AddCompanion => {
+                let available: Vec<_> = state
+                    .companions
+                    .iter()
+                    .filter(|c| c.can_join_party() && !state.party.contains(c.id))
+                    .collect();
+                if available.is_empty() {
                     tui.show_message(
-                        "Party updated",
-                        &format!("{} removed from the party.", name),
+                        "No companions available",
+                        "All recruited companions are already in the party, unavailable, or you have no companions.",
                         Some(state),
                     )?;
+                    continue;
                 }
-                Err(e) => {
-                    tui.show_message("Could not remove", &e.to_string(), Some(state))?;
+                let add_labels: Vec<String> = available
+                    .iter()
+                    .map(|c| {
+                        format!(
+                            "{} · {} · HP {}/{}",
+                            c.display_name(),
+                            c.role().name(),
+                            c.current_hp,
+                            c.max_hp
+                        )
+                    })
+                    .collect();
+                let mut add_options: Vec<&str> = add_labels.iter().map(String::as_str).collect();
+                add_options.push("Back");
+                let add_choice = tui.select_menu("Add to Party", &add_options, Some(state))?;
+                if add_choice < available.len() {
+                    let id = available[add_choice].id;
+                    match PartyManager::add_to_party(&mut state.party, &state.companions, id) {
+                        Ok(()) => {
+                            tui.show_message(
+                                "Party updated",
+                                &format!("{} added to the party.", available[add_choice].display_name()),
+                                Some(state),
+                            )?;
+                        }
+                        Err(e) => {
+                            tui.show_message("Could not add", &e.to_string(), Some(state))?;
+                        }
+                    }
                 }
+            }
+            PartyMenuAction::Back => {
+                return Ok(());
             }
         }
     }

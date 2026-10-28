@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 
-use crate::data::{ArmourTier, WeaponTier};
+use crate::data::{ArmourTier, DamageType, StatusEffectKind, WeaponTier};
 
 /// Maximum number of companions that can be active in a party at once,
 /// including the player character. The player always occupies one slot.
@@ -103,6 +103,251 @@ impl CompanionCondition {
     }
 }
 
+/// Target selection for a companion ability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanionAbilityTarget {
+    /// Targets a single enemy.
+    SingleEnemy,
+    /// Targets all enemies.
+    AllEnemies,
+    /// Targets the companion themselves.
+    SelfTarget,
+    /// Targets a single ally (including the player).
+    SingleAlly,
+    /// Targets all allies (including the player).
+    AllAllies,
+}
+
+impl CompanionAbilityTarget {
+    pub fn name(&self) -> &'static str {
+        match self {
+            CompanionAbilityTarget::SingleEnemy => "Single Enemy",
+            CompanionAbilityTarget::AllEnemies => "All Enemies",
+            CompanionAbilityTarget::SelfTarget => "Self",
+            CompanionAbilityTarget::SingleAlly => "Single Ally",
+            CompanionAbilityTarget::AllAllies => "All Allies",
+        }
+    }
+}
+
+/// The primary effect of a companion ability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanionAbilityEffect {
+    /// Deals damage based on the ability's damage multiplier.
+    Damage { multiplier: u32, damage_type: DamageType },
+    /// Restores HP to the target.
+    Heal { amount: u32 },
+    /// Temporarily increases the target's attack power.
+    BuffAttack { amount: u32, duration: u32 },
+    /// Temporarily decreases the target's defence.
+    DebuffDefence { amount: u32, duration: u32 },
+    /// Applies a status effect to the target.
+    ApplyStatus { kind: StatusEffectKind, duration: u32, potency: u32 },
+    /// Redirects incoming damage to self for a number of turns.
+    RedirectDamage { duration: u32 },
+    /// Guarantees the next attack is a critical hit.
+    GuaranteedCritical,
+    /// Removes all negative status effects from the target.
+    Cleanse,
+}
+
+/// Stable identifier for a companion-specific ability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanionAbilityId {
+    // Frontline Defence abilities
+    ShieldBash,
+    GuardAlly,
+    IronWill,
+    // Ranged Damage abilities
+    PiercingShot,
+    VolleyArrows,
+    AimedShot,
+    // Magic & Support abilities
+    HealingLight,
+    ArcaneBlast,
+    Empower,
+    FlameWave,
+    FrostBarrier,
+    MassHeal,
+}
+
+impl CompanionAbilityId {
+    pub const ALL: [CompanionAbilityId; 12] = [
+        CompanionAbilityId::ShieldBash,
+        CompanionAbilityId::GuardAlly,
+        CompanionAbilityId::IronWill,
+        CompanionAbilityId::PiercingShot,
+        CompanionAbilityId::VolleyArrows,
+        CompanionAbilityId::AimedShot,
+        CompanionAbilityId::HealingLight,
+        CompanionAbilityId::ArcaneBlast,
+        CompanionAbilityId::Empower,
+        CompanionAbilityId::FlameWave,
+        CompanionAbilityId::FrostBarrier,
+        CompanionAbilityId::MassHeal,
+    ];
+}
+
+/// A companion ability definition. These are data-driven and describe what the
+/// ability does without implementing the actual combat execution (which is
+/// owned by Section 11).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionAbility {
+    pub id: CompanionAbilityId,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub stamina_cost: u32,
+    pub mana_cost: u32,
+    pub cooldown_turns: u32,
+    pub target: CompanionAbilityTarget,
+    pub effect: CompanionAbilityEffect,
+}
+
+/// Returns the full definition of a companion ability by ID.
+pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
+    match id {
+        CompanionAbilityId::ShieldBash => CompanionAbility {
+            id,
+            name: "Shield Bash",
+            description: "Bashes an enemy with a shield, dealing light damage and stunning them for 1 turn.",
+            stamina_cost: 25,
+            mana_cost: 0,
+            cooldown_turns: 3,
+            target: CompanionAbilityTarget::SingleEnemy,
+            effect: CompanionAbilityEffect::ApplyStatus {
+                kind: StatusEffectKind::Stun,
+                duration: 1,
+                potency: 1,
+            },
+        },
+        CompanionAbilityId::GuardAlly => CompanionAbility {
+            id,
+            name: "Guard Ally",
+            description: "Intercepts incoming damage directed at an ally for 2 turns.",
+            stamina_cost: 20,
+            mana_cost: 0,
+            cooldown_turns: 4,
+            target: CompanionAbilityTarget::SelfTarget,
+            effect: CompanionAbilityEffect::RedirectDamage { duration: 2 },
+        },
+        CompanionAbilityId::IronWill => CompanionAbility {
+            id,
+            name: "Iron Will",
+            description: "Steels themselves, restoring HP and increasing defence for 2 turns.",
+            stamina_cost: 15,
+            mana_cost: 0,
+            cooldown_turns: 5,
+            target: CompanionAbilityTarget::SelfTarget,
+            effect: CompanionAbilityEffect::Heal { amount: 40 },
+        },
+        CompanionAbilityId::PiercingShot => CompanionAbility {
+            id,
+            name: "Piercing Shot",
+            description: "Fires a high-velocity arrow that deals heavy damage and ignores some defence.",
+            stamina_cost: 20,
+            mana_cost: 0,
+            cooldown_turns: 2,
+            target: CompanionAbilityTarget::SingleEnemy,
+            effect: CompanionAbilityEffect::Damage {
+                multiplier: 180,
+                damage_type: DamageType::Physical,
+            },
+        },
+        CompanionAbilityId::VolleyArrows => CompanionAbility {
+            id,
+            name: "Volley of Arrows",
+            description: "Fires a spread of arrows, dealing moderate damage to all enemies.",
+            stamina_cost: 30,
+            mana_cost: 0,
+            cooldown_turns: 4,
+            target: CompanionAbilityTarget::AllEnemies,
+            effect: CompanionAbilityEffect::Damage {
+                multiplier: 100,
+                damage_type: DamageType::Physical,
+            },
+        },
+        CompanionAbilityId::AimedShot => CompanionAbility {
+            id,
+            name: "Aimed Shot",
+            description: "Takes careful aim, guaranteeing the next attack is a critical hit.",
+            stamina_cost: 15,
+            mana_cost: 0,
+            cooldown_turns: 3,
+            target: CompanionAbilityTarget::SelfTarget,
+            effect: CompanionAbilityEffect::GuaranteedCritical,
+        },
+        CompanionAbilityId::HealingLight => CompanionAbility {
+            id,
+            name: "Healing Light",
+            description: "Channels arcane energy to restore a moderate amount of HP to one ally.",
+            stamina_cost: 0,
+            mana_cost: 25,
+            cooldown_turns: 2,
+            target: CompanionAbilityTarget::SingleAlly,
+            effect: CompanionAbilityEffect::Heal { amount: 50 },
+        },
+        CompanionAbilityId::ArcaneBlast => CompanionAbility {
+            id,
+            name: "Arcane Blast",
+            description: "Unleashes a burst of arcane energy, dealing magic damage to one enemy.",
+            stamina_cost: 0,
+            mana_cost: 20,
+            cooldown_turns: 1,
+            target: CompanionAbilityTarget::SingleEnemy,
+            effect: CompanionAbilityEffect::Damage {
+                multiplier: 150,
+                damage_type: DamageType::Arcane,
+            },
+        },
+        CompanionAbilityId::Empower => CompanionAbility {
+            id,
+            name: "Empower",
+            description: "Infuses an ally with arcane energy, increasing their attack power for 3 turns.",
+            stamina_cost: 0,
+            mana_cost: 20,
+            cooldown_turns: 4,
+            target: CompanionAbilityTarget::SingleAlly,
+            effect: CompanionAbilityEffect::BuffAttack { amount: 25, duration: 3 },
+        },
+        CompanionAbilityId::FlameWave => CompanionAbility {
+            id,
+            name: "Flame Wave",
+            description: "Sends a wave of fire across the battlefield, dealing fire damage to all enemies.",
+            stamina_cost: 0,
+            mana_cost: 35,
+            cooldown_turns: 4,
+            target: CompanionAbilityTarget::AllEnemies,
+            effect: CompanionAbilityEffect::Damage {
+                multiplier: 120,
+                damage_type: DamageType::Fire,
+            },
+        },
+        CompanionAbilityId::FrostBarrier => CompanionAbility {
+            id,
+            name: "Frost Barrier",
+            description: "Creates a shield of frost around all allies, reducing incoming damage for 2 turns.",
+            stamina_cost: 0,
+            mana_cost: 30,
+            cooldown_turns: 5,
+            target: CompanionAbilityTarget::AllAllies,
+            effect: CompanionAbilityEffect::BuffAttack { amount: 0, duration: 2 },
+        },
+        CompanionAbilityId::MassHeal => CompanionAbility {
+            id,
+            name: "Mass Heal",
+            description: "Channels a powerful healing wave, restoring HP to all allies.",
+            stamina_cost: 0,
+            mana_cost: 45,
+            cooldown_turns: 6,
+            target: CompanionAbilityTarget::AllAllies,
+            effect: CompanionAbilityEffect::Heal { amount: 35 },
+        },
+    }
+}
+
 /// Static definition of a companion. These are read-only data that describe
 /// the companion's identity, role, base stats, and recruitment requirements.
 /// They are not persisted per-save; only the mutable `CompanionState` is saved.
@@ -123,6 +368,8 @@ pub struct CompanionDefinition {
     pub recruitment_level: u32,
     /// Gold cost to recruit this companion (0 for free).
     pub recruitment_cost: u32,
+    /// Abilities this companion can use in combat.
+    pub abilities: Vec<CompanionAbilityId>,
 }
 
 /// Returns the full roster of companion definitions.
@@ -142,6 +389,11 @@ pub fn all_companion_definitions() -> Vec<CompanionDefinition> {
             default_armour: ArmourTier::Steel,
             recruitment_level: 1,
             recruitment_cost: 0,
+            abilities: vec![
+                CompanionAbilityId::ShieldBash,
+                CompanionAbilityId::GuardAlly,
+                CompanionAbilityId::IronWill,
+            ],
         },
         CompanionDefinition {
             id: CompanionId::LyraSwiftbow,
@@ -157,6 +409,11 @@ pub fn all_companion_definitions() -> Vec<CompanionDefinition> {
             default_armour: ArmourTier::Chain,
             recruitment_level: 5,
             recruitment_cost: 500,
+            abilities: vec![
+                CompanionAbilityId::PiercingShot,
+                CompanionAbilityId::VolleyArrows,
+                CompanionAbilityId::AimedShot,
+            ],
         },
         CompanionDefinition {
             id: CompanionId::MarenStarweave,
@@ -172,6 +429,12 @@ pub fn all_companion_definitions() -> Vec<CompanionDefinition> {
             default_armour: ArmourTier::Cloth,
             recruitment_level: 8,
             recruitment_cost: 1000,
+            abilities: vec![
+                CompanionAbilityId::HealingLight,
+                CompanionAbilityId::ArcaneBlast,
+                CompanionAbilityId::Empower,
+                CompanionAbilityId::MassHeal,
+            ],
         },
         CompanionDefinition {
             id: CompanionId::GarrickIronfist,
@@ -187,6 +450,10 @@ pub fn all_companion_definitions() -> Vec<CompanionDefinition> {
             default_armour: ArmourTier::Iron,
             recruitment_level: 10,
             recruitment_cost: 1500,
+            abilities: vec![
+                CompanionAbilityId::ShieldBash,
+                CompanionAbilityId::IronWill,
+            ],
         },
         CompanionDefinition {
             id: CompanionId::SeraNightwhisper,
@@ -202,6 +469,11 @@ pub fn all_companion_definitions() -> Vec<CompanionDefinition> {
             default_armour: ArmourTier::Cloth,
             recruitment_level: 15,
             recruitment_cost: 3000,
+            abilities: vec![
+                CompanionAbilityId::PiercingShot,
+                CompanionAbilityId::AimedShot,
+                CompanionAbilityId::VolleyArrows,
+            ],
         },
         CompanionDefinition {
             id: CompanionId::TorvalEmbershield,
@@ -217,6 +489,12 @@ pub fn all_companion_definitions() -> Vec<CompanionDefinition> {
             default_armour: ArmourTier::Cloth,
             recruitment_level: 12,
             recruitment_cost: 2000,
+            abilities: vec![
+                CompanionAbilityId::FlameWave,
+                CompanionAbilityId::ArcaneBlast,
+                CompanionAbilityId::FrostBarrier,
+                CompanionAbilityId::Empower,
+            ],
         },
     ]
 }
@@ -678,6 +956,96 @@ pub fn test_roster_with(ids: &[CompanionId]) -> Vec<CompanionState> {
         .collect()
 }
 
+// ---------------------------------------------------------------------------
+// Roster action mapping (pure, testable helpers for the companion detail menu)
+// ---------------------------------------------------------------------------
+
+/// Typed actions that the companion detail menu can perform on a recruited
+/// companion. Using an enum instead of numeric indexes prevents the bug where
+/// conditional menu entries shift the positions of later actions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RosterAction {
+    Details,
+    AddToParty,
+    RemoveFromParty,
+    Dismiss,
+    Back,
+}
+
+impl RosterAction {
+    pub fn label(&self) -> &'static str {
+        match self {
+            RosterAction::Details => "Details",
+            RosterAction::AddToParty => "Add to Party",
+            RosterAction::RemoveFromParty => "Remove from Party",
+            RosterAction::Dismiss => "Dismiss",
+            RosterAction::Back => "Back",
+        }
+    }
+}
+
+/// Builds the ordered list of actions available for a recruited companion.
+/// The result is guaranteed to contain `Details` first and `Back` last, with
+/// at most one of `AddToParty` or `RemoveFromParty` in between, and `Dismiss`
+/// before `Back`.
+pub fn build_roster_actions(
+    in_party: bool,
+    can_add_to_party: bool,
+) -> Vec<RosterAction> {
+    let mut actions = vec![RosterAction::Details];
+    if in_party {
+        actions.push(RosterAction::RemoveFromParty);
+    } else if can_add_to_party {
+        actions.push(RosterAction::AddToParty);
+    }
+    actions.push(RosterAction::Dismiss);
+    actions.push(RosterAction::Back);
+    actions
+}
+
+/// Resolves a user's menu selection index to a typed `RosterAction`.
+/// Returns `None` if the index is out of range (treated as Back/no-op).
+pub fn resolve_roster_action(actions: &[RosterAction], choice: usize) -> RosterAction {
+    actions.get(choice).copied().unwrap_or(RosterAction::Back)
+}
+
+// ---------------------------------------------------------------------------
+// Party management menu action mapping
+// ---------------------------------------------------------------------------
+
+/// Typed actions for the party management menu. `Member(usize)` identifies a
+/// party member by index; `AddCompanion` opens the add-companion submenu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PartyMenuAction {
+    /// Select a party member (index into the current party members list).
+    Member(usize),
+    /// Open the add-companion submenu.
+    AddCompanion,
+    /// Return to the previous menu.
+    Back,
+}
+
+/// Builds the party management menu actions. When the party is empty, the
+/// informational "No companions in party" text is NOT included as an
+/// actionable entry.
+pub fn build_party_menu_actions(member_count: usize) -> Vec<PartyMenuAction> {
+    let mut actions = Vec::new();
+    for i in 0..member_count {
+        actions.push(PartyMenuAction::Member(i));
+    }
+    actions.push(PartyMenuAction::AddCompanion);
+    actions.push(PartyMenuAction::Back);
+    actions
+}
+
+/// Resolves a user's menu selection index to a typed `PartyMenuAction`.
+pub fn resolve_party_menu_action(actions: &[PartyMenuAction], choice: usize) -> PartyMenuAction {
+    actions
+        .get(choice)
+        .cloned()
+        .unwrap_or(PartyMenuAction::Back)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1115,5 +1483,284 @@ mod tests {
         assert_eq!(state.max_hp, 100);
         assert_eq!(state.current_hp, 100);
         assert_eq!(state.level, 1);
+    }
+
+    // --- Ability definition tests ---
+
+    #[test]
+    fn all_companion_ability_ids_have_definitions() {
+        for id in CompanionAbilityId::ALL {
+            let ability = get_companion_ability(id);
+            assert_eq!(ability.id, id);
+            assert!(!ability.name.is_empty());
+            assert!(!ability.description.is_empty());
+        }
+    }
+
+    #[test]
+    fn every_companion_has_at_least_one_ability() {
+        for def in all_companion_definitions() {
+            assert!(
+                !def.abilities.is_empty(),
+                "Companion {} has no abilities defined",
+                def.name
+            );
+        }
+    }
+
+    #[test]
+    fn companion_abilities_reference_valid_ids() {
+        for def in all_companion_definitions() {
+            for &ability_id in &def.abilities {
+                // This would panic if the ID is not handled in get_companion_ability.
+                let ability = get_companion_ability(ability_id);
+                assert_eq!(ability.id, ability_id);
+            }
+        }
+    }
+
+    #[test]
+    fn frontline_companions_have_no_mana_cost_abilities() {
+        for def in all_companion_definitions() {
+            if def.role == CompanionRole::FrontlineDefence {
+                for &ability_id in &def.abilities {
+                    let ability = get_companion_ability(ability_id);
+                    assert_eq!(
+                        ability.mana_cost, 0,
+                        "Frontline companion {} has ability {} with mana cost {}",
+                        def.name, ability.name, ability.mana_cost
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn magic_support_companions_have_mana_based_abilities() {
+        let mut found_mana_ability = false;
+        for def in all_companion_definitions() {
+            if def.role == CompanionRole::MagicSupport {
+                for &ability_id in &def.abilities {
+                    let ability = get_companion_ability(ability_id);
+                    if ability.mana_cost > 0 {
+                        found_mana_ability = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            found_mana_ability,
+            "Magic/Support companions should have at least one mana-costing ability"
+        );
+    }
+
+    #[test]
+    fn ability_cooldowns_are_nonzero() {
+        for id in CompanionAbilityId::ALL {
+            let ability = get_companion_ability(id);
+            assert!(
+                ability.cooldown_turns > 0,
+                "Ability {} has zero cooldown",
+                ability.name
+            );
+        }
+    }
+
+    #[test]
+    fn ability_targets_are_consistent_with_role() {
+        for def in all_companion_definitions() {
+            for &ability_id in &def.abilities {
+                let ability = get_companion_ability(ability_id);
+                match def.role {
+                    CompanionRole::FrontlineDefence => {
+                        // Frontline abilities should target enemies or self.
+                        assert!(
+                            matches!(
+                                ability.target,
+                                CompanionAbilityTarget::SingleEnemy
+                                    | CompanionAbilityTarget::AllEnemies
+                                    | CompanionAbilityTarget::SelfTarget
+                            ),
+                            "Frontline ability {} has unexpected target {:?}",
+                            ability.name,
+                            ability.target
+                        );
+                    }
+                    CompanionRole::RangedDamage => {
+                        // Ranged abilities should target enemies or self.
+                        assert!(
+                            matches!(
+                                ability.target,
+                                CompanionAbilityTarget::SingleEnemy
+                                    | CompanionAbilityTarget::AllEnemies
+                                    | CompanionAbilityTarget::SelfTarget
+                            ),
+                            "Ranged ability {} has unexpected target {:?}",
+                            ability.name,
+                            ability.target
+                        );
+                    }
+                    CompanionRole::MagicSupport => {
+                        // Support abilities can target anything.
+                        // Just verify the target is valid (covered by enum).
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Roster action mapping tests ---
+
+    #[test]
+    fn roster_actions_for_companion_in_party() {
+        let actions = build_roster_actions(true, false);
+        assert_eq!(
+            actions,
+            vec![
+                RosterAction::Details,
+                RosterAction::RemoveFromParty,
+                RosterAction::Dismiss,
+                RosterAction::Back,
+            ]
+        );
+    }
+
+    #[test]
+    fn roster_actions_for_available_companion_not_in_party() {
+        let actions = build_roster_actions(false, true);
+        assert_eq!(
+            actions,
+            vec![
+                RosterAction::Details,
+                RosterAction::AddToParty,
+                RosterAction::Dismiss,
+                RosterAction::Back,
+            ]
+        );
+    }
+
+    #[test]
+    fn roster_actions_for_unavailable_companion() {
+        let actions = build_roster_actions(false, false);
+        assert_eq!(
+            actions,
+            vec![
+                RosterAction::Details,
+                RosterAction::Dismiss,
+                RosterAction::Back,
+            ]
+        );
+    }
+
+    #[test]
+    fn roster_actions_when_party_is_full() {
+        // Companion is available but party has no room.
+        let actions = build_roster_actions(false, false);
+        assert!(!actions.contains(&RosterAction::AddToParty));
+        assert!(!actions.contains(&RosterAction::RemoveFromParty));
+    }
+
+    #[test]
+    fn resolve_roster_action_returns_correct_action() {
+        let actions = build_roster_actions(true, false);
+        assert_eq!(resolve_roster_action(&actions, 0), RosterAction::Details);
+        assert_eq!(
+            resolve_roster_action(&actions, 1),
+            RosterAction::RemoveFromParty
+        );
+        assert_eq!(resolve_roster_action(&actions, 2), RosterAction::Dismiss);
+        assert_eq!(resolve_roster_action(&actions, 3), RosterAction::Back);
+    }
+
+    #[test]
+    fn resolve_roster_action_out_of_range_returns_back() {
+        let actions = build_roster_actions(false, false);
+        assert_eq!(resolve_roster_action(&actions, 99), RosterAction::Back);
+    }
+
+    #[test]
+    fn back_action_is_always_last() {
+        for in_party in [true, false] {
+            for can_add in [true, false] {
+                let actions = build_roster_actions(in_party, can_add);
+                assert_eq!(*actions.last().unwrap(), RosterAction::Back);
+            }
+        }
+    }
+
+    #[test]
+    fn dismiss_is_always_second_to_last() {
+        for in_party in [true, false] {
+            for can_add in [true, false] {
+                let actions = build_roster_actions(in_party, can_add);
+                assert_eq!(actions[actions.len() - 2], RosterAction::Dismiss);
+            }
+        }
+    }
+
+    // --- Party menu action mapping tests ---
+
+    #[test]
+    fn party_menu_actions_empty_party() {
+        let actions = build_party_menu_actions(0);
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0], PartyMenuAction::AddCompanion);
+        assert_eq!(actions[1], PartyMenuAction::Back);
+    }
+
+    #[test]
+    fn party_menu_actions_with_members() {
+        let actions = build_party_menu_actions(2);
+        assert_eq!(actions.len(), 4);
+        assert_eq!(actions[0], PartyMenuAction::Member(0));
+        assert_eq!(actions[1], PartyMenuAction::Member(1));
+        assert_eq!(actions[2], PartyMenuAction::AddCompanion);
+        assert_eq!(actions[3], PartyMenuAction::Back);
+    }
+
+    #[test]
+    fn resolve_party_menu_action_returns_correct_action() {
+        let actions = build_party_menu_actions(2);
+        assert_eq!(
+            resolve_party_menu_action(&actions, 0),
+            PartyMenuAction::Member(0)
+        );
+        assert_eq!(
+            resolve_party_menu_action(&actions, 1),
+            PartyMenuAction::Member(1)
+        );
+        assert_eq!(
+            resolve_party_menu_action(&actions, 2),
+            PartyMenuAction::AddCompanion
+        );
+        assert_eq!(
+            resolve_party_menu_action(&actions, 3),
+            PartyMenuAction::Back
+        );
+    }
+
+    #[test]
+    fn resolve_party_menu_action_out_of_range_returns_back() {
+        let actions = build_party_menu_actions(0);
+        assert_eq!(
+            resolve_party_menu_action(&actions, 99),
+            PartyMenuAction::Back
+        );
+    }
+
+    #[test]
+    fn party_menu_back_is_always_last() {
+        for count in 0..5 {
+            let actions = build_party_menu_actions(count);
+            assert_eq!(*actions.last().unwrap(), PartyMenuAction::Back);
+        }
+    }
+
+    #[test]
+    fn party_menu_add_companion_is_always_second_to_last() {
+        for count in 0..5 {
+            let actions = build_party_menu_actions(count);
+            assert_eq!(actions[actions.len() - 2], PartyMenuAction::AddCompanion);
+        }
     }
 }
