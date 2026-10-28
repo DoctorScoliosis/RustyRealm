@@ -376,6 +376,7 @@ mod tests {
                 25,
                 30,
                 5,
+                0,
             ),
             EncounterCombatant::new(
                 CombatantId(2),
@@ -387,6 +388,7 @@ mod tests {
                 5,
                 20,
                 10,
+                0,
             ),
             EncounterCombatant::new(
                 CombatantId(3),
@@ -398,6 +400,7 @@ mod tests {
                 0,
                 8,
                 1,
+                0,
             ),
             EncounterCombatant::new(
                 CombatantId(4),
@@ -409,6 +412,7 @@ mod tests {
                 0,
                 8,
                 1,
+                0,
             ),
         ])
         .unwrap()
@@ -489,6 +493,7 @@ mod tests {
             },
             0,
             99,
+                0,
         )
         .unwrap();
         let after = e.clone();
@@ -500,6 +505,7 @@ mod tests {
                 },
                 0,
                 99,
+                0,
             ),
             Err(EncounterError::TurnAlreadyUsed(first))
         );
@@ -519,6 +525,7 @@ mod tests {
                 10,
                 20,
                 0,
+                0,
             ),
             EncounterCombatant::new(
                 CombatantId(2),
@@ -529,6 +536,7 @@ mod tests {
                 0,
                 0,
                 2,
+                0,
                 0,
             ),
         ])
@@ -541,6 +549,7 @@ mod tests {
                 },
                 0,
                 99,
+                0,
             )
             .unwrap()
             .outcome,
@@ -551,6 +560,7 @@ mod tests {
                 CombatAction::Defend {
                     actor: CombatantId(1),
                 },
+                0,
                 0,
                 0,
             ),
@@ -586,6 +596,7 @@ mod tests {
                 },
                 0,
                 0,
+                0,
             )
             .unwrap()
             .outcome,
@@ -593,4 +604,68 @@ mod tests {
         );
         assert_eq!(e.current_actor(), None);
     }
+    #[test]
+    fn class_bonuses_are_distinct_and_clamped() {
+        let base = CombatAttributes::default();
+        let neutral = CombatAttributes::default();
+        let warrior = CombatAttributes::derived(CharacterClass::Warrior, base, neutral, neutral);
+        let ranger = CombatAttributes::derived(CharacterClass::Ranger, base, neutral, neutral);
+        let mage = CombatAttributes::derived(CharacterClass::Mage, base, neutral, neutral);
+        let rogue = CombatAttributes::derived(CharacterClass::Rogue, base, neutral, neutral);
+        assert!(ranger.accuracy > warrior.accuracy);
+        assert!(mage.power > warrior.power);
+        assert!(rogue.speed > warrior.speed);
+        assert!(rogue.evasion > warrior.evasion);
+        assert!(rogue.resistance < warrior.resistance);
+        let maxed = CombatAttributes::derived(
+            CharacterClass::Mage,
+            CombatAttributes { speed: i16::MAX, accuracy: i16::MAX, evasion: i16::MAX, power: i16::MAX, resistance: i16::MAX },
+            neutral,
+            neutral,
+        );
+        assert_eq!(maxed.speed, MAX_STAT);
+        assert_eq!(maxed.accuracy, MAX_STAT);
+    }
+
+    #[test]
+    fn initiative_orders_speed_descending_then_stable_id() {
+        let mut roster = encounter().combatants.clone();
+        roster[0].set_class(CharacterClass::Warrior);
+        roster[1].set_class(CharacterClass::Rogue);
+        roster[2].set_class(CharacterClass::Mage);
+        let mut e = Encounter::new(roster).unwrap();
+        assert_eq!(e.current_actor(), Some(CombatantId(2)));
+        let mut tied = e.combatants.clone();
+        for c in &mut tied { c.attributes.speed = 50; }
+        e = Encounter::new(tied).unwrap();
+        assert_eq!(e.current_actor(), Some(CombatantId(1)));
+    }
+
+    #[test]
+    fn movement_changes_range_and_accuracy_is_bounded() {
+        let mut e = encounter();
+        assert_eq!(e.range_between(CombatantId(1), CombatantId(3)), Some(RangeBand::Far));
+        assert_eq!(e.move_towards(CombatantId(1), CombatantId(3)).unwrap(), RangeBand::Near);
+        assert_eq!(e.move_towards(CombatantId(1), CombatantId(3)).unwrap(), RangeBand::Melee);
+
+        let attacker = e.combatant(CombatantId(1)).unwrap();
+        let defender = e.combatant(CombatantId(3)).unwrap();
+        assert!((MIN_HIT_CHANCE..=MAX_HIT_CHANCE).contains(&Encounter::hit_chance(attacker, defender, RangeBand::Far)));
+    }
+
+    #[test]
+    fn out_of_range_actions_do_not_spend_resources_or_change_health() {
+        let mut e = encounter();
+        let before_stamina = e.combatant(CombatantId(1)).unwrap().stamina;
+        let before_hp = e.combatant(CombatantId(3)).unwrap().hp;
+        assert!(matches!(
+            e.apply_action(CombatAction::UseAbility {
+                actor: CombatantId(1), target: CombatantId(3), ability: AbilityId::HeavyStrike,
+            }, 0, 0),
+            Err(EncounterError::OutOfRange { .. })
+        ));
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().stamina, before_stamina);
+        assert_eq!(e.combatant(CombatantId(3)).unwrap().hp, before_hp);
+    }
+
 }
