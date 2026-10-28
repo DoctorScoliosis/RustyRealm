@@ -220,11 +220,6 @@ impl EnemyProfile {
                 archetype: EnemyArchetype::StatusSpecialist,
                 preferred_range: PreferredRange::Far,
                 abilities: vec![AbilityId::LifeDrain],
-                damage_type: if base == "Dragon" || base == "Elemental" {
-                    DamageType::Fire
-                } else {
-                    DamageType::Arcane
-                },
                 status_payload: Some((
                     if base == "Dragon" || base == "Elemental" {
                         StatusEffectKind::Burn
@@ -255,7 +250,6 @@ impl EnemyProfile {
                 archetype: EnemyArchetype::AggressiveMelee,
                 preferred_range: PreferredRange::Melee,
                 abilities: vec![AbilityId::HeavyStrike, AbilityId::Cleave],
-                damage_type: DamageType::Physical,
                 status_payload: Some((StatusEffectKind::WeakenedDefences, 2, 1, 25)),
                 tendency: EnemyTendency::PreferDamagedTargets,
             },
