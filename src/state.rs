@@ -5,6 +5,7 @@ use crate::data::{
 use crate::economy::MarketState;
 use crate::event::WorldEvent;
 use crate::quests::Quest;
+use crate::world::LocationId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,10 @@ fn default_theme() -> String {
 }
 fn default_unlocked_themes() -> Vec<String> {
     vec!["Classic".to_string()]
+}
+
+fn default_current_location() -> LocationId {
+    LocationId::from("village_start")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,6 +280,8 @@ impl Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
     pub player: Player,
+    #[serde(default = "default_current_location")]
+    pub current_location: LocationId,
     #[serde(default)]
     pub active_quests: Vec<Quest>,
     #[serde(default = "WorldEvent::none")]
@@ -304,6 +311,7 @@ impl GameState {
     pub fn new(player: Player) -> Self {
         let mut state = Self {
             player,
+            current_location: default_current_location(),
             active_quests: Vec::new(),
             active_world_event: WorldEvent::none(),
             market_state: MarketState::new(),
