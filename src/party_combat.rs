@@ -9,7 +9,7 @@ use crate::data::{get_ability, AbilityId};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
 use crate::status_combat::{
-    apply_status, defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects,
+    defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects,
     StatusApplication, StatusEffect, StatusEffectKind, StatusResistance, StatusTick,
     MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
 };
@@ -734,9 +734,16 @@ impl Encounter {
         if !remaining {
             self.acted_this_round.clear();
             self.round = self.round.saturating_add(1);
+            let combatants = &self.combatants;
             self.initiative.sort_by_key(|id| {
-                let c = self.combatant(*id).expect("initiative ID from roster");
-                (std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())), c.id)
+                let c = combatants
+                    .iter()
+                    .find(|c| c.id == *id)
+                    .expect("initiative ID from roster");
+                (
+                    std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())),
+                    c.id,
+                )
             });
             self.turn_index = 0;
         }
