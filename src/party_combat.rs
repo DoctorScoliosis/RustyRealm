@@ -6,7 +6,7 @@
 //! Position uses encounter-owned range bands, not grid coordinates.
 
 use crate::data::{get_ability, AbilityId};
-use crate::status_combat::{defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects, StatusEffect, StatusEffectKind, StatusResistance, StatusApplication, StatusTick, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY};
+use crate::status_combat::{defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects, apply_status, StatusEffect, StatusEffectKind, StatusResistance, StatusApplication, StatusTick, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
 use std::collections::HashSet;
@@ -414,10 +414,7 @@ impl Encounter {
         }
         let mut initiative: Vec<_> = combatants.iter().map(|c| c.id).collect();
         initiative.sort_by_key(|id| {
-            let c = combatants
-                .iter()
-                .find(|c| c.id == *id)
-                .expect("ID from combatant roster");
+            let c = combatants.iter().find(|c| c.id == *id).expect("ID from combatant roster");
             (std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())), c.id)
         });
         let positions = combatants
@@ -587,7 +584,7 @@ impl Encounter {
         };
         (70_i16 + (attacker.attributes.accuracy - BASE_STAT) / 2
             - (defender.attributes.evasion - BASE_STAT) / 2
-            - penalty + i16::from(attacker.mark_hit_bonus()))
+            - penalty + i16::from(attacker.mark_hit_bonus()) + i16::from(defender.mark_hit_bonus()) )
             .clamp(MIN_HIT_CHANCE as i16, MAX_HIT_CHANCE as i16) as u8
     }
     pub fn legal_targets(
