@@ -384,7 +384,8 @@ pub fn propose_enemy_action(
         CombatAction::Move { actor: actor_id }
     };
     let telegraph = match intended_action {
-        CombatAction::BasicAttack { .. } | CombatAction::UseAbility { .. } if roll % 4 == 0 => Some(TelegraphedAction {
+        CombatAction::BasicAttack { .. } | CombatAction::UseAbility { .. } if roll % 4 == 0 => {
+            Some(TelegraphedAction {
             actor: actor_id,
             target: target.id,
             action: intended_action.clone(),
@@ -392,7 +393,8 @@ pub fn propose_enemy_action(
             description: format!("{} prepares {:?} against {}.", actor.name, intended_action, target.name),
             damage_type: profile.damage_type,
             damage: actor.attack,
-        }),
+            })
+        }
         _ => None,
     };
     Some(EnemyDecision {
@@ -448,16 +450,52 @@ mod tests {
     use crate::party_combat::{CharacterClass, CombatantSource};
 
     fn encounter() -> Encounter {
-        let mut hero = EncounterCombatant::new(CombatantId(1), CombatantSource::Player, "Hero", Allegiance::Allies, 100, 40, 25, 30, 5);
+        let mut hero = EncounterCombatant::new(
+            CombatantId(1),
+            CombatantSource::Player,
+            "Hero",
+            Allegiance::Allies,
+            100,
+            40,
+            25,
+            30,
+            5,
+        );
         hero.set_class(CharacterClass::Ranger);
-        let companion = EncounterCombatant::new(CombatantId(2), CombatantSource::Companion(CompanionId::BranTheShield), "Bran", Allegiance::Allies, 70, 30, 10, 20, 10);
-        let mut enemy = EncounterCombatant::new(CombatantId(3), CombatantSource::Enemy, "Dragon", Allegiance::Enemies, 100, 20, 0, 20, 10);
+        let companion = EncounterCombatant::new(
+            CombatantId(2),
+            CombatantSource::Companion(CompanionId::BranTheShield),
+            "Bran",
+            Allegiance::Allies,
+            70,
+            30,
+            10,
+            20,
+            10,
+        );
+        let mut enemy = EncounterCombatant::new(
+            CombatantId(3),
+            CombatantSource::Enemy,
+            "Dragon",
+            Allegiance::Enemies,
+            100,
+            20,
+            0,
+            20,
+            10,
+        );
         enemy.attack_range = RangeProfile::RANGED;
         Encounter::new(vec![hero, companion, enemy]).unwrap()
     }
 
     fn effect(kind: StatusEffectKind, duration: u32, potency: u32) -> StatusEffect {
-        StatusEffect { kind, source: Some(CombatantId(3)), potency, remaining_activations: duration, application_chance_pct: 100 }
+        StatusEffect {
+            kind,
+            source: Some(CombatantId(3)),
+            potency,
+            remaining_activations: duration,
+            application_chance_pct: 100,
+        }
     }
 
     #[test]
@@ -507,7 +545,11 @@ mod tests {
         ];
         let ticks = tick_status_effects(&mut effects);
         assert!(ticks.contains(&StatusTick::Stunned));
-        assert_eq!(effects.len(), 3, "duration-two effects remain for one more activation");
+        assert_eq!(
+            effects.len(),
+            3,
+            "duration-two effects remain for one more activation"
+        );
         let _ = tick_status_effects(&mut effects);
         assert!(effects.is_empty());
         let effects = vec![
