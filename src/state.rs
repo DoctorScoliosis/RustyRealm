@@ -4,7 +4,9 @@ use crate::data::{
 };
 use crate::economy::MarketState;
 use crate::event::WorldEvent;
+use crate::party::{CompanionState, Party};
 use crate::quests::Quest;
+use crate::world::LocationId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +22,10 @@ fn default_theme() -> String {
 }
 fn default_unlocked_themes() -> Vec<String> {
     vec!["Classic".to_string()]
+}
+
+fn default_current_location() -> LocationId {
+    LocationId::from("village_start")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,6 +281,8 @@ impl Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
     pub player: Player,
+    #[serde(default = "default_current_location")]
+    pub current_location: LocationId,
     #[serde(default)]
     pub active_quests: Vec<Quest>,
     #[serde(default = "WorldEvent::none")]
@@ -298,12 +306,19 @@ pub struct GameState {
     pub active_theme: String,
     #[serde(default)]
     pub mastery_perks: Vec<MasteryPerkId>,
+    /// Recruited companions and their mutable state.
+    #[serde(default)]
+    pub companions: Vec<CompanionState>,
+    /// Active party composition (player always occupies one implicit slot).
+    #[serde(default)]
+    pub party: Party,
 }
 
 impl GameState {
     pub fn new(player: Player) -> Self {
         let mut state = Self {
             player,
+            current_location: default_current_location(),
             active_quests: Vec::new(),
             active_world_event: WorldEvent::none(),
             market_state: MarketState::new(),
@@ -315,6 +330,8 @@ impl GameState {
             unlocked_themes: default_unlocked_themes(),
             active_theme: default_theme(),
             mastery_perks: Vec::new(),
+            companions: Vec::new(),
+            party: Party::new(),
         };
         crate::quests::check_and_refresh_quests(&mut state);
         state

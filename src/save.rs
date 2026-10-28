@@ -284,6 +284,9 @@ fn read_save(path: &Path) -> Result<ParsedSave, SaveError> {
     match serde_json::from_str::<GameState>(&contents) {
         Ok(mut legacy_state) => {
             legacy_state.player.cap_values();
+            for companion in &mut legacy_state.companions {
+                companion.cap_values();
+            }
             Ok(ParsedSave::Legacy(legacy_state))
         }
         Err(error) => Err(SaveError::Corrupted(format!(
@@ -295,6 +298,9 @@ fn read_save(path: &Path) -> Result<ParsedSave, SaveError> {
 fn save_to_path(state: &GameState, path: &Path) -> Result<(), SaveError> {
     let mut safe_state = state.clone();
     safe_state.player.cap_values();
+    for companion in &mut safe_state.companions {
+        companion.cap_values();
+    }
 
     let password_hash = state.player.password_hash.trim();
     if password_hash.is_empty() {
@@ -377,6 +383,9 @@ fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState
     };
 
     state.player.cap_values();
+    for companion in &mut state.companions {
+        companion.cap_values();
+    }
 
     // Restore only after a candidate backup has passed checksum and password
     // validation. The original corrupt file is never copied over the backup.
@@ -439,6 +448,9 @@ fn migrate_legacy_at(
     // before calling this function with a newly chosen password.
     state.player.password_hash = hash_password(new_password)?;
     state.player.cap_values();
+    for companion in &mut state.companions {
+        companion.cap_values();
+    }
     save_to_path(&state, path)?;
     Ok(state)
 }
@@ -499,16 +511,24 @@ mod tests {
     }
 
     #[test]
+    fn new_game_starts_at_the_starting_village() {
+        let state = test_state("newgame", "secret");
+        assert_eq!(state.current_location.as_str(), "village_start");
+    }
+
+    #[test]
     fn save_load_roundtrip_preserves_state_and_authentication() {
         let dir = test_dir("roundtrip");
         let path = dir.join("player.json");
         let mut state = test_state("player", "secret");
         state.player.gold = 4321;
         state.player.add_item(crate::data::ItemType::Logs, 7);
+        state.current_location = crate::world::LocationId::from("whispering_woods");
 
         save_to_path(&state, &path).unwrap();
         let loaded = load_game_at(&path, "player", "secret").unwrap();
         assert_eq!(loaded.player.gold, 4321);
+        assert_eq!(loaded.current_location.as_str(), "whispering_woods");
         assert_eq!(loaded.player.get_item_count(crate::data::ItemType::Logs), 7);
         assert!(!loaded.player.password_hash.is_empty());
         assert!(load_game_at(&path, "player", "wrong").is_err());
@@ -526,8 +546,28 @@ mod tests {
     fn legacy_save_requires_explicit_password_migration() {
         let dir = test_dir("legacy");
         let path = dir.join("legacy.json");
-        let legacy_state = GameState::new(Player::new("legacy".into(), "discarded-hash".into()));
-        fs::write(&path, serde_json::to_vec_pretty(&legacy_state).unwrap()).unwrap();
+        let mut legacy_state =
+            GameState::new(Player::new("legacy".into(), "discarded-hash".into()));
+        legacy_state.player.xp = 12_345;
+        legacy_state.player.gold = 4_321;
+        legacy_state.player.add_item(crate::data::ItemType::Logs, 9);
+        legacy_state
+            .player
+            .quests_completed
+            .push("historic_quest".into());
+        legacy_state
+            .unlocked_achievements
+            .push("first_steps".into());
+        legacy_state.unlocked_themes.push("Amber".into());
+        legacy_state.active_theme = "Amber".into();
+
+        // Simulate a pre-Section-9.2 JSON save that has no current_location.
+        let mut legacy_json = serde_json::to_value(&legacy_state).unwrap();
+        legacy_json
+            .as_object_mut()
+            .unwrap()
+            .remove("current_location");
+        fs::write(&path, serde_json::to_vec_pretty(&legacy_json).unwrap()).unwrap();
 
         assert!(matches!(
             load_game_at(&path, "legacy", "old-password"),
@@ -536,6 +576,22 @@ mod tests {
 
         let migrated = migrate_legacy_at(&path, "legacy", "new-password").unwrap();
         assert_eq!(migrated.player.username, "legacy");
+        assert_eq!(migrated.current_location.as_str(), "village_start");
+        assert_eq!(migrated.player.xp, 12_345);
+        assert_eq!(migrated.player.gold, 4_321);
+        assert_eq!(
+            migrated.player.get_item_count(crate::data::ItemType::Logs),
+            9
+        );
+        assert_eq!(
+            migrated.player.quests_completed,
+            vec!["historic_quest".to_string()]
+        );
+        assert!(migrated
+            .unlocked_achievements
+            .contains(&"first_steps".to_string()));
+        assert!(migrated.unlocked_themes.contains(&"Amber".to_string()));
+        assert_eq!(migrated.active_theme, "Amber");
         assert!(load_game_at(&path, "legacy", "new-password").is_ok());
 
         let _ = fs::remove_dir_all(dir);
@@ -665,6 +721,10 @@ mod tests {
         document["data"]
             .as_object_mut()
             .unwrap()
+            .remove("current_location");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
             .remove("active_quests");
         document["data"]
             .as_object_mut()
@@ -701,6 +761,7 @@ mod tests {
         assert_eq!(loaded.player.max_stamina, 100);
         assert_eq!(loaded.player.mana, 50);
         assert_eq!(loaded.player.max_mana, 50);
+        assert_eq!(loaded.current_location.as_str(), "village_start");
         assert_eq!(
             loaded.active_world_event.event_type,
             crate::event::WorldEventType::None
@@ -770,6 +831,71 @@ mod tests {
             Err(SaveError::InvalidPasswordHash)
         ));
         assert_eq!(fs::read(&path).unwrap(), before);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn save_load_roundtrip_preserves_companions_and_party() {
+        let dir = test_dir("companion-roundtrip");
+        let path = dir.join("player.json");
+        let mut state = test_state("companion", "secret");
+
+        // Recruit a companion and add to party
+        let cost = crate::party::PartyManager::recruit(
+            &mut state.companions,
+            crate::party::CompanionId::BranTheShield,
+            state.player.combat_level,
+            state.player.gold,
+        )
+        .unwrap();
+        state.player.gold -= cost;
+        crate::party::PartyManager::add_to_party(
+            &mut state.party,
+            &state.companions,
+            crate::party::CompanionId::BranTheShield,
+        )
+        .unwrap();
+
+        save_to_path(&state, &path).unwrap();
+        let loaded = load_game_at(&path, "companion", "secret").unwrap();
+
+        assert_eq!(loaded.companions.len(), 1);
+        assert_eq!(loaded.companions[0].id, crate::party::CompanionId::BranTheShield);
+        assert!(loaded.party.contains(crate::party::CompanionId::BranTheShield));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn old_saves_without_companion_fields_load_with_defaults() {
+        let dir = test_dir("companion-compat");
+        let path = dir.join("player.json");
+        let state = test_state("compat", "secret");
+        save_to_path(&state, &path).unwrap();
+
+        // Remove companion and party fields to simulate an old save
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("companions");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("party");
+        let checksum = compute_checksum_payload(&document["data"]).unwrap();
+        document["checksum"] = serde_json::json!(checksum);
+        fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
+
+        let loaded = load_game_at(&path, "compat", "secret").unwrap();
+        assert!(loaded.companions.is_empty());
+        assert_eq!(loaded.party.companion_count(), 0);
+        assert_eq!(
+            loaded.party.size_limit(),
+            crate::party::DEFAULT_PARTY_SIZE_LIMIT
+        );
 
         let _ = fs::remove_dir_all(dir);
     }

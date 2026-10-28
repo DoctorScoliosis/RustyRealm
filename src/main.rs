@@ -8,6 +8,7 @@ mod economy;
 mod event;
 mod inventory;
 mod mastery;
+mod party;
 mod quests;
 mod save;
 mod shops;
@@ -15,10 +16,15 @@ mod skills;
 mod state;
 mod stronghold;
 mod ui;
+// Some world queries are reserved for later gameplay slices; remove this
+// allowance as the remaining APIs gain consumers.
+#[allow(dead_code)]
+mod world;
 
 use crate::data::ItemType;
 use crate::state::GameState;
 use crate::ui::Tui;
+use crate::world::{build_initial_world, LocationId, World};
 use std::io;
 
 fn main() -> io::Result<()> {
@@ -154,7 +160,9 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
 }
 
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
     let options = [
+        "Travel / Explore Region",
         "Wander Gielinor",
         "Weapon Shop",
         "Armour Shop",
@@ -168,6 +176,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         "Quest Hall",
         "Your Inventory",
         "Mastery & Achievements",
+        "Companions & Party",
         "Settings",
         "Log Out",
     ];
@@ -191,22 +200,34 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             )?;
         }
 
-        let choice = tui.select_menu("Final Realm · Varrock", &options, Some(state))?;
+        let current_location_name = world
+            .get_location(&state.current_location)
+            .map(|location| location.name.clone())
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "Unknown current location '{}'.",
+                    state.current_location
+                ))
+            })?;
+        let title = format!("Final Realm · {current_location_name}");
+        let choice = tui.select_menu(&title, &options, Some(state))?;
         match choice {
-            0 => combat::wander_gielinor(tui, state)?,
-            1 => shops::weapon_shop(tui, state)?,
-            2 => shops::armour_shop(tui, state)?,
-            3 => shops::legends_store(tui, state)?,
-            4 => general_store(tui, state)?,
-            5 => shops::max_shop(tui, state)?,
-            6 => shops::smuggler(tui, state)?,
-            7 => stronghold::enter_stronghold(tui, state)?,
-            8 => skills::skill_plot(tui, state)?,
-            9 => bank::bank_menu(tui, state)?,
-            10 => quests::quest_hall(tui, state)?,
-            11 => inventory::view_inventory(tui, state, false)?,
-            12 => crate::achievements::progression_menu(tui, state)?,
-            13 => settings_menu(tui, state)?,
+            0 => travel_menu(tui, state, &world)?,
+            1 => combat::wander_gielinor(tui, state)?,
+            2 => shops::weapon_shop(tui, state)?,
+            3 => shops::armour_shop(tui, state)?,
+            4 => shops::legends_store(tui, state)?,
+            5 => general_store(tui, state)?,
+            6 => shops::max_shop(tui, state)?,
+            7 => shops::smuggler(tui, state)?,
+            8 => stronghold::enter_stronghold(tui, state)?,
+            9 => skills::skill_plot(tui, state)?,
+            10 => bank::bank_menu(tui, state)?,
+            11 => quests::quest_hall(tui, state)?,
+            12 => inventory::view_inventory(tui, state, false)?,
+            13 => crate::achievements::progression_menu(tui, state)?,
+            14 => companion_menu(tui, state)?,
+            15 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
@@ -214,6 +235,98 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             }
         }
         state.market_state.advance_turn();
+    }
+}
+
+/// Applies a single directly connected journey after validating the route,
+/// destination, and positive travel cost. An error leaves the saved location
+/// unchanged.
+fn apply_travel(
+    state: &mut GameState,
+    world: &World,
+    destination_id: &LocationId,
+) -> Result<u32, &'static str> {
+    let current_id = state.current_location.clone();
+    let route = world
+        .get_direct_routes(&current_id)
+        .iter()
+        .find(|route| &route.destination_id == destination_id)
+        .ok_or("That destination is not directly connected to your current location.")?;
+
+    if route.travel_cost == 0 {
+        return Err("This route has an invalid travel cost.");
+    }
+    let destination = world
+        .get_location(destination_id)
+        .ok_or("That destination is not known to the world.")?;
+    let travel_cost = route.travel_cost;
+
+    // Mutate only after the direct route and its cost have been validated.
+    state.current_location = destination.id.clone();
+    Ok(travel_cost)
+}
+
+fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
+    loop {
+        let current_id = state.current_location.clone();
+        let current_name = world
+            .get_location(&current_id)
+            .map(|location| location.name.clone())
+            .ok_or_else(|| io::Error::other(format!("Unknown current location '{current_id}'.")))?;
+
+        let destinations: Vec<(LocationId, String, u32, u32)> = world
+            .get_direct_routes(&current_id)
+            .iter()
+            .filter_map(|route| {
+                world.get_location(&route.destination_id).map(|location| {
+                    (
+                        location.id.clone(),
+                        location.name.clone(),
+                        route.travel_cost,
+                        route.danger_level,
+                    )
+                })
+            })
+            .collect();
+
+        if destinations.is_empty() {
+            tui.show_message(
+                "No routes available",
+                "There are no direct travel connections from this location.",
+                Some(state),
+            )?;
+            return Ok(());
+        }
+
+        let labels: Vec<String> = destinations
+            .iter()
+            .map(|(_, name, cost, danger)| format!("{name} · travel cost {cost} · danger {danger}"))
+            .collect();
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Back");
+
+        let title = format!("Travel from {current_name}");
+        let choice = tui.select_menu(&title, &options, Some(state))?;
+        if choice >= destinations.len() {
+            return Ok(());
+        }
+
+        let (destination_id, destination_name, _listed_cost, danger_level) = &destinations[choice];
+        match apply_travel(state, world, destination_id) {
+            Ok(travel_cost) => {
+                tui.show_message(
+                    "Travel complete",
+                    &format!(
+                        "You arrive at {destination_name}.\n\nTravel cost: {travel_cost}\nRoute danger: {danger_level}"
+                    ),
+                    Some(state),
+                )?;
+                return Ok(());
+            }
+            Err(message) => {
+                tui.show_message("Travel unavailable", message, Some(state))?;
+            }
+        }
     }
 }
 
@@ -339,6 +452,360 @@ fn buy_sell_item(tui: &mut Tui, state: &mut GameState, item: ItemType) -> io::Re
     }
 }
 
+fn companion_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    loop {
+        let party_count = state.party.companion_count();
+        let party_limit = state.party.max_companions();
+        let roster_count = state.companions.len();
+        let title = format!(
+            "Companions & Party · {} recruited · {}/{} party slots",
+            roster_count, party_count, party_limit
+        );
+        let choice = tui.select_menu(
+            &title,
+            &["View Roster", "Manage Party", "Back"],
+            Some(state),
+        )?;
+        match choice {
+            0 => view_roster(tui, state)?,
+            1 => manage_party(tui, state)?,
+            _ => return Ok(()),
+        }
+    }
+}
+
+fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    use crate::party::{
+        all_companion_definitions, build_roster_actions, resolve_roster_action,
+        PartyManager, RosterAction,
+    };
+
+    let definitions = all_companion_definitions();
+
+    loop {
+        let mut labels: Vec<String> = definitions
+            .iter()
+            .map(|def| {
+                let recruited = state.companions.iter().find(|c| c.id == def.id);
+                let status = match recruited {
+                    Some(c) => format!("Recruited · {}", c.condition.name()),
+                    None => {
+                        let mut req = String::new();
+                        if def.recruitment_level > 0 {
+                            req.push_str(&format!("Lvl {}", def.recruitment_level));
+                        }
+                        if def.recruitment_cost > 0 {
+                            if !req.is_empty() {
+                                req.push_str(" · ");
+                            }
+                            req.push_str(&format!("{}g", def.recruitment_cost));
+                        }
+                        if req.is_empty() {
+                            "Not recruited".to_string()
+                        } else {
+                            format!("Not recruited · {}", req)
+                        }
+                    }
+                };
+                format!(
+                    "{} · {} · {}",
+                    def.name,
+                    def.role.name(),
+                    status
+                )
+            })
+            .collect();
+        labels.push("Back".to_string());
+
+        let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let choice = tui.select_menu("Companion Roster", &options, Some(state))?;
+        if choice >= definitions.len() {
+            return Ok(());
+        }
+
+        let def = &definitions[choice];
+        let recruited = state.companions.iter().find(|c| c.id == def.id);
+
+        if let Some(companion) = recruited {
+            // Show companion details and options
+            let in_party = state.party.contains(def.id);
+            let can_add_to_party = !in_party
+                && companion.can_join_party()
+                && state.party.has_room();
+
+            let mut detail = format!(
+                "Name: {}\nRole: {}\nCondition: {}\nHP: {}/{}\nAttack: {}\nDefence: {}\nWeapon: {}\nArmour: {}",
+                def.name,
+                def.role.name(),
+                companion.condition.name(),
+                companion.current_hp,
+                companion.max_hp,
+                companion.attack,
+                companion.defence,
+                companion.equipped_weapon.name(),
+                companion.equipped_armour.name(),
+            );
+            if in_party {
+                detail.push_str("\n\nCurrently in active party.");
+            }
+
+            let actions = build_roster_actions(in_party, can_add_to_party);
+            let action_labels: Vec<&str> = actions.iter().map(|a| a.label()).collect();
+
+            let action_choice = tui.select_menu(def.name, &action_labels, Some(state))?;
+            let resolved = resolve_roster_action(&actions, action_choice);
+
+            match resolved {
+                RosterAction::Details => {
+                    tui.show_message(def.name, &detail, Some(state))?;
+                }
+                RosterAction::RemoveFromParty => {
+                    match PartyManager::remove_from_party(&mut state.party, def.id) {
+                        Ok(()) => tui.show_message(
+                            "Party updated",
+                            &format!("{} removed from the party.", def.name),
+                            Some(state),
+                        )?,
+                        Err(e) => tui.show_message(
+                            "Could not remove",
+                            &e.to_string(),
+                            Some(state),
+                        )?,
+                    }
+                }
+                RosterAction::AddToParty => {
+                    match PartyManager::add_to_party(&mut state.party, &state.companions, def.id) {
+                        Ok(()) => tui.show_message(
+                            "Party updated",
+                            &format!("{} added to the party.", def.name),
+                            Some(state),
+                        )?,
+                        Err(e) => tui.show_message(
+                            "Could not add",
+                            &e.to_string(),
+                            Some(state),
+                        )?,
+                    }
+                }
+                RosterAction::Dismiss => {
+                    match PartyManager::dismiss(&mut state.companions, &mut state.party, def.id) {
+                        Ok(()) => tui.show_message(
+                            "Companion dismissed",
+                            &format!("{} has left your company.", def.name),
+                            Some(state),
+                        )?,
+                        Err(e) => tui.show_message(
+                            "Could not dismiss",
+                            &e.to_string(),
+                            Some(state),
+                        )?,
+                    }
+                }
+                RosterAction::Back => {
+                    // Return to roster selection without modifying any state.
+                }
+            }
+        } else {
+            // Not recruited - show recruitment option
+            let detail = format!(
+                "Name: {}\nRole: {}\n\n{}\n\nBase HP: {}\nBase Attack: {}\nBase Defence: {}\n\nRecruitment requires: Level {} · {} gold",
+                def.name,
+                def.role.name(),
+                def.description,
+                def.base_hp,
+                def.base_attack,
+                def.base_defence,
+                def.recruitment_level,
+                def.recruitment_cost,
+            );
+            let action_choice = tui.select_menu(
+                &format!("{} · Recruit", def.name),
+                &["View Details", "Recruit", "Back"],
+                Some(state),
+            )?;
+            match action_choice {
+                0 => {
+                    tui.show_message(def.name, &detail, Some(state))?;
+                }
+                1 => {
+                    match PartyManager::recruit(
+                        &mut state.companions,
+                        def.id,
+                        state.player.combat_level,
+                        state.player.gold,
+                    ) {
+                        Ok(cost) => {
+                            state.player.gold -= cost;
+                            tui.show_message(
+                                "Companion recruited",
+                                &format!(
+                                    "{} has joined your company!\nGold spent: {}",
+                                    def.name, cost
+                                ),
+                                Some(state),
+                            )?;
+                        }
+                        Err(e) => {
+                            tui.show_message("Recruitment failed", &e.to_string(), Some(state))?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn visible_party_members(
+    state: &GameState,
+) -> Vec<(crate::party::CompanionId, String, String)> {
+    // Keep each visible label paired with the ID it represents. A save with
+    // a party ID that has no matching recruited companion is filtered out,
+    // without shifting a later selection onto another ID.
+    state
+        .party
+        .members()
+        .iter()
+        .filter_map(|&id| {
+            state
+                .companions
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| {
+                    (
+                        id,
+                        format!(
+                            "{} · {} · HP {}/{}",
+                            c.display_name(),
+                            c.role().name(),
+                            c.current_hp,
+                            c.max_hp
+                        ),
+                        c.display_name().to_string(),
+                    )
+                })
+        })
+        .collect()
+}
+
+fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    use crate::party::{
+        build_party_menu_actions, resolve_party_menu_action, PartyManager, PartyMenuAction,
+    };
+
+    loop {
+        let party_members = visible_party_members(state);
+
+        let member_count = party_members.len();
+        let menu_actions = build_party_menu_actions(member_count);
+
+        // Build display labels that match the menu_actions list exactly.
+        // When the party is empty, show "No companions in party" as an
+        // informational line in the title instead of a selectable entry.
+        let mut labels: Vec<String> = party_members
+            .iter()
+            .map(|(_, label, _)| label.clone())
+            .collect();
+        labels.push(format!(
+            "Add companion ({}/{})",
+            state.party.companion_count(),
+            state.party.max_companions()
+        ));
+        labels.push("Back".to_string());
+
+        let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let title = if member_count == 0 {
+            "Active Party · no companions · select Add companion or Back".to_string()
+        } else {
+            format!(
+                "Active Party · {} companion{}",
+                state.party.companion_count(),
+                if state.party.companion_count() == 1 { "" } else { "s" }
+            )
+        };
+        let choice = tui.select_menu(&title, &options, Some(state))?;
+
+        let resolved = resolve_party_menu_action(&menu_actions, choice);
+
+        match resolved {
+            PartyMenuAction::Member(index) => {
+                // Resolve through the same filtered list used to render the menu,
+                // rather than indexing the raw saved party IDs.
+                let Some((id, _, name)) = party_members.get(index) else {
+                    tui.show_message(
+                        "Party updated",
+                        "That party member is no longer available. The menu has been refreshed.",
+                        Some(state),
+                    )?;
+                    continue;
+                };
+                let id = *id;
+                let name = name.clone();
+                match PartyManager::remove_from_party(&mut state.party, id) {
+                    Ok(()) => {
+                        tui.show_message(
+                            "Party updated",
+                            &format!("{} removed from the party.", name),
+                            Some(state),
+                        )?;
+                    }
+                    Err(e) => {
+                        tui.show_message("Could not remove", &e.to_string(), Some(state))?;
+                    }
+                }
+            }
+            PartyMenuAction::AddCompanion => {
+                let available: Vec<_> = state
+                    .companions
+                    .iter()
+                    .filter(|c| c.can_join_party() && !state.party.contains(c.id))
+                    .collect();
+                if available.is_empty() {
+                    tui.show_message(
+                        "No companions available",
+                        "All recruited companions are already in the party, unavailable, or you have no companions.",
+                        Some(state),
+                    )?;
+                    continue;
+                }
+                let add_labels: Vec<String> = available
+                    .iter()
+                    .map(|c| {
+                        format!(
+                            "{} · {} · HP {}/{}",
+                            c.display_name(),
+                            c.role().name(),
+                            c.current_hp,
+                            c.max_hp
+                        )
+                    })
+                    .collect();
+                let mut add_options: Vec<&str> = add_labels.iter().map(String::as_str).collect();
+                add_options.push("Back");
+                let add_choice = tui.select_menu("Add to Party", &add_options, Some(state))?;
+                if add_choice < available.len() {
+                    let id = available[add_choice].id;
+                    match PartyManager::add_to_party(&mut state.party, &state.companions, id) {
+                        Ok(()) => {
+                            tui.show_message(
+                                "Party updated",
+                                &format!("{} added to the party.", available[add_choice].display_name()),
+                                Some(state),
+                            )?;
+                        }
+                        Err(e) => {
+                            tui.show_message("Could not add", &e.to_string(), Some(state))?;
+                        }
+                    }
+                }
+            }
+            PartyMenuAction::Back => {
+                return Ok(());
+            }
+        }
+    }
+}
+
 fn settings_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
         let choice =
@@ -414,5 +881,84 @@ fn admin_commands(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             )?,
             _ => return Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod travel_tests {
+    use super::*;
+    use crate::state::Player;
+
+    fn test_state() -> GameState {
+        GameState::new(Player::new("traveller".into(), "test-hash".into()))
+    }
+
+
+    #[test]
+    fn party_menu_selection_stays_aligned_when_a_saved_member_is_missing() {
+        use crate::party::{
+            build_party_menu_actions, resolve_party_menu_action, CompanionId, CompanionState,
+            Party, PartyMenuAction,
+        };
+
+        let mut state = test_state();
+        let lyra = crate::party::get_definition(CompanionId::LyraSwiftbow);
+        state.companions.push(CompanionState::new_from_definition(&lyra));
+        state.party = serde_json::from_str::<Party>(
+            r#"{"members":["bran_the_shield","lyra_swiftbow"],"size_limit":4}"#,
+        )
+        .expect("the simulated inconsistent party should deserialize");
+
+        let visible = visible_party_members(&state);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].0, CompanionId::LyraSwiftbow);
+        assert!(visible[0].1.starts_with("Lyra Swiftbow"));
+
+        let actions = build_party_menu_actions(visible.len());
+        assert_eq!(
+            resolve_party_menu_action(&actions, 0),
+            PartyMenuAction::Member(0)
+        );
+        assert_eq!(
+            visible[0].0,
+            CompanionId::LyraSwiftbow,
+            "the displayed first row must map back to Lyra, not the missing Bran ID"
+        );
+    }
+
+    #[test]
+    fn direct_travel_updates_location_after_route_validation() {
+        let world = build_initial_world().expect("initial world should be valid");
+        let mut state = test_state();
+        let destination = LocationId::from("abandoned_mill");
+
+        let cost = apply_travel(&mut state, &world, &destination)
+            .expect("direct route should be traversable");
+
+        assert_eq!(cost, 5);
+        assert_eq!(state.current_location, destination);
+    }
+
+    #[test]
+    fn non_adjacent_destination_is_rejected_without_changing_location() {
+        let world = build_initial_world().expect("initial world should be valid");
+        let mut state = test_state();
+        let starting_location = state.current_location.clone();
+        let destination = LocationId::from("goblin_caves");
+
+        assert!(world.is_reachable(&starting_location, &destination));
+        assert!(!world.can_travel(&starting_location, &destination));
+        assert!(apply_travel(&mut state, &world, &destination).is_err());
+        assert_eq!(state.current_location, starting_location);
+    }
+
+    #[test]
+    fn unknown_destination_is_rejected_without_changing_location() {
+        let world = build_initial_world().expect("initial world should be valid");
+        let mut state = test_state();
+        let starting_location = state.current_location.clone();
+
+        assert!(apply_travel(&mut state, &world, &LocationId::from("unknown_location")).is_err());
+        assert_eq!(state.current_location, starting_location);
     }
 }
