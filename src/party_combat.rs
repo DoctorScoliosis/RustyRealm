@@ -734,6 +734,10 @@ impl Encounter {
         if !remaining {
             self.acted_this_round.clear();
             self.round = self.round.saturating_add(1);
+            self.initiative.sort_by_key(|id| {
+                let c = self.combatant(*id).expect("initiative ID from roster");
+                (std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())), c.id)
+            });
             self.turn_index = 0;
         }
     }
@@ -1468,6 +1472,35 @@ mod tests {
             before_second
         );
     }
+    #[test]
+    fn marked_targets_are_easier_to_hit_and_slow_reorders_next_round() {
+        let mut e = encounter();
+        let base = {
+            let attacker = e.combatant(CombatantId(1)).unwrap();
+            let defender = e.combatant(CombatantId(3)).unwrap();
+            Encounter::hit_chance(attacker, defender, RangeBand::Melee)
+        };
+        e.apply_status_effect(CombatantId(3), StatusEffectKind::Mark, Some(CombatantId(1)), 1, 2, 100, 0).unwrap();
+        let marked = {
+            let attacker = e.combatant(CombatantId(1)).unwrap();
+            let defender = e.combatant(CombatantId(3)).unwrap();
+            Encounter::hit_chance(attacker, defender, RangeBand::Melee)
+        };
+        assert_eq!(marked, (base + 5).min(MAX_HIT_CHANCE));
+
+        let mut e = encounter();
+        let initial_first = e.current_actor().unwrap();
+        assert_eq!(initial_first, CombatantId(1));
+        e.apply_status_effect(CombatantId(1), StatusEffectKind::Slow, Some(CombatantId(3)), 2, 3, 100, 0).unwrap();
+        // End this round in the existing deterministic actor order.
+        e.apply_action(CombatAction::Defend { actor: CombatantId(1) }, 0, 0).unwrap();
+        while let Some(actor) = e.current_actor() {
+            e.apply_action(CombatAction::Defend { actor }, 0, 0).unwrap();
+        }
+        assert_eq!(e.round(), 2);
+        assert_ne!(e.current_actor(), Some(CombatantId(1)));
+    }
+
     #[test]
     fn out_of_range_actions_do_not_spend_resources_or_change_health() {
         let mut e = encounter();
