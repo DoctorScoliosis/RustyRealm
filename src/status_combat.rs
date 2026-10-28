@@ -420,7 +420,15 @@ pub fn resolve_telegraph(
     let actor = encounter.combatant(telegraph.actor);
     let target = encounter.combatant(telegraph.target);
     let valid = match (actor, target) {
-        (Some(a), Some(t)) => a.can_act() && t.can_act() && t.allegiance != a.allegiance,
+        (Some(a), Some(t)) => {
+            a.can_act()
+                && !a
+                    .status_effects
+                    .iter()
+                    .any(|effect| effect.kind == StatusEffectKind::Stun)
+                && t.can_act()
+                && t.allegiance != a.allegiance
+        },
         _ => false,
     };
     if !valid {
