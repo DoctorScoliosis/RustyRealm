@@ -639,7 +639,17 @@ mod tests {
             damage: 40,
         };
         // A non-hostile target must cancel before the resolver is called.
-        e.combatant_mut(CombatantId(1)).unwrap().allegiance = Allegiance::Enemies;
+        e.set_position(CombatantId(1), RangeBand::Far).unwrap();
+        e.set_position(CombatantId(3), RangeBand::Near).unwrap();
+        let telegraph = TelegraphedAction {
+            actor: CombatantId(3),
+            target: CombatantId(1),
+            action: CombatAction::UseAbility { actor: CombatantId(3), target: CombatantId(1), ability: AbilityId::HeavyStrike },
+            name: "Dragon Heavy Strike".into(),
+            description: "A heavy strike at Hero".into(),
+            damage_type: DamageType::Physical,
+            damage: 40,
+        };
         let before = e.clone();
         assert!(matches!(
             resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
