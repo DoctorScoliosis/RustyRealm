@@ -578,7 +578,10 @@ mod tests {
         let after = e.clone();
         assert_eq!(
             e.apply_action(
-                CombatAction::BasicAttack { actor: first, target: CombatantId(3) },
+                CombatAction::BasicAttack {
+                    actor: first,
+                    target: CombatantId(3),
+                },
                 99
             ),
             Err(EncounterError::TurnAlreadyUsed(first))
@@ -590,7 +593,15 @@ mod tests {
     fn victory_and_party_defeat_are_terminal() {
         let mut e = Encounter::new(vec![
             EncounterCombatant::new(
-                CombatantId(1), CombatantSource::Player, "Hero", Allegiance::Allies, 10, 10, 10, 20, 0,
+                CombatantId(1),
+                CombatantSource::Player,
+                "Hero",
+                Allegiance::Allies,
+                10,
+                10,
+                10,
+                20,
+                0,
             ),
             EncounterCombatant::new(
                 CombatantId(2), CombatantSource::Enemy, "Rat", Allegiance::Enemies, 1, 0, 0, 2, 0,
@@ -609,7 +620,10 @@ mod tests {
             EncounterOutcome::Victory
         );
         assert_eq!(
-            e.apply_action(CombatAction::Defend { actor: CombatantId(1) }, 0),
+            e.apply_action(
+                CombatAction::Defend { actor: CombatantId(1) },
+                0,
+            ),
             Err(EncounterError::EncounterFinished)
         );
     }
@@ -641,7 +655,7 @@ mod tests {
                 },
                 0,
             )
-                .unwrap()
+                    .unwrap()
                 .outcome,
             EncounterOutcome::Retreated
         );
