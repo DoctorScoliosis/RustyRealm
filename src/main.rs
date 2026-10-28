@@ -207,7 +207,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     state.current_location
                 ))
             })?;
-        let title = format!("Rusty Realm · {current_location_name}");
+        let title = format!("Final Realm · {current_location_name}");
         let choice = tui.select_menu(&title, &options, Some(state))?;
         match choice {
             0 => travel_menu(tui, state, &world)?,
