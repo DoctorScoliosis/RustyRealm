@@ -255,15 +255,15 @@ impl Encounter {
         if !actor.can_act() { return Err(EncounterError::ActorIneligible(actor_id)); }
         if self.acted_this_round.contains(&actor_id) { return Err(EncounterError::TurnAlreadyUsed(actor_id)); }
 
-        if matches!(action, CombatAction::Retreat { .. }) {
+        if matches!(&action, CombatAction::Retreat { .. }) {
             self.consume_turn(actor_id);
             self.outcome = EncounterOutcome::Retreated;
             self.phase = EncounterPhase::Finished(self.outcome);
             return Ok(ActionResult { actor: actor_id, target: None, damage: 0, healing: 0, outcome: self.outcome, message: "retreated" });
         }
-        if matches!(action, CombatAction::Move { .. } | CombatAction::Defend { .. }) {
+        if matches!(&action, CombatAction::Move { .. } | CombatAction::Defend { .. }) {
             self.consume_turn(actor_id);
-            return Ok(ActionResult { actor: actor_id, target: None, damage: 0, healing: 0, outcome: self.outcome, message: if matches!(action, CombatAction::Move { .. }) { "movement reserved for section 12" } else { "defended" } });
+            return Ok(ActionResult { actor: actor_id, target: None, damage: 0, healing: 0, outcome: self.outcome, message: if matches!(&action, CombatAction::Move { .. }) { "movement reserved for section 12" } else { "defended" } });
         }
 
         let (target_id, ability_id) = match action {
@@ -324,36 +324,50 @@ mod tests {
             EncounterCombatant::new(CombatantId(4), CombatantSource::Enemy, "Goblin", Allegiance::Enemies, 30, 20, 0, 8, 1),
         ]).unwrap()
     }
-    #[test] fn stable_ids_allow_duplicate_display_names() {
+    #[test]
+    fn stable_ids_allow_duplicate_display_names() {
         let e = encounter();
         assert_eq!(e.combatants()[2].name, e.combatants()[3].name);
         assert_ne!(e.combatants()[2].id, e.combatants()[3].id);
     }
-    #[test] fn invalid_actions_are_rejected_without_mutation() {
-        let mut e = encounter(); let before = e.clone();
+    #[test]
+    fn invalid_actions_are_rejected_without_mutation() {
+        let mut e = encounter();
+        let before = e.clone();
         assert_eq!(e.apply_action(CombatAction::BasicAttack { actor: CombatantId(1), target: CombatantId(99) }, 0), Err(EncounterError::MissingTarget(CombatantId(99))));
         assert_eq!(e, before);
         assert_eq!(e.apply_action(CombatAction::BasicAttack { actor: CombatantId(999), target: CombatantId(3) }, 0), Err(EncounterError::MissingActor(CombatantId(999))));
         assert_eq!(e, before);
     }
-    #[test] fn insufficient_resources_do_not_mutate_encounter() {
-        let mut e = encounter(); e.combatant_mut(CombatantId(1)).unwrap().stamina = 0; let before = e.clone();
+    #[test]
+    fn insufficient_resources_do_not_mutate_encounter() {
+        let mut e = encounter();
+        e.combatant_mut(CombatantId(1)).unwrap().stamina = 0;
+        let before = e.clone();
         assert_eq!(e.apply_action(CombatAction::UseAbility { actor: CombatantId(1), target: CombatantId(3), ability: AbilityId::HeavyStrike }, 0), Err(EncounterError::InsufficientStamina));
         assert_eq!(e, before);
     }
-    #[test] fn partial_knockout_does_not_end_combat() {
-        let mut e = encounter(); e.combatant_mut(CombatantId(2)).unwrap().hp = 0; e.combatant_mut(CombatantId(2)).unwrap().sync_condition(); e.refresh_outcome();
+    #[test]
+    fn partial_knockout_does_not_end_combat() {
+        let mut e = encounter();
+        e.combatant_mut(CombatantId(2)).unwrap().hp = 0;
+        e.combatant_mut(CombatantId(2)).unwrap().sync_condition();
+        e.refresh_outcome();
         assert_eq!(e.outcome, EncounterOutcome::Ongoing);
         assert!(e.eligible_actors().contains(&CombatantId(1)));
     }
-    #[test] fn actors_act_once_per_round_in_deterministic_order() {
-        let mut e = encounter(); let first = e.current_actor().unwrap(); assert_eq!(first, CombatantId(1));
+    #[test]
+    fn actors_act_once_per_round_in_deterministic_order() {
+        let mut e = encounter();
+        let first = e.current_actor().unwrap();
+        assert_eq!(first, CombatantId(1));
         e.apply_action(CombatAction::BasicAttack { actor: first, target: CombatantId(3) }, 99).unwrap();
         let after = e.clone();
         assert_eq!(e.apply_action(CombatAction::BasicAttack { actor: first, target: CombatantId(3) }, 99), Err(EncounterError::TurnAlreadyUsed(first)));
         assert_eq!(e, after); assert_eq!(e.current_actor(), Some(CombatantId(2)));
     }
-    #[test] fn victory_and_party_defeat_are_terminal() {
+    #[test]
+    fn victory_and_party_defeat_are_terminal() {
         let mut e = Encounter::new(vec![
             EncounterCombatant::new(CombatantId(1), CombatantSource::Player, "Hero", Allegiance::Allies, 10, 10, 10, 20, 0),
             EncounterCombatant::new(CombatantId(2), CombatantSource::Enemy, "Rat", Allegiance::Enemies, 1, 0, 0, 2, 0),
@@ -361,12 +375,17 @@ mod tests {
         assert_eq!(e.apply_action(CombatAction::BasicAttack { actor: CombatantId(1), target: CombatantId(2) }, 99).unwrap().outcome, EncounterOutcome::Victory);
         assert_eq!(e.apply_action(CombatAction::Defend { actor: CombatantId(1) }, 0), Err(EncounterError::EncounterFinished));
     }
-    #[test] fn defeated_enemy_is_not_a_valid_target() {
-        let mut e = encounter(); e.combatant_mut(CombatantId(3)).unwrap().hp = 0; e.combatant_mut(CombatantId(3)).unwrap().sync_condition(); let before = e.clone();
+    #[test]
+    fn defeated_enemy_is_not_a_valid_target() {
+        let mut e = encounter();
+        e.combatant_mut(CombatantId(3)).unwrap().hp = 0;
+        e.combatant_mut(CombatantId(3)).unwrap().sync_condition();
+        let before = e.clone();
         assert_eq!(e.apply_action(CombatAction::BasicAttack { actor: CombatantId(1), target: CombatantId(3) }, 0), Err(EncounterError::TargetIneligible(CombatantId(3))));
         assert_eq!(e, before);
     }
-    #[test] fn retreat_is_terminal() {
+    #[test]
+    fn retreat_is_terminal() {
         let mut e = encounter();
         assert_eq!(e.apply_action(CombatAction::Retreat { actor: CombatantId(1) }, 0).unwrap().outcome, EncounterOutcome::Retreated);
         assert_eq!(e.current_actor(), None);
