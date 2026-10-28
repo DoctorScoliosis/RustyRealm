@@ -234,7 +234,7 @@ impl EnemyProfile {
             },
             "Stronghold Mage" => Self {
                 archetype: EnemyArchetype::StatusSpecialist,
-                preferred_range: RangeProfile::RANGED,
+                preferred_range: PreferredRange::Far,
                 abilities: vec![AbilityId::LifeDrain],
                 status_payload: Some((StatusEffectKind::Slow, 2, 1, 35)),
                 tendency: EnemyTendency::PreferStatusFreeTargets,
@@ -255,9 +255,8 @@ impl EnemyProfile {
             },
             _ => Self {
                 archetype: EnemyArchetype::DefensiveProtector,
-                preferred_range: RangeProfile::MELEE,
+                preferred_range: PreferredRange::Melee,
                 abilities: vec![AbilityId::Cleave],
-                damage_type: DamageType::Physical,
                 status_payload: Some((StatusEffectKind::Bleed, 2, 6, 25)),
                 tendency: EnemyTendency::PreferLowDefenceTargets,
             },
