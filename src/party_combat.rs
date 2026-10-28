@@ -264,6 +264,16 @@ impl EncounterCombatant {
             status_effects: Vec::new(),
             status_resistance: StatusResistance { resistance_pct: 0 },
         };
+        if allegiance == Allegiance::Enemies {
+            let profile = crate::status_combat::EnemyProfile::for_name(&c.name);
+            if matches!(
+                profile.archetype,
+                crate::status_combat::EnemyArchetype::RangedPressure
+                    | crate::status_combat::EnemyArchetype::StatusSpecialist
+            ) {
+                c.attack_range = RangeProfile::RANGED;
+            }
+        }
         c.recalculate_attributes();
         c
     }
@@ -660,23 +670,26 @@ impl Encounter {
         let Some(id) = self.current_actor() else {
             return Vec::new();
         };
-        let Some(actor) = self.combatant_mut(id) else {
-            return Vec::new();
-        };
-        let ticks = tick_status_effects(&mut actor.status_effects);
-        let mut results = Vec::new();
-        for tick in ticks {
-            match tick {
-                StatusTick::Damage { amount, .. } => {
-                    actor.hp = actor.hp.saturating_sub(amount);
+        let (ticks, defeated, stunned) = {
+            let Some(actor) = self.combatant_mut(id) else {
+                return Vec::new();
+            };
+            let ticks = tick_status_effects(&mut actor.status_effects);
+            for tick in &ticks {
+                if let StatusTick::Damage { amount, .. } = tick {
+                    actor.hp = actor.hp.saturating_sub(*amount);
                     actor.sync_condition();
                 }
-                StatusTick::Stunned => {}
-                StatusTick::Expired(_) => {}
             }
-            results.push((id, tick));
+            let defeated = !actor.can_act();
+            let stunned = ticks.iter().any(|tick| matches!(tick, StatusTick::Stunned));
+            (ticks, defeated, stunned)
+        };
+        if defeated || stunned {
+            self.consume_turn(id);
+            self.refresh_outcome();
         }
-        results
+        ticks.into_iter().map(|tick| (id, tick)).collect()
     }
 
     /// Status application shares the same typed storage for every combatant role.
