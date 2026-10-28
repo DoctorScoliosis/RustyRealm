@@ -1150,7 +1150,9 @@ mod tests {
         .unwrap();
         // Poison ticks again at this activation; Stun then consumes the activation.
         let ticks = e.tick_current_actor_statuses();
-        assert!(ticks.iter().any(|(_, tick)| matches!(tick, StatusTick::Stunned)));
+        assert!(ticks
+            .iter()
+            .any(|(_, tick)| matches!(tick, StatusTick::Stunned)));
         assert_ne!(e.current_actor(), Some(CombatantId(1)));
     }
 
