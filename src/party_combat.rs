@@ -6,7 +6,11 @@
 //! Position uses encounter-owned range bands, not grid coordinates.
 
 use crate::data::{get_ability, AbilityId};
-use crate::status_combat::{defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects, apply_status, StatusEffect, StatusEffectKind, StatusResistance, StatusApplication, StatusTick, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY};
+use crate::status_combat::{
+    apply_status, defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects,
+    StatusApplication, StatusEffect, StatusEffectKind, StatusResistance, StatusTick,
+    MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
+};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
 use std::collections::HashSet;
@@ -289,9 +293,15 @@ impl EncounterCombatant {
     pub fn can_act(&self) -> bool {
         self.condition == CombatantCondition::Ready && self.hp > 0
     }
-    pub fn slow_penalty(&self) -> i16 { slow_penalty(&self.status_effects) }
-    pub fn mark_hit_bonus(&self) -> u8 { mark_hit_bonus(&self.status_effects) }
-    pub fn defence_vulnerability_pct(&self) -> u8 { defence_vulnerability_pct(&self.status_effects) }
+    pub fn slow_penalty(&self) -> i16 {
+        slow_penalty(&self.status_effects)
+    }
+    pub fn mark_hit_bonus(&self) -> u8 {
+        mark_hit_bonus(&self.status_effects)
+    }
+    pub fn defence_vulnerability_pct(&self) -> u8 {
+        defence_vulnerability_pct(&self.status_effects)
+    }
     fn sync_condition(&mut self) {
         if self.hp == 0 {
             self.condition = CombatantCondition::KnockedOut;
@@ -414,8 +424,14 @@ impl Encounter {
         }
         let mut initiative: Vec<_> = combatants.iter().map(|c| c.id).collect();
         initiative.sort_by_key(|id| {
-            let c = combatants.iter().find(|c| c.id == *id).expect("ID from combatant roster");
-            (std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())), c.id)
+            let c = combatants
+                .iter()
+                .find(|c| c.id == *id)
+                .expect("ID from combatant roster");
+            (
+                std::cmp::Reverse(c.attributes.speed.saturating_sub(c.slow_penalty())),
+                c.id,
+            )
         });
         let positions = combatants
             .iter()
@@ -584,8 +600,9 @@ impl Encounter {
         };
         (70_i16 + (attacker.attributes.accuracy - BASE_STAT) / 2
             - (defender.attributes.evasion - BASE_STAT) / 2
-            - penalty + i16::from(attacker.mark_hit_bonus()))
-            .clamp(MIN_HIT_CHANCE as i16, MAX_HIT_CHANCE as i16) as u8
+            - penalty
+            + i16::from(attacker.mark_hit_bonus()))
+        .clamp(MIN_HIT_CHANCE as i16, MAX_HIT_CHANCE as i16) as u8
     }
     pub fn legal_targets(
         &self,
@@ -640,8 +657,12 @@ impl Encounter {
     /// Apply status ticks at the start of the selected combatant's activation.
     /// A status inflicted during an action therefore begins ticking next activation.
     pub fn tick_current_actor_statuses(&mut self) -> Vec<(CombatantId, StatusTick)> {
-        let Some(id) = self.current_actor() else { return Vec::new(); };
-        let Some(actor) = self.combatant_mut(id) else { return Vec::new(); };
+        let Some(id) = self.current_actor() else {
+            return Vec::new();
+        };
+        let Some(actor) = self.combatant_mut(id) else {
+            return Vec::new();
+        };
         let ticks = tick_status_effects(&mut actor.status_effects);
         let mut results = Vec::new();
         for tick in ticks {
@@ -669,7 +690,9 @@ impl Encounter {
         chance_pct: u8,
         roll: u32,
     ) -> Result<StatusApplication, EncounterError> {
-        let target = self.combatant_mut(target_id).ok_or(EncounterError::MissingTarget(target_id))?;
+        let target = self
+            .combatant_mut(target_id)
+            .ok_or(EncounterError::MissingTarget(target_id))?;
         let effect = StatusEffect {
             kind,
             source,
@@ -721,7 +744,10 @@ impl Encounter {
             return Err(EncounterError::TurnAlreadyUsed(actor_id));
         }
         let stunned = self.combatant(actor_id).is_some_and(|actor| {
-            actor.status_effects.iter().any(|effect| effect.kind == StatusEffectKind::Stun)
+            actor
+                .status_effects
+                .iter()
+                .any(|effect| effect.kind == StatusEffectKind::Stun)
         });
         if stunned {
             let actor = self.combatant_mut(actor_id).expect("actor validated");
@@ -735,8 +761,13 @@ impl Encounter {
             self.consume_turn(actor_id);
             self.refresh_outcome();
             return Ok(ActionResult {
-                actor: actor_id, target: None, damage: 0, healing: 0,
-                outcome: self.outcome, hit: None, hit_chance: None,
+                actor: actor_id,
+                target: None,
+                damage: 0,
+                healing: 0,
+                outcome: self.outcome,
+                hit: None,
+                hit_chance: None,
                 message: "stunned; activation skipped",
             });
         }
@@ -851,11 +882,15 @@ impl Encounter {
         let critical = hit && critical_roll % 100 < crit_chance;
         let scaled = if critical { raw.saturating_mul(2) } else { raw };
         let vulnerability = u64::from(target.defence_vulnerability_pct());
-        let vulnerable_scaled = (u64::from(scaled) * (100 + vulnerability) / 100).min(u64::from(u32::MAX)) as u32;
+        let vulnerable_scaled =
+            (u64::from(scaled) * (100 + vulnerability) / 100).min(u64::from(u32::MAX)) as u32;
         let damage = if !hit || scaled == 0 {
             0
         } else {
-            vulnerable_scaled.saturating_sub(target.defence).max(1).min(target.hp)
+            vulnerable_scaled
+                .saturating_sub(target.defence)
+                .max(1)
+                .min(target.hp)
         };
         if let Some(def) = &ability {
             let source = self
@@ -882,9 +917,15 @@ impl Encounter {
                 _ => None,
             };
             if let Some((kind, duration, potency, chance_pct)) = payload {
-                let resistance = self.combatant(target_id).expect("target validated").status_resistance.resistance_pct;
+                let resistance = self
+                    .combatant(target_id)
+                    .expect("target validated")
+                    .status_resistance
+                    .resistance_pct;
                 let effect = StatusEffect {
-                    kind, source: Some(actor_id), potency,
+                    kind,
+                    source: Some(actor_id),
+                    potency,
                     remaining_activations: duration,
                     application_chance_pct: chance_pct,
                 };
