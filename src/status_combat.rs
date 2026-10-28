@@ -526,7 +526,7 @@ mod tests {
             damage_type: DamageType::Physical,
             damage: 40,
         };
-        e.set_position(CombatantId(3), RangeBand::Far).unwrap();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
         e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
         let before = e.clone();
         assert!(matches!(
