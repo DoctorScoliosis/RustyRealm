@@ -1,6 +1,6 @@
 use crate::data::{get_ability, get_npc_resistance, AbilityId, DamageType, LacoyxPhase};
-use crate::status_combat::{StatusEffect, StatusEffectKind, StatusTick};
 use crate::state::Player;
+use crate::status_combat::{StatusEffect, StatusEffectKind, StatusTick};
 use rand::Rng;
 
 /// Defensive response to an incoming attack. Consumable represents using one
@@ -98,12 +98,7 @@ impl Combatant {
             remaining_activations: duration,
             application_chance_pct: 100,
         };
-        let _ = crate::status_combat::apply_status(
-            &mut self.status_effects,
-            effect,
-            0,
-            0,
-        );
+        let _ = crate::status_combat::apply_status(&mut self.status_effects, effect, 0, 0);
     }
 
     /// The legacy battle and party encounter now share the same effect clock.
@@ -116,7 +111,10 @@ impl Combatant {
             match tick {
                 StatusTick::Damage { kind, amount } => {
                     self.hp = self.hp.saturating_sub(amount);
-                    logs.push(format!("{} suffers {} {:?} damage!", self.name, amount, kind));
+                    logs.push(format!(
+                        "{} suffers {} {:?} damage!",
+                        self.name, amount, kind
+                    ));
                 }
                 StatusTick::Stunned => {
                     self.is_stunned = true;
