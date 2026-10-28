@@ -12,10 +12,11 @@
 //!
 //! This module is domain-only: it has no UI or terminal dependencies.
 
+use serde::{Deserialize, Serialize};
+
 use crate::data::{get_ability, AbilityId};
 use crate::party_combat::{
-    Allegiance, CombatAction, CombatantId, Encounter, EncounterCombatant, EncounterError,
-    RangeBand,
+    Allegiance, CombatAction, CombatantId, Encounter, EncounterCombatant, EncounterError, RangeBand,
 };
 
 /// Apply/refresh one effect using caller-provided 0..99 roll and resistance.
@@ -129,7 +130,7 @@ pub const MAX_MARK_HIT_BONUS: u8 = 15;
 pub const MAX_DEFENCE_VULNERABILITY_PCT: u8 = 50;
 pub const MAX_STATUS_RESISTANCE_PCT: u8 = 90;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StatusEffectKind {
     Poison,
     Bleed,
@@ -426,8 +427,7 @@ pub fn propose_enemy_action(
             CombatAction::UseAbility {
                 actor: actor_id,
                 target: target.id,
-                ability: affordable_abilities
-                    [(roll as usize / 3) % affordable_abilities.len()],
+                ability: affordable_abilities[(roll as usize / 3) % affordable_abilities.len()],
             }
         } else {
             CombatAction::BasicAttack {
@@ -487,7 +487,10 @@ pub fn resolve_telegraph(
         || !target.can_act()
         || target.allegiance == actor.allegiance
     {
-        return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
+        return Ok(TelegraphState::Cancelled {
+            name: telegraph.name,
+            reason: "actor or target is no longer valid",
+        });
     }
     match encounter.apply_action(telegraph.action.clone(), hit_roll, critical_roll) {
         Ok(_) => Ok(TelegraphState::Resolved(telegraph)),
