@@ -399,9 +399,9 @@ mod tests {
     fn encounter() -> Encounter {
         let mut hero = EncounterCombatant::new(CombatantId(1), CombatantSource::Player, "Hero", Allegiance::Allies, 100, 40, 25, 30, 5);
         hero.set_class(CharacterClass::Ranger);
-        let mut companion = EncounterCombatant::new(CombatantId(2), CombatantSource::Companion(CompanionId::BranTheShield), "Bran", Allegiance::Allies, 70, 30, 10, 20, 10);
-        companion.base_attributes = CombatAttributes { speed: 50, accuracy: 50, evasion: 50, power: 50, resistance: 50 };
-        let enemy = EncounterCombatant::new(CombatantId(3), CombatantSource::Enemy, "Dragon", Allegiance::Enemies, 100, 20, 0, 20, 10);
+        let companion = EncounterCombatant::new(CombatantId(2), CombatantSource::Companion(CompanionId::BranTheShield), "Bran", Allegiance::Allies, 70, 30, 10, 20, 10);
+        let mut enemy = EncounterCombatant::new(CombatantId(3), CombatantSource::Enemy, "Dragon", Allegiance::Enemies, 100, 20, 0, 20, 10);
+        enemy.attack_range = RangeProfile::RANGED;
         Encounter::new(vec![hero, companion, enemy]).unwrap()
     }
 
@@ -427,7 +427,7 @@ mod tests {
         let mut effects = Vec::new();
         let mut e = effect(StatusEffectKind::Burn, 2, 4);
         e.application_chance_pct = 1;
-        assert_eq!(apply_status(&mut effects, e, 99, 0), StatusApplication::FailedChance);
+        assert_eq!(apply_status(&mut effects, e, 99, 0), StatusApplication::Resisted);
         assert!(effects.is_empty());
     }
 
@@ -441,6 +441,8 @@ mod tests {
         ];
         let ticks = tick_status_effects(&mut effects);
         assert!(ticks.contains(&StatusTick::Stunned));
+        assert_eq!(effects.len(), 3, "duration-two effects remain for one more activation");
+        let _ = tick_status_effects(&mut effects);
         assert!(effects.is_empty());
         let effects = vec![effect(StatusEffectKind::Slow, 2, u32::MAX), effect(StatusEffectKind::Mark, 2, u32::MAX), effect(StatusEffectKind::WeakenedDefences, 2, u32::MAX)];
         assert_eq!(slow_penalty(&effects), MAX_SLOW_INITIATIVE_PENALTY);
