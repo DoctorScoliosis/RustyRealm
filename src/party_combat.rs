@@ -79,7 +79,9 @@ pub struct RangeProfile { pub min: RangeBand, pub max: RangeBand }
 impl RangeProfile {
     pub const MELEE: Self = Self { min: RangeBand::Melee, max: RangeBand::Melee };
     pub const RANGED: Self = Self { min: RangeBand::Melee, max: RangeBand::Far };
-    pub const fn allows(self, range: RangeBand) -> bool { range >= self.min && range <= self.max }
+    pub fn allows(self, range: RangeBand) -> bool {
+        range >= self.min && range <= self.max
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
