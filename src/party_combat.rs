@@ -376,7 +376,6 @@ mod tests {
                 25,
                 30,
                 5,
-                0,
             ),
             EncounterCombatant::new(
                 CombatantId(2),
@@ -388,7 +387,6 @@ mod tests {
                 5,
                 20,
                 10,
-                0,
             ),
             EncounterCombatant::new(
                 CombatantId(3),
@@ -400,7 +398,6 @@ mod tests {
                 0,
                 8,
                 1,
-                0,
             ),
             EncounterCombatant::new(
                 CombatantId(4),
@@ -412,7 +409,6 @@ mod tests {
                 0,
                 8,
                 1,
-                0,
             ),
         ])
         .unwrap()
@@ -505,7 +501,6 @@ mod tests {
                 },
                 0,
                 99,
-                0,
             ),
             Err(EncounterError::TurnAlreadyUsed(first))
         );
@@ -525,7 +520,6 @@ mod tests {
                 10,
                 20,
                 0,
-                0,
             ),
             EncounterCombatant::new(
                 CombatantId(2),
@@ -537,7 +531,6 @@ mod tests {
                 0,
                 2,
                 0,
-                0,
             ),
         ])
         .unwrap();
@@ -548,7 +541,6 @@ mod tests {
                     target: CombatantId(2),
                 },
                 0,
-                99,
                 0,
             )
             .unwrap()
@@ -560,7 +552,6 @@ mod tests {
                 CombatAction::Defend {
                     actor: CombatantId(1),
                 },
-                0,
                 0,
                 0,
             ),
@@ -594,7 +585,6 @@ mod tests {
                 CombatAction::Retreat {
                     actor: CombatantId(1),
                 },
-                0,
                 0,
                 0,
             )
