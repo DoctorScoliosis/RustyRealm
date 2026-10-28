@@ -23,7 +23,7 @@ This is an implementation brief, not a claim that save persistence or the travel
 
 ## Repository context
 
-The current `GameState` in `src/state.rs` persists the player, quests, world events, market state, Stronghold progression, achievements, titles, themes, and mastery perks. It has no current-location field. `main.rs` currently exposes `Wander Gielinor` and labels the main menu `Final Realm · Varrock`. Existing saves are serialised through the save layer, and added persisted fields need serde defaults or an explicit migration.
+`GameState` in `src/state.rs` persists the player, quests, world events, market state, Stronghold progression, achievements, titles, themes, mastery perks, and now `current_location`. The location field uses a serde default of `village_start` so existing JSON can load without rewriting the save envelope or changing its version. `main.rs` still exposes `Wander Gielinor` and labels the main menu `Final Realm · Varrock`; travel UI remains out of scope until Slice 9.3.
 
 ## Slice 9.1 — Domain model only
 
