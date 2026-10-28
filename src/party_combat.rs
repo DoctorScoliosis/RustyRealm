@@ -1682,7 +1682,10 @@ mod tests {
             0,
         )
         .unwrap();
-        while let Some(actor) = e.current_actor() {
+        while e.round() == 1 {
+            let Some(actor) = e.current_actor() else {
+                break;
+            };
             e.apply_action(CombatAction::Defend { actor }, 0, 0)
                 .unwrap();
         }
