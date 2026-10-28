@@ -476,8 +476,8 @@ fn companion_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
 fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     use crate::party::{
-        all_companion_definitions, build_roster_actions, resolve_roster_action,
-        PartyManager, RosterAction,
+        all_companion_definitions, build_roster_actions, resolve_roster_action, PartyManager,
+        RosterAction,
     };
 
     let definitions = all_companion_definitions();
@@ -507,12 +507,7 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                         }
                     }
                 };
-                format!(
-                    "{} · {} · {}",
-                    def.name,
-                    def.role.name(),
-                    status
-                )
+                format!("{} · {} · {}", def.name, def.role.name(), status)
             })
             .collect();
         labels.push("Back".to_string());
@@ -529,9 +524,8 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         if let Some(companion) = recruited {
             // Show companion details and options
             let in_party = state.party.contains(def.id);
-            let can_add_to_party = !in_party
-                && companion.can_join_party()
-                && state.party.has_room();
+            let can_add_to_party =
+                !in_party && companion.can_join_party() && state.party.has_room();
 
             let mut detail = format!(
                 "Name: {}\nRole: {}\nCondition: {}\nHP: {}/{}\nAttack: {}\nDefence: {}\nWeapon: {}\nArmour: {}",
@@ -566,11 +560,9 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                             &format!("{} removed from the party.", def.name),
                             Some(state),
                         )?,
-                        Err(e) => tui.show_message(
-                            "Could not remove",
-                            &e.to_string(),
-                            Some(state),
-                        )?,
+                        Err(e) => {
+                            tui.show_message("Could not remove", &e.to_string(), Some(state))?
+                        }
                     }
                 }
                 RosterAction::AddToParty => {
@@ -580,11 +572,7 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                             &format!("{} added to the party.", def.name),
                             Some(state),
                         )?,
-                        Err(e) => tui.show_message(
-                            "Could not add",
-                            &e.to_string(),
-                            Some(state),
-                        )?,
+                        Err(e) => tui.show_message("Could not add", &e.to_string(), Some(state))?,
                     }
                 }
                 RosterAction::Dismiss => {
@@ -594,11 +582,9 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                             &format!("{} has left your company.", def.name),
                             Some(state),
                         )?,
-                        Err(e) => tui.show_message(
-                            "Could not dismiss",
-                            &e.to_string(),
-                            Some(state),
-                        )?,
+                        Err(e) => {
+                            tui.show_message("Could not dismiss", &e.to_string(), Some(state))?
+                        }
                     }
                 }
                 RosterAction::Back => {
@@ -656,9 +642,7 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
-fn visible_party_members(
-    state: &GameState,
-) -> Vec<(crate::party::CompanionId, String, String)> {
+fn visible_party_members(state: &GameState) -> Vec<(crate::party::CompanionId, String, String)> {
     // Keep each visible label paired with the ID it represents. A save with
     // a party ID that has no matching recruited companion is filtered out,
     // without shifting a later selection onto another ID.
@@ -667,23 +651,19 @@ fn visible_party_members(
         .members()
         .iter()
         .filter_map(|&id| {
-            state
-                .companions
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| {
-                    (
-                        id,
-                        format!(
-                            "{} · {} · HP {}/{}",
-                            c.display_name(),
-                            c.role().name(),
-                            c.current_hp,
-                            c.max_hp
-                        ),
-                        c.display_name().to_string(),
-                    )
-                })
+            state.companions.iter().find(|c| c.id == id).map(|c| {
+                (
+                    id,
+                    format!(
+                        "{} · {} · HP {}/{}",
+                        c.display_name(),
+                        c.role().name(),
+                        c.current_hp,
+                        c.max_hp
+                    ),
+                    c.display_name().to_string(),
+                )
+            })
         })
         .collect()
 }
@@ -720,7 +700,11 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             format!(
                 "Active Party · {} companion{}",
                 state.party.companion_count(),
-                if state.party.companion_count() == 1 { "" } else { "s" }
+                if state.party.companion_count() == 1 {
+                    ""
+                } else {
+                    "s"
+                }
             )
         };
         let choice = tui.select_menu(&title, &options, Some(state))?;
@@ -789,7 +773,10 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                         Ok(()) => {
                             tui.show_message(
                                 "Party updated",
-                                &format!("{} added to the party.", available[add_choice].display_name()),
+                                &format!(
+                                    "{} added to the party.",
+                                    available[add_choice].display_name()
+                                ),
                                 Some(state),
                             )?;
                         }
@@ -893,7 +880,6 @@ mod travel_tests {
         GameState::new(Player::new("traveller".into(), "test-hash".into()))
     }
 
-
     #[test]
     fn party_menu_selection_stays_aligned_when_a_saved_member_is_missing() {
         use crate::party::{
@@ -903,7 +889,9 @@ mod travel_tests {
 
         let mut state = test_state();
         let lyra = crate::party::get_definition(CompanionId::LyraSwiftbow);
-        state.companions.push(CompanionState::new_from_definition(&lyra));
+        state
+            .companions
+            .push(CompanionState::new_from_definition(&lyra));
         state.party = serde_json::from_str::<Party>(
             r#"{"members":["bran_the_shield","lyra_swiftbow"],"size_limit":4}"#,
         )

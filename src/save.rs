@@ -861,8 +861,13 @@ mod tests {
         let loaded = load_game_at(&path, "companion", "secret").unwrap();
 
         assert_eq!(loaded.companions.len(), 1);
-        assert_eq!(loaded.companions[0].id, crate::party::CompanionId::BranTheShield);
-        assert!(loaded.party.contains(crate::party::CompanionId::BranTheShield));
+        assert_eq!(
+            loaded.companions[0].id,
+            crate::party::CompanionId::BranTheShield
+        );
+        assert!(loaded
+            .party
+            .contains(crate::party::CompanionId::BranTheShield));
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -881,10 +886,7 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("companions");
-        document["data"]
-            .as_object_mut()
-            .unwrap()
-            .remove("party");
+        document["data"].as_object_mut().unwrap().remove("party");
         let checksum = compute_checksum_payload(&document["data"]).unwrap();
         document["checksum"] = serde_json::json!(checksum);
         fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();

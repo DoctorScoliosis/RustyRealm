@@ -99,7 +99,10 @@ impl CompanionCondition {
 
     /// Whether a companion in this condition can be added to an active party.
     pub fn can_join_party(&self) -> bool {
-        matches!(self, CompanionCondition::Active | CompanionCondition::Available)
+        matches!(
+            self,
+            CompanionCondition::Active | CompanionCondition::Available
+        )
     }
 }
 
@@ -485,10 +488,7 @@ pub fn all_companion_definitions() -> Vec<CompanionDefinition> {
             default_armour: ArmourTier::Iron,
             recruitment_level: 10,
             recruitment_cost: 1500,
-            abilities: vec![
-                CompanionAbilityId::ShieldBash,
-                CompanionAbilityId::IronWill,
-            ],
+            abilities: vec![CompanionAbilityId::ShieldBash, CompanionAbilityId::IronWill],
         },
         CompanionDefinition {
             id: CompanionId::SeraNightwhisper,
@@ -674,7 +674,11 @@ impl fmt::Display for PartyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PartyError::PartyFull { limit } => {
-                write!(f, "Party is full (maximum {} members including you).", limit)
+                write!(
+                    f,
+                    "Party is full (maximum {} members including you).",
+                    limit
+                )
             }
             PartyError::AlreadyInParty { companion } => {
                 write!(
@@ -749,7 +753,10 @@ impl fmt::Display for PartyError {
                 )
             }
             PartyError::PlayerNotInParty => {
-                write!(f, "The player character must always count as a party member.")
+                write!(
+                    f,
+                    "The player character must always count as a party member."
+                )
             }
         }
     }
@@ -1023,10 +1030,7 @@ impl RosterAction {
 /// The result is guaranteed to contain `Details` first and `Back` last, with
 /// at most one of `AddToParty` or `RemoveFromParty` in between, and `Dismiss`
 /// before `Back`.
-pub fn build_roster_actions(
-    in_party: bool,
-    can_add_to_party: bool,
-) -> Vec<RosterAction> {
+pub fn build_roster_actions(in_party: bool, can_add_to_party: bool) -> Vec<RosterAction> {
     let mut actions = vec![RosterAction::Details];
     if in_party {
         actions.push(RosterAction::RemoveFromParty);
@@ -1208,7 +1212,9 @@ mod tests {
             .add_member(CompanionId::BranTheShield, &companions)
             .unwrap();
 
-        assert!(PartyManager::dismiss(&mut companions, &mut party, CompanionId::BranTheShield).is_ok());
+        assert!(
+            PartyManager::dismiss(&mut companions, &mut party, CompanionId::BranTheShield).is_ok()
+        );
         assert!(!party.contains(CompanionId::BranTheShield));
         assert!(companions
             .iter()
@@ -1229,7 +1235,9 @@ mod tests {
     fn add_to_party_succeeds_for_available_companion() {
         let companions = default_companions();
         let mut party = Party::new();
-        assert!(PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield).is_ok());
+        assert!(
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield).is_ok()
+        );
         assert!(party.contains(CompanionId::BranTheShield));
     }
 
@@ -1238,7 +1246,8 @@ mod tests {
         let mut companions = default_companions();
         companions[0].condition = CompanionCondition::KnockedOut;
         let mut party = Party::new();
-        let result = PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
+        let result =
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
         assert!(matches!(result, Err(PartyError::Unavailable { .. })));
     }
 
@@ -1247,7 +1256,8 @@ mod tests {
         let mut companions = default_companions();
         companions[0].condition = CompanionCondition::Recovering;
         let mut party = Party::new();
-        let result = PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
+        let result =
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
         assert!(matches!(result, Err(PartyError::Unavailable { .. })));
     }
 
@@ -1256,7 +1266,8 @@ mod tests {
         let mut companions = default_companions();
         companions[0].condition = CompanionCondition::Unavailable;
         let mut party = Party::new();
-        let result = PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
+        let result =
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
         assert!(matches!(result, Err(PartyError::Unavailable { .. })));
     }
 
@@ -1267,7 +1278,8 @@ mod tests {
         party
             .add_member(CompanionId::BranTheShield, &companions)
             .unwrap();
-        let result = PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
+        let result =
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
         assert!(matches!(result, Err(PartyError::AlreadyInParty { .. })));
     }
 
@@ -1275,7 +1287,8 @@ mod tests {
     fn add_to_party_fails_if_not_recruited() {
         let companions = Vec::new();
         let mut party = Party::new();
-        let result = PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
+        let result =
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield);
         assert!(matches!(result, Err(PartyError::NotRecruited { .. })));
     }
 
@@ -1428,9 +1441,16 @@ mod tests {
         assert_eq!(player_gold, 3500);
 
         // Add all three to party
-        assert!(PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield).is_ok());
-        assert!(PartyManager::add_to_party(&mut party, &companions, CompanionId::LyraSwiftbow).is_ok());
-        assert!(PartyManager::add_to_party(&mut party, &companions, CompanionId::MarenStarweave).is_ok());
+        assert!(
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::BranTheShield).is_ok()
+        );
+        assert!(
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::LyraSwiftbow).is_ok()
+        );
+        assert!(
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::MarenStarweave)
+                .is_ok()
+        );
 
         assert_eq!(party.companion_count(), 3);
         assert_eq!(party.members().len(), 3);
@@ -1446,7 +1466,8 @@ mod tests {
             player_gold,
         )
         .unwrap();
-        let result = PartyManager::add_to_party(&mut party, &companions, CompanionId::GarrickIronfist);
+        let result =
+            PartyManager::add_to_party(&mut party, &companions, CompanionId::GarrickIronfist);
         assert!(matches!(result, Err(PartyError::PartyFull { .. })));
     }
 
@@ -1529,10 +1550,13 @@ mod tests {
             assert_eq!(ability.id, id);
             assert!(!ability.name.is_empty());
             assert!(!ability.description.is_empty());
-            assert!(!ability.effects.is_empty(), "Ability {} has no effects", ability.name);
+            assert!(
+                !ability.effects.is_empty(),
+                "Ability {} has no effects",
+                ability.name
+            );
         }
     }
-
 
     #[test]
     fn shield_bash_deals_damage_and_applies_stun() {
@@ -1543,11 +1567,13 @@ mod tests {
             damage_type: DamageType::Physical,
             defence_piercing_percent: 0,
         }));
-        assert!(ability.effects.contains(&CompanionAbilityEffect::ApplyStatus {
-            kind: StatusEffectKind::Stun,
-            duration: 1,
-            potency: 1,
-        }));
+        assert!(ability
+            .effects
+            .contains(&CompanionAbilityEffect::ApplyStatus {
+                kind: StatusEffectKind::Stun,
+                duration: 1,
+                potency: 1,
+            }));
     }
 
     #[test]
@@ -1555,9 +1581,9 @@ mod tests {
         let ability = get_companion_ability(CompanionAbilityId::GuardAlly);
 
         assert_eq!(ability.target, CompanionAbilityTarget::SingleAlly);
-        assert!(ability.effects.contains(&CompanionAbilityEffect::RedirectDamage {
-            duration: 2,
-        }));
+        assert!(ability
+            .effects
+            .contains(&CompanionAbilityEffect::RedirectDamage { duration: 2 }));
     }
 
     #[test]
@@ -1565,11 +1591,15 @@ mod tests {
         let ability = get_companion_ability(CompanionAbilityId::IronWill);
 
         assert_eq!(ability.target, CompanionAbilityTarget::SelfTarget);
-        assert!(ability.effects.contains(&CompanionAbilityEffect::Heal { amount: 40 }));
-        assert!(ability.effects.contains(&CompanionAbilityEffect::BuffDefence {
-            amount: 20,
-            duration: 2,
-        }));
+        assert!(ability
+            .effects
+            .contains(&CompanionAbilityEffect::Heal { amount: 40 }));
+        assert!(ability
+            .effects
+            .contains(&CompanionAbilityEffect::BuffDefence {
+                amount: 20,
+                duration: 2,
+            }));
     }
 
     #[test]
@@ -1589,10 +1619,12 @@ mod tests {
         let ability = get_companion_ability(CompanionAbilityId::FrostBarrier);
 
         assert_eq!(ability.target, CompanionAbilityTarget::AllAllies);
-        assert!(ability.effects.contains(&CompanionAbilityEffect::BuffDefence {
-            amount: 20,
-            duration: 2,
-        }));
+        assert!(ability
+            .effects
+            .contains(&CompanionAbilityEffect::BuffDefence {
+                amount: 20,
+                duration: 2,
+            }));
     }
 
     #[test]
