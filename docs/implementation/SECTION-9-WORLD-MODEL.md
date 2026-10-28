@@ -11,7 +11,7 @@ This is an implementation brief, not a claim that save persistence or the travel
 
 ## Progress record — 2026-10-28
 
-- Added [src/world.rs](../../blob/work/world-model-foundation/src/world.rs) with stable `LocationId`, location definitions and categories, directed routes, graph validation, direct and transitive reachability queries, and weighted shortest-path lookup.
+- Added [src/world.rs](https://github.com/DoctorScoliosis/RustyRealm/blob/work/world-model-foundation/src/world.rs) with stable `LocationId`, location definitions and categories, directed routes, graph validation, direct and transitive reachability queries, and weighted shortest-path lookup.
 - Nearest-settlement lookup uses cumulative route cost and breaks equal-cost ties by stable location ID. Bidirectional route insertion validates both directions before mutating the graph.
 - The initial region includes Oakhaven Village, three adjacent landmarks, a dangerous route through Whispering Woods, Sunken Ruins, and Goblin Caves.
 - Added eight unit tests covering initial content, direct versus transitive reachability, route-cost ordering, nearest-settlement route costs and tie-breaking, disconnected locations, invalid definitions, and atomic bidirectional-route insertion.
