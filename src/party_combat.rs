@@ -308,12 +308,18 @@ impl Encounter {
 
     /// Validates the entire action before mutation. Supplying the critical roll
     /// keeps the domain deterministic and easy to test.
-    pub fn apply_action(&mut self, action: CombatAction, critical_roll: u32) -> Result<ActionResult, EncounterError> {
+    pub fn apply_action(
+        &mut self,
+        action: CombatAction,
+        critical_roll: u32,
+    ) -> Result<ActionResult, EncounterError> {
         if self.outcome != EncounterOutcome::Ongoing {
             return Err(EncounterError::EncounterFinished);
         }
         let actor_id = action.actor();
-        let actor = self.combatant(actor_id).ok_or(EncounterError::MissingActor(actor_id))?;
+        let actor = self
+            .combatant(actor_id)
+            .ok_or(EncounterError::MissingActor(actor_id))?;
         if !actor.can_act() {
             return Err(EncounterError::ActorIneligible(actor_id));
         }
@@ -334,7 +340,10 @@ impl Encounter {
                 message: "retreated",
             });
         }
-        if matches!(&action, CombatAction::Move { .. } | CombatAction::Defend { .. }) {
+        if matches!(
+            &action,
+            CombatAction::Move { .. } | CombatAction::Defend { .. }
+        ) {
             self.consume_turn(actor_id);
             return Ok(ActionResult {
                 actor: actor_id,
@@ -352,10 +361,14 @@ impl Encounter {
 
         let (target_id, ability_id) = match action {
             CombatAction::BasicAttack { target, .. } => (target, None),
-            CombatAction::UseAbility { target, ability, .. } => (target, Some(ability)),
+            CombatAction::UseAbility {
+                target, ability, ..
+            } => (target, Some(ability)),
             _ => unreachable!("non-targeted actions returned above"),
         };
-        let target = self.combatant(target_id).ok_or(EncounterError::MissingTarget(target_id))?;
+        let target = self
+            .combatant(target_id)
+            .ok_or(EncounterError::MissingTarget(target_id))?;
         if !target.can_act() {
             return Err(EncounterError::TargetIneligible(target_id));
         }
@@ -377,7 +390,12 @@ impl Encounter {
         let target = self.combatant(target_id).expect("validated target");
         let multiplier = ability.as_ref().map(|a| a.damage_multiplier).unwrap_or(100);
         let raw = source.attack.saturating_mul(multiplier) / 100;
-        let critical = critical_roll % 100 < if source.allegiance == Allegiance::Allies { 5 } else { 0 };
+        let critical_roll_chance = if source.allegiance == Allegiance::Allies {
+            5
+        } else {
+            0
+        };
+        let critical = critical_roll % 100 < critical_roll_chance;
         let scaled = if critical { raw.saturating_mul(2) } else { raw };
         let damage = if scaled == 0 {
             0
@@ -439,16 +457,48 @@ mod tests {
     fn encounter() -> Encounter {
         Encounter::new(vec![
             EncounterCombatant::new(
-                CombatantId(1), CombatantSource::Player, "Hero", Allegiance::Allies, 100, 40, 25, 30, 5,
+                CombatantId(1),
+                CombatantSource::Player,
+                "Hero",
+                Allegiance::Allies,
+                100,
+                40,
+                25,
+                30,
+                5,
             ),
             EncounterCombatant::new(
-                CombatantId(2), CombatantSource::Companion(CompanionId::BranTheShield), "Bran", Allegiance::Allies, 10, 30, 5, 20, 10,
+                CombatantId(2),
+                CombatantSource::Companion(CompanionId::BranTheShield),
+                "Bran",
+                Allegiance::Allies,
+                10,
+                30,
+                5,
+                20,
+                10,
             ),
             EncounterCombatant::new(
-                CombatantId(3), CombatantSource::Enemy, "Goblin", Allegiance::Enemies, 15, 20, 0, 8, 1,
+                CombatantId(3),
+                CombatantSource::Enemy,
+                "Goblin",
+                Allegiance::Enemies,
+                15,
+                20,
+                0,
+                8,
+                1,
             ),
             EncounterCombatant::new(
-                CombatantId(4), CombatantSource::Enemy, "Goblin", Allegiance::Enemies, 30, 20, 0, 8, 1,
+                CombatantId(4),
+                CombatantSource::Enemy,
+                "Goblin",
+                Allegiance::Enemies,
+                30,
+                20,
+                0,
+                8,
+                1,
             ),
         ]).unwrap()
     }
@@ -464,7 +514,10 @@ mod tests {
         let before = e.clone();
         assert_eq!(
             e.apply_action(
-                CombatAction::BasicAttack { actor: CombatantId(1), target: CombatantId(99) },
+                CombatAction::BasicAttack {
+                    actor: CombatantId(1),
+                    target: CombatantId(99),
+                },
                 0
             ),
             Err(EncounterError::MissingTarget(CombatantId(99)))
@@ -472,7 +525,10 @@ mod tests {
         assert_eq!(e, before);
         assert_eq!(
             e.apply_action(
-                CombatAction::BasicAttack { actor: CombatantId(999), target: CombatantId(3) },
+                CombatAction::BasicAttack {
+                    actor: CombatantId(999),
+                    target: CombatantId(3),
+                },
                 0
             ),
             Err(EncounterError::MissingActor(CombatantId(999)))
@@ -512,7 +568,10 @@ mod tests {
         let first = e.current_actor().unwrap();
         assert_eq!(first, CombatantId(1));
         e.apply_action(
-            CombatAction::BasicAttack { actor: first, target: CombatantId(3) },
+            CombatAction::BasicAttack {
+                actor: first,
+                target: CombatantId(3),
+            },
             99,
         )
         .unwrap();
@@ -539,7 +598,10 @@ mod tests {
         ]).unwrap();
         assert_eq!(
             e.apply_action(
-                CombatAction::BasicAttack { actor: CombatantId(1), target: CombatantId(2) },
+                CombatAction::BasicAttack {
+                actor: CombatantId(1),
+                target: CombatantId(2),
+            },
                 99,
             )
             .unwrap()
@@ -559,7 +621,10 @@ mod tests {
         let before = e.clone();
         assert_eq!(
             e.apply_action(
-                CombatAction::BasicAttack { actor: CombatantId(1), target: CombatantId(3) },
+                CombatAction::BasicAttack {
+                    actor: CombatantId(1),
+                    target: CombatantId(3),
+                },
                 0
             ),
             Err(EncounterError::TargetIneligible(CombatantId(3)))
@@ -570,7 +635,12 @@ mod tests {
     fn retreat_is_terminal() {
         let mut e = encounter();
         assert_eq!(
-            e.apply_action(CombatAction::Retreat { actor: CombatantId(1) }, 0)
+            e.apply_action(
+                CombatAction::Retreat {
+                    actor: CombatantId(1),
+                },
+                0,
+            )
                 .unwrap()
                 .outcome,
             EncounterOutcome::Retreated
