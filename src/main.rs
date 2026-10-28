@@ -9,6 +9,7 @@ mod event;
 mod inventory;
 mod mastery;
 mod party;
+mod party_combat;
 mod quests;
 mod save;
 mod shops;
