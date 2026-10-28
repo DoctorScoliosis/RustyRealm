@@ -12,7 +12,7 @@
 //!
 //! This module is domain-only: it has no UI or terminal dependencies.
 
-use crate::data::AbilityId;
+use crate::data::{get_ability, AbilityId};
 use crate::party_combat::{
     Allegiance, CombatAction, CombatantId, Encounter, EncounterCombatant, EncounterError,
     RangeBand,
@@ -413,11 +413,21 @@ pub fn propose_enemy_action(
             .collect();
         let target = tied[(roll as usize) % tied.len()];
         selected_target = target.id;
-        action = if !profile.abilities.is_empty() && roll % 3 == 0 {
+        let affordable_abilities: Vec<AbilityId> = profile
+            .abilities
+            .iter()
+            .copied()
+            .filter(|ability_id| {
+                let ability = get_ability(*ability_id);
+                actor.stamina >= ability.stamina_cost && actor.mana >= ability.mana_cost
+            })
+            .collect();
+        action = if !affordable_abilities.is_empty() && roll % 3 == 0 {
             CombatAction::UseAbility {
                 actor: actor_id,
                 target: target.id,
-                ability: profile.abilities[(roll as usize / 3) % profile.abilities.len()],
+                ability: affordable_abilities
+                    [(roll as usize / 3) % affordable_abilities.len()],
             }
         } else {
             CombatAction::BasicAttack {
@@ -633,6 +643,18 @@ mod tests {
             EnemyProfile::for_name("Stronghold Ranger").archetype,
             EnemyProfile::for_name("Stronghold Warrior").archetype
         );
+    }
+
+    #[test]
+    fn ai_falls_back_to_basic_attack_when_its_profile_ability_is_unaffordable() {
+        let e = encounter();
+        // The Dragon test fixture has no mana, so its Life Drain profile must
+        // never propose an action that the shared resolver would reject.
+        let decision = propose_enemy_action(&e, CombatantId(3), 0).unwrap();
+        assert!(matches!(
+            decision.intended.action,
+            CombatAction::BasicAttack { .. }
+        ));
     }
 
     #[test]
