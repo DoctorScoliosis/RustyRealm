@@ -497,12 +497,18 @@ mod tests {
         let telegraph = TelegraphedAction {
             actor: CombatantId(3),
             target: CombatantId(1),
-            action: CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) },
-            name: "Dragon Bite".into(),
-            description: "A physical bite at Hero".into(),
+            action: CombatAction::UseAbility {
+                actor: CombatantId(3),
+                target: CombatantId(1),
+                ability: AbilityId::HeavyStrike,
+            },
+            name: "Dragon Heavy Strike".into(),
+            description: "A heavy melee strike at Hero".into(),
             damage_type: DamageType::Physical,
-            damage: 20,
+            damage: 40,
         };
+        e.set_position(CombatantId(3), RangeBand::Far).unwrap();
+        e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
         let before = e.clone();
         assert!(matches!(
             resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
