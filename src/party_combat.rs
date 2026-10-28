@@ -11,8 +11,6 @@ use crate::status_combat::{
     StatusApplication, StatusEffect, StatusEffectKind, StatusResistance, StatusTick,
     MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
 };
-use crate::party::{CompanionId, CompanionState, Party};
-use crate::state::Player;
 use std::collections::HashSet;
 
 pub const MIN_STAT: i16 = 0;
