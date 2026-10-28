@@ -14,11 +14,11 @@ mod shops;
 mod skills;
 mod state;
 mod stronghold;
+mod ui;
 // Section 9.1 introduces the domain model before save/UI integration in 9.2–9.3.
 // Remove this temporary allowance once gameplay consumes the world APIs.
 #[allow(dead_code)]
 mod world;
-mod ui;
 
 use crate::data::ItemType;
 use crate::state::GameState;
