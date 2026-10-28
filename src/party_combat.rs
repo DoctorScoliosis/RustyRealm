@@ -482,6 +482,7 @@ mod tests {
         let mut e = encounter();
         let first = e.current_actor().unwrap();
         assert_eq!(first, CombatantId(1));
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
         e.apply_action(
             CombatAction::BasicAttack {
                 actor: first,
@@ -504,6 +505,7 @@ mod tests {
             Err(EncounterError::TurnAlreadyUsed(first))
         );
         assert_eq!(e, after);
+        assert_eq!(e.combatants().iter().find(|c| c.id == CombatantId(2)).unwrap().attributes.speed, 60);
         assert_eq!(e.current_actor(), Some(CombatantId(2)));
     }
     #[test]
@@ -533,6 +535,7 @@ mod tests {
             ),
         ])
         .unwrap();
+        e.set_position(CombatantId(2), RangeBand::Melee).unwrap();
         assert_eq!(
             e.apply_action(
                 CombatAction::BasicAttack {
@@ -601,7 +604,8 @@ mod tests {
         let ranger = CombatAttributes::derived(CharacterClass::Ranger, base, neutral, neutral);
         let mage = CombatAttributes::derived(CharacterClass::Mage, base, neutral, neutral);
         let rogue = CombatAttributes::derived(CharacterClass::Rogue, base, neutral, neutral);
-        assert!(ranger.accuracy > warrior.accuracy);
+        assert_eq!(ranger.accuracy, 60);
+        assert_eq!(warrior.accuracy, 50);
         assert!(mage.power > warrior.power);
         assert!(rogue.speed > warrior.speed);
         assert!(rogue.evasion > warrior.evasion);
@@ -625,7 +629,11 @@ mod tests {
         let mut e = Encounter::new(roster).unwrap();
         assert_eq!(e.current_actor(), Some(CombatantId(2)));
         let mut tied = e.combatants.clone();
-        for c in &mut tied { c.attributes.speed = 50; }
+        for c in &mut tied {
+            c.set_class(CharacterClass::Warrior);
+            c.base_attributes.speed = 50;
+            c.recalculate_attributes();
+        }
         e = Encounter::new(tied).unwrap();
         assert_eq!(e.current_actor(), Some(CombatantId(1)));
     }
