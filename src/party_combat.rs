@@ -615,7 +615,8 @@ mod tests {
                 2,
                 0,
             ),
-        ]).unwrap();
+        ])
+        .unwrap();
         assert_eq!(
             e.apply_action(
                 CombatAction::BasicAttack {
