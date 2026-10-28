@@ -611,7 +611,7 @@ impl Encounter {
         (70_i16 + (attacker.attributes.accuracy - BASE_STAT) / 2
             - (defender.attributes.evasion - BASE_STAT) / 2
             - penalty
-            + i16::from(attacker.mark_hit_bonus()))
+            + i16::from(defender.mark_hit_bonus()))
         .clamp(MIN_HIT_CHANCE as i16, MAX_HIT_CHANCE as i16) as u8
     }
     pub fn legal_targets(
