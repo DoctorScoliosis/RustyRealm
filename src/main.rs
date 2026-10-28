@@ -269,9 +269,7 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
         let current_name = world
             .get_location(&current_id)
             .map(|location| location.name.clone())
-            .ok_or_else(|| {
-                io::Error::other(format!("Unknown current location '{current_id}'."))
-            })?;
+            .ok_or_else(|| io::Error::other(format!("Unknown current location '{current_id}'.")))?;
 
         let destinations: Vec<(LocationId, String, u32, u32)> = world
             .get_direct_routes(&current_id)
@@ -299,9 +297,7 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
 
         let labels: Vec<String> = destinations
             .iter()
-            .map(|(_, name, cost, danger)| {
-                format!("{name} · travel cost {cost} · danger {danger}")
-            })
+            .map(|(_, name, cost, danger)| format!("{name} · travel cost {cost} · danger {danger}"))
             .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
@@ -312,8 +308,7 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
             return Ok(());
         }
 
-        let (destination_id, destination_name, _listed_cost, danger_level) =
-            &destinations[choice];
+        let (destination_id, destination_name, _listed_cost, danger_level) = &destinations[choice];
         match apply_travel(state, world, destination_id) {
             Ok(travel_cost) => {
                 tui.show_message(
@@ -532,7 +527,6 @@ fn admin_commands(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
-
 #[cfg(test)]
 mod travel_tests {
     use super::*;
@@ -574,12 +568,7 @@ mod travel_tests {
         let mut state = test_state();
         let starting_location = state.current_location.clone();
 
-        assert!(apply_travel(
-            &mut state,
-            &world,
-            &LocationId::from("unknown_location")
-        )
-        .is_err());
+        assert!(apply_travel(&mut state, &world, &LocationId::from("unknown_location")).is_err());
         assert_eq!(state.current_location, starting_location);
     }
 }
