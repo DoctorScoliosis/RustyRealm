@@ -414,6 +414,8 @@ pub struct Encounter {
     turn_index: usize,
     round: u64,
     acted_this_round: HashSet<CombatantId>,
+    /// Prevents a caller from ticking the same actor twice in one activation.
+    status_ticked_this_round: HashSet<CombatantId>,
     positions: Vec<(CombatantId, i32)>,
     pub outcome: EncounterOutcome,
     pub phase: EncounterPhase,
@@ -462,6 +464,7 @@ impl Encounter {
             turn_index: 0,
             round: 1,
             acted_this_round: HashSet::new(),
+            status_ticked_this_round: HashSet::new(),
             positions,
             outcome: EncounterOutcome::Ongoing,
             phase: EncounterPhase::Active,
@@ -670,6 +673,9 @@ impl Encounter {
         let Some(id) = self.current_actor() else {
             return Vec::new();
         };
+        if !self.status_ticked_this_round.insert(id) {
+            return Vec::new();
+        }
         let (ticks, defeated, stunned) = {
             let Some(actor) = self.combatant_mut(id) else {
                 return Vec::new();
@@ -733,6 +739,7 @@ impl Encounter {
         });
         if !remaining {
             self.acted_this_round.clear();
+            self.status_ticked_this_round.clear();
             self.round = self.round.saturating_add(1);
             let combatants = &self.combatants;
             self.initiative.sort_by_key(|id| {
@@ -1115,7 +1122,7 @@ mod tests {
         assert_eq!(e, before);
     }
     #[test]
-    fn shared_status_lifecycle_ticks_all_combatant_roles_and_skips_stun() {
+    fn status_ticks_once_per_activation_and_ages_duration() {
         let mut e = encounter();
         assert_eq!(e.current_actor(), Some(CombatantId(1)));
         e.apply_status_effect(
@@ -1137,7 +1144,13 @@ mod tests {
             e.combatant(CombatantId(1)).unwrap().status_effects[0].remaining_activations,
             1
         );
+        assert!(e.tick_current_actor_statuses().is_empty());
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 93);
+    }
 
+    #[test]
+    fn stun_consumes_the_affected_combatants_activation() {
+        let mut e = encounter();
         e.apply_status_effect(
             CombatantId(1),
             StatusEffectKind::Stun,
@@ -1148,12 +1161,62 @@ mod tests {
             0,
         )
         .unwrap();
-        // Poison ticks again at this activation; Stun then consumes the activation.
         let ticks = e.tick_current_actor_statuses();
         assert!(ticks
             .iter()
             .any(|(_, tick)| matches!(tick, StatusTick::Stunned)));
         assert_ne!(e.current_actor(), Some(CombatantId(1)));
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().status_effects.len(), 0);
+    }
+
+    #[test]
+    fn shared_status_lifecycle_ticks_for_player_companion_and_enemy() {
+        let mut e = encounter();
+        e.apply_status_effect(
+            CombatantId(1),
+            StatusEffectKind::Poison,
+            Some(CombatantId(3)),
+            7,
+            2,
+            100,
+            0,
+        )
+        .unwrap();
+        e.apply_status_effect(
+            CombatantId(2),
+            StatusEffectKind::Bleed,
+            Some(CombatantId(3)),
+            5,
+            2,
+            100,
+            0,
+        )
+        .unwrap();
+        e.apply_status_effect(
+            CombatantId(3),
+            StatusEffectKind::Burn,
+            Some(CombatantId(1)),
+            4,
+            2,
+            100,
+            0,
+        )
+        .unwrap();
+
+        e.tick_current_actor_statuses();
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 93);
+        e.apply_action(CombatAction::Defend { actor: CombatantId(1) }, 0, 0)
+            .unwrap();
+
+        assert_eq!(e.current_actor(), Some(CombatantId(2)));
+        e.tick_current_actor_statuses();
+        assert_eq!(e.combatant(CombatantId(2)).unwrap().hp, 5);
+        e.apply_action(CombatAction::Defend { actor: CombatantId(2) }, 0, 0)
+            .unwrap();
+
+        assert_eq!(e.current_actor(), Some(CombatantId(3)));
+        e.tick_current_actor_statuses();
+        assert_eq!(e.combatant(CombatantId(3)).unwrap().hp, 11);
     }
 
     #[test]
@@ -1161,7 +1224,7 @@ mod tests {
         let mut e = encounter();
         e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
         e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
-        // Section 12's hit roll is explicit; this hit is deterministic.
+        // Section 12's hit and application rolls are explicit, so the test is repeatable.
         e.apply_action(
             CombatAction::BasicAttack {
                 actor: CombatantId(3),
@@ -1176,7 +1239,7 @@ mod tests {
             .unwrap()
             .status_effects
             .iter()
-            .any(|effect| { effect.kind == StatusEffectKind::Burn }));
+            .any(|effect| { effect.kind == StatusEffectKind::Bleed }));
     }
 
     #[test]
