@@ -10,7 +10,7 @@ The typed implementation lives in `src/status_combat.rs`. Effects are encounter-
 - A newly applied effect does not tick during the action that applied it. At the start of the affected combatant's next activation, Poison, Bleed, and Burn each deal potency damage, and Stun prevents the action. Duration then decreases by one; zero-duration effects expire immediately after that activation's tick. Effects applied by an actor to another combatant therefore wait for that target's next activation.
 - Slow reduces initiative by 10 per potency tier, capped at 20. Initiative is recomputed when a round closes, so a Slow applied mid-round affects subsequent round ordering. Mark adds 5 hit-chance percentage points per potency tier, capped at 15. WeakenedDefences increases the attack's pre-defence damage by 25% per potency tier, capped at 50%. These effects never change values outside their caps.
 
-The prior `data::StatusEffect` shape is retained for serialization and the legacy single-player battle flow. The new shared party-combat lifecycle is the canonical model for Section 13 party encounters. Legacy combat's existing Poison/Bleed/Burn/Stun tick path remains in place until that UI flow is migrated; this transitional compatibility is not claimed to be a complete unification of the legacy path.
+Both the legacy single-player battle and the Section 11/12 party-combat domain now use the same typed StatusEffect representation, application/refresh policy, duration clock and tick function. The legacy battle UI keeps its own presentation and action loop, but it no longer has a competing status-effect storage or tick implementation. The party-combat domain additionally consumes Slow, Mark and WeakenedDefences in initiative, hit-chance and damage calculations.
 
 ## AI policy
 
@@ -20,7 +20,7 @@ The random choice/tie-breaking input is a caller-provided integer, so tests can 
 
 ## Telegraphs
 
-A telegraph stores the exact actor, target, intended action, name, description, damage channel and stated damage. Resolution first checks that actor and target remain eligible and hostile, and then calls the shared action resolver. Missing, knocked-out, allied, out-of-range, or already-acted targets/actions cancel the telegraph explicitly rather than mutating the encounter.
+A telegraph stores the exact actor, target, intended action, name and description. It does not promise a fixed damage number: the committed action resolves later through Section 12's common resolver, including its then-valid range, hit, critical, defence and resource rules. Resolution first checks that actor and target remain eligible and hostile, then calls the shared action resolver. Missing, knocked-out, allied, out-of-range, stunned or already-acted actors/actions cancel the telegraph explicitly rather than mutating the encounter.
 
 ## Compatibility boundary
 
