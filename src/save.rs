@@ -499,16 +499,24 @@ mod tests {
     }
 
     #[test]
+    fn new_game_starts_at_the_starting_village() {
+        let state = test_state("newgame", "secret");
+        assert_eq!(state.current_location.as_str(), "village_start");
+    }
+
+    #[test]
     fn save_load_roundtrip_preserves_state_and_authentication() {
         let dir = test_dir("roundtrip");
         let path = dir.join("player.json");
         let mut state = test_state("player", "secret");
         state.player.gold = 4321;
         state.player.add_item(crate::data::ItemType::Logs, 7);
+        state.current_location = crate::world::LocationId::from("whispering_woods");
 
         save_to_path(&state, &path).unwrap();
         let loaded = load_game_at(&path, "player", "secret").unwrap();
         assert_eq!(loaded.player.gold, 4321);
+        assert_eq!(loaded.current_location.as_str(), "whispering_woods");
         assert_eq!(loaded.player.get_item_count(crate::data::ItemType::Logs), 7);
         assert!(!loaded.player.password_hash.is_empty());
         assert!(load_game_at(&path, "player", "wrong").is_err());
@@ -526,8 +534,30 @@ mod tests {
     fn legacy_save_requires_explicit_password_migration() {
         let dir = test_dir("legacy");
         let path = dir.join("legacy.json");
-        let legacy_state = GameState::new(Player::new("legacy".into(), "discarded-hash".into()));
-        fs::write(&path, serde_json::to_vec_pretty(&legacy_state).unwrap()).unwrap();
+        let mut legacy_state =
+            GameState::new(Player::new("legacy".into(), "discarded-hash".into()));
+        legacy_state.player.xp = 12_345;
+        legacy_state.player.gold = 4_321;
+        legacy_state
+            .player
+            .add_item(crate::data::ItemType::Logs, 9);
+        legacy_state
+            .player
+            .quests_completed
+            .push("historic_quest".into());
+        legacy_state
+            .unlocked_achievements
+            .push("first_steps".into());
+        legacy_state.unlocked_themes.push("Amber".into());
+        legacy_state.active_theme = "Amber".into();
+
+        // Simulate a pre-Section-9.2 JSON save that has no current_location.
+        let mut legacy_json = serde_json::to_value(&legacy_state).unwrap();
+        legacy_json
+            .as_object_mut()
+            .unwrap()
+            .remove("current_location");
+        fs::write(&path, serde_json::to_vec_pretty(&legacy_json).unwrap()).unwrap();
 
         assert!(matches!(
             load_game_at(&path, "legacy", "old-password"),
@@ -536,6 +566,19 @@ mod tests {
 
         let migrated = migrate_legacy_at(&path, "legacy", "new-password").unwrap();
         assert_eq!(migrated.player.username, "legacy");
+        assert_eq!(migrated.current_location.as_str(), "village_start");
+        assert_eq!(migrated.player.xp, 12_345);
+        assert_eq!(migrated.player.gold, 4_321);
+        assert_eq!(
+            migrated.player.get_item_count(crate::data::ItemType::Logs),
+            9
+        );
+        assert_eq!(migrated.player.quests_completed, vec!["historic_quest"]);
+        assert!(migrated
+            .unlocked_achievements
+            .contains(&"first_steps".to_string()));
+        assert!(migrated.unlocked_themes.contains(&"Amber".to_string()));
+        assert_eq!(migrated.active_theme, "Amber");
         assert!(load_game_at(&path, "legacy", "new-password").is_ok());
 
         let _ = fs::remove_dir_all(dir);
@@ -665,6 +708,10 @@ mod tests {
         document["data"]
             .as_object_mut()
             .unwrap()
+            .remove("current_location");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
             .remove("active_quests");
         document["data"]
             .as_object_mut()
@@ -701,6 +748,7 @@ mod tests {
         assert_eq!(loaded.player.max_stamina, 100);
         assert_eq!(loaded.player.mana, 50);
         assert_eq!(loaded.player.max_mana, 50);
+        assert_eq!(loaded.current_location.as_str(), "village_start");
         assert_eq!(
             loaded.active_world_event.event_type,
             crate::event::WorldEventType::None
