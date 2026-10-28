@@ -647,16 +647,12 @@ mod tests {
             damage: 40,
         };
         // Stun the actor: telegraph resolution must cancel and remain mutation-free.
-        e.apply_status_effect(
-            CombatantId(3),
-            StatusEffectKind::Stun,
-            None,
-            1,
-            2,
-            100,
-            0,
-        )
-        .unwrap();
+        #[allow(clippy::too_many_arguments)]
+        fn stun_actor(e: &mut Encounter) {
+            e.apply_status_effect(CombatantId(3), StatusEffectKind::Stun, None, 1, 2, 100, 0)
+                .unwrap();
+        }
+        stun_actor(&mut e);
         let before = e.clone();
         assert!(matches!(
             resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
