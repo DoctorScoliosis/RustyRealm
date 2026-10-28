@@ -1,6 +1,6 @@
 # Section 8 — Hostile Encounter Roster Cleanup
 
-**Status:** Implementation merged to `main` via PR #10; source-level verification confirmed on 2026-10-28. **Command-level validation remains outstanding.**
+**Status:** Implemented, merged, and command-verified on 2026-10-28. One non-fatal `dead_code` warning remains.
 **Related PR:** https://github.com/DoctorScoliosis/RustyRealm/pull/10
 **Merge commit:** https://github.com/DoctorScoliosis/RustyRealm/commit/ece9a31d64f53de5bc43de11ee90488a084cff1f
 
@@ -16,12 +16,30 @@ Keep ordinary wandering combat encounters intentional and hostile by removing ge
 - Legacy enum variants and reward mappings are retained until wider uses can be audited safely.
 - A regression test asserts the exact approved six-enemy pool and checks for excluded civilian/wildlife types.
 
-## Merge verification performed
+## Merge and source verification
 
 - Confirmed PR #10 is closed and merged into `main`.
 - Confirmed the merge commit is `ece9a31d64f53de5bc43de11ee90488a084cff1f`.
 - Inspected the merged `src/combat.rs` on `main`: the explicit six-entry `WANDERING_ENEMIES` array is present, wandering selection draws from that array, and the regression test is present.
-- The review is source-level only. GitHub returned no associated workflow runs or commit status checks for the merge commit, and the PR body records that Rust tooling was not run during review.
+
+## Local verification results (2026-10-28)
+
+The developer ran the following commands against their local checkout:
+
+| Command | Result |
+|---|---|
+| `cargo fmt --check` | Completed with no reported formatting differences. |
+| `cargo test --package rustyrealm` | Passed: 64 passed, 0 failed, 0 ignored. |
+| `cargo clippy --package rustyrealm --tests` | Completed with a non-fatal warning; no Clippy error was shown in the supplied output. |
+
+Warning recorded:
+
+```text
+warning: method `sell_price` is never used
+   --> src/data.rs:439:12
+```
+
+This warning concerns `ItemType::sell_price` and is not identified in the supplied output as a failure of the encounter-roster change. It should be reviewed separately; do not suppress or delete the method without checking its intended use.
 
 ## Guardrails
 
@@ -35,13 +53,4 @@ Keep ordinary wandering combat encounters intentional and hostile by removing ge
 - Existing Stronghold guardians and story bosses retain their intended behaviour.
 - Reward handling for retained enemy variants remains intact.
 - The encounter-pool regression test passes.
-
-## Command-level verification still required
-
-Run these checks from the merged source before marking Section 8 fully validated:
-
-- `cargo fmt --check`
-- `cargo test --package rustyrealm`
-- `cargo clippy --package rustyrealm --tests`
-
-The current environment has no Rust toolchain and cannot reach GitHub from a local shell, so these commands could not be executed here. Record actual results when they are run; do not describe commands as passing unless they were executed.
+- Formatting, tests, and Clippy have been run locally; current results are recorded above.
