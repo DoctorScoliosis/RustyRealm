@@ -1,13 +1,23 @@
 # Section 9 — World Model and Connected Locations
 
-**Status:** Planning brief  
+**Status:** Slice 9.1 domain model implemented on the working branch; local verification pending. Slices 9.2 and 9.3 remain open.  
 **Branch:** `work/world-model-foundation`
 
 ## Goal
 
 Introduce a small, testable domain model for stable locations and travel connections before wiring the world into the main menu or extending combat.
 
-This is an implementation brief, not a claim that travel is implemented.
+This is an implementation brief, not a claim that save persistence or the travel interface is implemented.
+
+## Progress record — 2026-10-28
+
+- Added [src/world.rs](../../blob/work/world-model-foundation/src/world.rs) with stable `LocationId`, location definitions and categories, directed routes, graph validation, direct and transitive reachability queries, and weighted shortest-path lookup.
+- Nearest-settlement lookup uses cumulative route cost and breaks equal-cost ties by stable location ID. Bidirectional route insertion validates both directions before mutating the graph.
+- The initial region includes Oakhaven Village, three adjacent landmarks, a dangerous route through Whispering Woods, Sunken Ruins, and Goblin Caves.
+- Added eight unit tests covering initial content, direct versus transitive reachability, route-cost ordering, nearest-settlement route costs and tie-breaking, disconnected locations, invalid definitions, and atomic bidirectional-route insertion.
+- Registered the module in `src/main.rs`. A documented temporary `dead_code` allowance is in place until the world APIs are consumed by later state/UI integration.
+- **Not yet run in this environment:** `cargo fmt --check`, `cargo test --package rustyrealm`, and `cargo clippy --package rustyrealm --tests`. The current environment has no Rust toolchain. Treat tests as authored, not passed, until the commands run locally.
+- No changes have been made to `GameState`, save migration, or terminal travel UI. Those belong to slices 9.2 and 9.3.
 
 ## Repository context
 
