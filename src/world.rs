@@ -177,14 +177,11 @@ impl World {
         danger_level: u32,
     ) -> Result<(), WorldError> {
         self.validate_new_route(from_id, to_id, travel_cost)?;
-        self.routes
-            .entry(from_id.clone())
-            .or_default()
-            .push(Route {
-                destination_id: to_id.clone(),
-                travel_cost,
-                danger_level,
-            });
+        self.routes.entry(from_id.clone()).or_default().push(Route {
+            destination_id: to_id.clone(),
+            travel_cost,
+            danger_level,
+        });
         Ok(())
     }
 
@@ -237,10 +234,8 @@ impl World {
         if travel_cost == 0 {
             return Err(WorldError::ZeroTravelCost);
         }
-        if self.routes.get(from_id).map_or(false, |routes| {
-            routes
-                .iter()
-                .any(|route| &route.destination_id == to_id)
+        if self.routes.get(from_id).is_some_and(|routes| {
+            routes.iter().any(|route| &route.destination_id == to_id)
         }) {
             return Err(WorldError::DuplicateRoute {
                 from: from_id.clone(),
@@ -367,7 +362,7 @@ impl World {
         self.shortest_distances(start_location)
             .into_iter()
             .filter(|(id, _)| {
-                self.locations.get(id).map_or(false, |location| {
+                self.locations.get(id).is_some_and(|location| {
                     location.category == LocationCategory::Settlement
                 })
             })
@@ -393,7 +388,7 @@ impl World {
         while let Some(Reverse((current_cost, current_id))) = queue.pop() {
             if distances
                 .get(&current_id)
-                .map_or(false, |known_cost| current_cost > *known_cost)
+                .is_some_and(|known_cost| current_cost > *known_cost)
             {
                 continue;
             }
@@ -402,7 +397,7 @@ impl World {
                 let next_cost = current_cost.saturating_add(u64::from(route.travel_cost));
                 let should_update = distances
                     .get(&route.destination_id)
-                    .map_or(true, |known_cost| next_cost < *known_cost);
+                    .is_none_or(|known_cost| next_cost < *known_cost);
 
                 if should_update {
                     distances.insert(route.destination_id.clone(), next_cost);
@@ -518,7 +513,9 @@ mod tests {
             ("goblin_caves", LocationCategory::Dungeon),
         ] {
             assert_eq!(
-                world.get_location(&LocationId::from(id)).map(|item| item.category),
+                world
+                    .get_location(&LocationId::from(id))
+                    .map(|item| item.category),
                 Some(expected_category)
             );
         }
@@ -573,10 +570,21 @@ mod tests {
         let expensive = LocationId::from("settlement_direct");
         let cheap = LocationId::from("settlement_via_bridge");
 
-        world.add_location(location("start", LocationCategory::Wilderness)).unwrap();
-        world.add_location(location("bridge", LocationCategory::Landmark)).unwrap();
-        world.add_location(location("settlement_direct", LocationCategory::Settlement)).unwrap();
-        world.add_location(location("settlement_via_bridge", LocationCategory::Settlement)).unwrap();
+        world
+            .add_location(location("start", LocationCategory::Wilderness))
+            .unwrap();
+        world
+            .add_location(location("bridge", LocationCategory::Landmark))
+            .unwrap();
+        world
+            .add_location(location("settlement_direct", LocationCategory::Settlement))
+            .unwrap();
+        world
+            .add_location(location(
+                "settlement_via_bridge",
+                LocationCategory::Settlement,
+            ))
+            .unwrap();
 
         world.add_route(&start, &expensive, 10, 0).unwrap();
         world.add_route(&start, &bridge, 1, 0).unwrap();
@@ -592,9 +600,15 @@ mod tests {
         let settlement_b = LocationId::from("settlement_b");
         let settlement_a = LocationId::from("settlement_a");
 
-        world.add_location(location("start", LocationCategory::Wilderness)).unwrap();
-        world.add_location(location("settlement_b", LocationCategory::Settlement)).unwrap();
-        world.add_location(location("settlement_a", LocationCategory::Settlement)).unwrap();
+        world
+            .add_location(location("start", LocationCategory::Wilderness))
+            .unwrap();
+        world
+            .add_location(location("settlement_b", LocationCategory::Settlement))
+            .unwrap();
+        world
+            .add_location(location("settlement_a", LocationCategory::Settlement))
+            .unwrap();
         world.add_route(&start, &settlement_b, 5, 0).unwrap();
         world.add_route(&start, &settlement_a, 5, 0).unwrap();
 
@@ -611,7 +625,10 @@ mod tests {
         let island = LocationId::from("isolated_island");
         assert_eq!(world.get_nearest_settlement(&island), None);
         assert!(!world.is_reachable(&LocationId::from("village_start"), &island));
-        assert_eq!(world.get_nearest_settlement(&LocationId::from("unknown")), None);
+        assert_eq!(
+            world.get_nearest_settlement(&LocationId::from("unknown")),
+            None
+        );
     }
 
     #[test]
@@ -622,19 +639,35 @@ mod tests {
         let missing = LocationId::from("missing");
 
         assert_eq!(
-            world.add_location(Location::new(" ", "Blank ID", "", LocationCategory::Landmark)),
+            world.add_location(Location::new(
+                " ",
+                "Blank ID",
+                "",
+                LocationCategory::Landmark
+            )),
             Err(WorldError::InvalidLocationId)
         );
-        world.add_location(location("a", LocationCategory::Landmark)).unwrap();
-        world.add_location(location("b", LocationCategory::Settlement)).unwrap();
+        world
+            .add_location(location("a", LocationCategory::Landmark))
+            .unwrap();
+        world
+            .add_location(location("b", LocationCategory::Settlement))
+            .unwrap();
 
         assert_eq!(
             world.add_location(location("a", LocationCategory::Wilderness)),
             Err(WorldError::DuplicateLocation(a.clone()))
         );
         assert_eq!(
-            world.add_location(Location::new("empty_name", "  ", "", LocationCategory::Landmark)),
-            Err(WorldError::InvalidLocationName(LocationId::from("empty_name")))
+            world.add_location(Location::new(
+                "empty_name",
+                "  ",
+                "",
+                LocationCategory::Landmark
+            )),
+            Err(WorldError::InvalidLocationName(LocationId::from(
+                "empty_name"
+            )))
         );
         assert_eq!(
             world.add_route(&a, &missing, 1, 0),
@@ -652,7 +685,10 @@ mod tests {
         world.add_route(&a, &b, 1, 0).unwrap();
         assert_eq!(
             world.add_route(&a, &b, 2, 0),
-            Err(WorldError::DuplicateRoute { from: a, to: b })
+            Err(WorldError::DuplicateRoute {
+                from: a,
+                to: b,
+            })
         );
         assert!(world.validate().is_ok());
     }
@@ -663,8 +699,12 @@ mod tests {
         let a = LocationId::from("a");
         let b = LocationId::from("b");
 
-        world.add_location(location("a", LocationCategory::Landmark)).unwrap();
-        world.add_location(location("b", LocationCategory::Settlement)).unwrap();
+        world
+            .add_location(location("a", LocationCategory::Landmark))
+            .unwrap();
+        world
+            .add_location(location("b", LocationCategory::Settlement))
+            .unwrap();
         world.add_route(&b, &a, 1, 0).unwrap();
 
         assert_eq!(
