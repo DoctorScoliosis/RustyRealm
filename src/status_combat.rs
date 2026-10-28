@@ -241,7 +241,7 @@ impl EnemyProfile {
             },
             "Stronghold Ranger" => Self {
                 archetype: EnemyArchetype::RangedPressure,
-                preferred_range: RangeProfile::RANGED,
+                preferred_range: PreferredRange::Far,
                 abilities: vec![AbilityId::HeavyStrike],
                 status_payload: Some((StatusEffectKind::Mark, 2, 1, 40)),
                 tendency: EnemyTendency::PreferMarkedTargets,
@@ -464,7 +464,10 @@ pub fn resolve_telegraph(
         });
     };
     let Some(target) = encounter.combatant(telegraph.target) else {
-        return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
+        return Ok(TelegraphState::Cancelled {
+            name: telegraph.name,
+            reason: "actor or target is no longer valid",
+        });
     };
     if !actor.can_act()
         || actor
