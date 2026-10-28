@@ -517,12 +517,16 @@ mod tests {
     use crate::party_combat::{CharacterClass, CombatantSource};
 
     fn encounter() -> Encounter {
+        encounter_with_enemy("Dragon", 100)
+    }
+
+    fn encounter_with_enemy(enemy_name: &str, hero_hp: u32) -> Encounter {
         let mut hero = EncounterCombatant::new(
             CombatantId(1),
             CombatantSource::Player,
             "Hero",
             Allegiance::Allies,
-            100,
+            hero_hp,
             40,
             25,
             30,
@@ -543,7 +547,7 @@ mod tests {
         let mut enemy = EncounterCombatant::new(
             CombatantId(3),
             CombatantSource::Enemy,
-            "Dragon",
+            enemy_name,
             Allegiance::Enemies,
             100,
             20,
@@ -719,6 +723,65 @@ mod tests {
                 .unwrap();
         }
         stun_actor(&mut e);
+        let before = e.clone();
+        assert!(matches!(
+            resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
+            TelegraphState::Cancelled { .. }
+        ));
+        assert_eq!(e, before);
+    }
+}    #[test]
+    fn telegraph_resolves_exact_action_and_cancels_when_target_is_defeated() {
+        let mut e = encounter();
+        e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
+        let telegraph = TelegraphedAction {
+            actor: CombatantId(3),
+            target: CombatantId(1),
+            action: CombatAction::BasicAttack {
+                actor: CombatantId(3),
+                target: CombatantId(1),
+            },
+            name: "Dragon Bite".into(),
+            description: "A physical bite at Hero".into(),
+        };
+        let resolved = resolve_telegraph(&mut e, telegraph.clone(), 0, 99).unwrap();
+        assert!(matches!(resolved, TelegraphState::Resolved(_)));
+        assert!(e.combatant(CombatantId(1)).unwrap().hp < 100);
+
+        let mut e = encounter_with_enemy("Dragon", 1);
+        e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
+        e.apply_action(
+            CombatAction::BasicAttack {
+                actor: CombatantId(3),
+                target: CombatantId(1),
+            },
+            0,
+            99,
+        )
+        .unwrap();
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 0);
+        assert!(matches!(
+            resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
+            TelegraphState::Cancelled { .. }
+        ));
+    }
+
+    #[test]
+    fn telegraph_cancels_out_of_range_without_mutating_encounter() {
+        let mut e = encounter_with_enemy("Goblin", 100);
+        let telegraph = TelegraphedAction {
+            actor: CombatantId(3),
+            target: CombatantId(1),
+            action: CombatAction::UseAbility {
+                actor: CombatantId(3),
+                target: CombatantId(1),
+                ability: AbilityId::HeavyStrike,
+            },
+            name: "Goblin Heavy Strike".into(),
+            description: "A heavy strike at Hero".into(),
+        };
         let before = e.clone();
         assert!(matches!(
             resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
