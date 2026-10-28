@@ -1252,7 +1252,11 @@ mod tests {
             .unwrap(),
             StatusApplication::Resisted
         );
-        assert!(e.combatant(CombatantId(3)).unwrap().status_effects.is_empty());
+        assert!(e
+            .combatant(CombatantId(3))
+            .unwrap()
+            .status_effects
+            .is_empty());
 
         assert_eq!(
             e.apply_status_effect(
