@@ -131,21 +131,32 @@ impl CompanionAbilityTarget {
     }
 }
 
-/// The primary effect of a companion ability.
+/// An effect produced by a companion ability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CompanionAbilityEffect {
     /// Deals damage based on the ability's damage multiplier.
-    Damage { multiplier: u32, damage_type: DamageType },
+    Damage {
+        multiplier: u32,
+        damage_type: DamageType,
+        /// Percentage of the target's defence ignored by this hit (0-100).
+        defence_piercing_percent: u32,
+    },
     /// Restores HP to the target.
     Heal { amount: u32 },
     /// Temporarily increases the target's attack power.
     BuffAttack { amount: u32, duration: u32 },
+    /// Temporarily increases the target's defence.
+    BuffDefence { amount: u32, duration: u32 },
     /// Temporarily decreases the target's defence.
     DebuffDefence { amount: u32, duration: u32 },
     /// Applies a status effect to the target.
-    ApplyStatus { kind: StatusEffectKind, duration: u32, potency: u32 },
-    /// Redirects incoming damage to self for a number of turns.
+    ApplyStatus {
+        kind: StatusEffectKind,
+        duration: u32,
+        potency: u32,
+    },
+    /// Redirects an ally's incoming damage to the companion who used the ability.
     RedirectDamage { duration: u32 },
     /// Guarantees the next attack is a critical hit.
     GuaranteedCritical,
@@ -193,7 +204,8 @@ impl CompanionAbilityId {
 
 /// A companion ability definition. These are data-driven and describe what the
 /// ability does without implementing the actual combat execution (which is
-/// owned by Section 11).
+/// owned by Section 11). Multiple effects allow one ability to combine damage,
+/// status changes, healing, and buffs without lying about its behaviour.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompanionAbility {
     pub id: CompanionAbilityId,
@@ -203,7 +215,7 @@ pub struct CompanionAbility {
     pub mana_cost: u32,
     pub cooldown_turns: u32,
     pub target: CompanionAbilityTarget,
-    pub effect: CompanionAbilityEffect,
+    pub effects: Vec<CompanionAbilityEffect>,
 }
 
 /// Returns the full definition of a companion ability by ID.
@@ -217,44 +229,58 @@ pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
             mana_cost: 0,
             cooldown_turns: 3,
             target: CompanionAbilityTarget::SingleEnemy,
-            effect: CompanionAbilityEffect::ApplyStatus {
-                kind: StatusEffectKind::Stun,
-                duration: 1,
-                potency: 1,
-            },
+            effects: vec![
+                CompanionAbilityEffect::Damage {
+                    multiplier: 75,
+                    damage_type: DamageType::Physical,
+                    defence_piercing_percent: 0,
+                },
+                CompanionAbilityEffect::ApplyStatus {
+                    kind: StatusEffectKind::Stun,
+                    duration: 1,
+                    potency: 1,
+                },
+            ],
         },
         CompanionAbilityId::GuardAlly => CompanionAbility {
             id,
             name: "Guard Ally",
-            description: "Intercepts incoming damage directed at an ally for 2 turns.",
+            description: "Protects one ally by redirecting damage they would take to the companion for 2 turns.",
             stamina_cost: 20,
             mana_cost: 0,
             cooldown_turns: 4,
-            target: CompanionAbilityTarget::SelfTarget,
-            effect: CompanionAbilityEffect::RedirectDamage { duration: 2 },
+            target: CompanionAbilityTarget::SingleAlly,
+            effects: vec![CompanionAbilityEffect::RedirectDamage { duration: 2 }],
         },
         CompanionAbilityId::IronWill => CompanionAbility {
             id,
             name: "Iron Will",
-            description: "Steels themselves, restoring HP and increasing defence for 2 turns.",
+            description: "Steels themselves, restoring 40 HP and increasing defence by 20 for 2 turns.",
             stamina_cost: 15,
             mana_cost: 0,
             cooldown_turns: 5,
             target: CompanionAbilityTarget::SelfTarget,
-            effect: CompanionAbilityEffect::Heal { amount: 40 },
+            effects: vec![
+                CompanionAbilityEffect::Heal { amount: 40 },
+                CompanionAbilityEffect::BuffDefence {
+                    amount: 20,
+                    duration: 2,
+                },
+            ],
         },
         CompanionAbilityId::PiercingShot => CompanionAbility {
             id,
             name: "Piercing Shot",
-            description: "Fires a high-velocity arrow that deals heavy damage and ignores some defence.",
+            description: "Fires a high-velocity arrow that deals heavy damage and ignores 25% of the target's defence.",
             stamina_cost: 20,
             mana_cost: 0,
             cooldown_turns: 2,
             target: CompanionAbilityTarget::SingleEnemy,
-            effect: CompanionAbilityEffect::Damage {
+            effects: vec![CompanionAbilityEffect::Damage {
                 multiplier: 180,
                 damage_type: DamageType::Physical,
-            },
+                defence_piercing_percent: 25,
+            }],
         },
         CompanionAbilityId::VolleyArrows => CompanionAbility {
             id,
@@ -264,10 +290,11 @@ pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
             mana_cost: 0,
             cooldown_turns: 4,
             target: CompanionAbilityTarget::AllEnemies,
-            effect: CompanionAbilityEffect::Damage {
+            effects: vec![CompanionAbilityEffect::Damage {
                 multiplier: 100,
                 damage_type: DamageType::Physical,
-            },
+                defence_piercing_percent: 0,
+            }],
         },
         CompanionAbilityId::AimedShot => CompanionAbility {
             id,
@@ -277,7 +304,7 @@ pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
             mana_cost: 0,
             cooldown_turns: 3,
             target: CompanionAbilityTarget::SelfTarget,
-            effect: CompanionAbilityEffect::GuaranteedCritical,
+            effects: vec![CompanionAbilityEffect::GuaranteedCritical],
         },
         CompanionAbilityId::HealingLight => CompanionAbility {
             id,
@@ -287,7 +314,7 @@ pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
             mana_cost: 25,
             cooldown_turns: 2,
             target: CompanionAbilityTarget::SingleAlly,
-            effect: CompanionAbilityEffect::Heal { amount: 50 },
+            effects: vec![CompanionAbilityEffect::Heal { amount: 50 }],
         },
         CompanionAbilityId::ArcaneBlast => CompanionAbility {
             id,
@@ -297,10 +324,11 @@ pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
             mana_cost: 20,
             cooldown_turns: 1,
             target: CompanionAbilityTarget::SingleEnemy,
-            effect: CompanionAbilityEffect::Damage {
+            effects: vec![CompanionAbilityEffect::Damage {
                 multiplier: 150,
                 damage_type: DamageType::Arcane,
-            },
+                defence_piercing_percent: 0,
+            }],
         },
         CompanionAbilityId::Empower => CompanionAbility {
             id,
@@ -310,7 +338,10 @@ pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
             mana_cost: 20,
             cooldown_turns: 4,
             target: CompanionAbilityTarget::SingleAlly,
-            effect: CompanionAbilityEffect::BuffAttack { amount: 25, duration: 3 },
+            effects: vec![CompanionAbilityEffect::BuffAttack {
+                amount: 25,
+                duration: 3,
+            }],
         },
         CompanionAbilityId::FlameWave => CompanionAbility {
             id,
@@ -320,30 +351,34 @@ pub fn get_companion_ability(id: CompanionAbilityId) -> CompanionAbility {
             mana_cost: 35,
             cooldown_turns: 4,
             target: CompanionAbilityTarget::AllEnemies,
-            effect: CompanionAbilityEffect::Damage {
+            effects: vec![CompanionAbilityEffect::Damage {
                 multiplier: 120,
                 damage_type: DamageType::Fire,
-            },
+                defence_piercing_percent: 0,
+            }],
         },
         CompanionAbilityId::FrostBarrier => CompanionAbility {
             id,
             name: "Frost Barrier",
-            description: "Creates a shield of frost around all allies, reducing incoming damage for 2 turns.",
+            description: "Creates a shield of frost around all allies, increasing their defence by 20 for 2 turns.",
             stamina_cost: 0,
             mana_cost: 30,
             cooldown_turns: 5,
             target: CompanionAbilityTarget::AllAllies,
-            effect: CompanionAbilityEffect::BuffAttack { amount: 0, duration: 2 },
+            effects: vec![CompanionAbilityEffect::BuffDefence {
+                amount: 20,
+                duration: 2,
+            }],
         },
         CompanionAbilityId::MassHeal => CompanionAbility {
             id,
             name: "Mass Heal",
-            description: "Channels a powerful healing wave, restoring HP to all allies.",
+            description: "Channels a powerful healing wave, restoring 35 HP to all allies.",
             stamina_cost: 0,
             mana_cost: 45,
             cooldown_turns: 6,
             target: CompanionAbilityTarget::AllAllies,
-            effect: CompanionAbilityEffect::Heal { amount: 35 },
+            effects: vec![CompanionAbilityEffect::Heal { amount: 35 }],
         },
     }
 }
@@ -1494,7 +1529,70 @@ mod tests {
             assert_eq!(ability.id, id);
             assert!(!ability.name.is_empty());
             assert!(!ability.description.is_empty());
+            assert!(!ability.effects.is_empty(), "Ability {} has no effects", ability.name);
         }
+    }
+
+
+    #[test]
+    fn shield_bash_deals_damage_and_applies_stun() {
+        let ability = get_companion_ability(CompanionAbilityId::ShieldBash);
+
+        assert!(ability.effects.contains(&CompanionAbilityEffect::Damage {
+            multiplier: 75,
+            damage_type: DamageType::Physical,
+            defence_piercing_percent: 0,
+        }));
+        assert!(ability.effects.contains(&CompanionAbilityEffect::ApplyStatus {
+            kind: StatusEffectKind::Stun,
+            duration: 1,
+            potency: 1,
+        }));
+    }
+
+    #[test]
+    fn guard_ally_targets_an_ally_and_redirects_damage() {
+        let ability = get_companion_ability(CompanionAbilityId::GuardAlly);
+
+        assert_eq!(ability.target, CompanionAbilityTarget::SingleAlly);
+        assert!(ability.effects.contains(&CompanionAbilityEffect::RedirectDamage {
+            duration: 2,
+        }));
+    }
+
+    #[test]
+    fn iron_will_heals_and_increases_defence() {
+        let ability = get_companion_ability(CompanionAbilityId::IronWill);
+
+        assert_eq!(ability.target, CompanionAbilityTarget::SelfTarget);
+        assert!(ability.effects.contains(&CompanionAbilityEffect::Heal { amount: 40 }));
+        assert!(ability.effects.contains(&CompanionAbilityEffect::BuffDefence {
+            amount: 20,
+            duration: 2,
+        }));
+    }
+
+    #[test]
+    fn piercing_shot_ignores_some_target_defence() {
+        let ability = get_companion_ability(CompanionAbilityId::PiercingShot);
+        assert!(ability.effects.iter().any(|effect| matches!(
+            effect,
+            CompanionAbilityEffect::Damage {
+                defence_piercing_percent: 1..=100,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn frost_barrier_increases_defence_for_all_allies() {
+        let ability = get_companion_ability(CompanionAbilityId::FrostBarrier);
+
+        assert_eq!(ability.target, CompanionAbilityTarget::AllAllies);
+        assert!(ability.effects.contains(&CompanionAbilityEffect::BuffDefence {
+            amount: 20,
+            duration: 2,
+        }));
     }
 
     #[test]
@@ -1573,13 +1671,14 @@ mod tests {
                 let ability = get_companion_ability(ability_id);
                 match def.role {
                     CompanionRole::FrontlineDefence => {
-                        // Frontline abilities should target enemies or self.
+                        // Frontline abilities can target enemies, themselves, or an ally to guard.
                         assert!(
                             matches!(
                                 ability.target,
                                 CompanionAbilityTarget::SingleEnemy
                                     | CompanionAbilityTarget::AllEnemies
                                     | CompanionAbilityTarget::SelfTarget
+                                    | CompanionAbilityTarget::SingleAlly
                             ),
                             "Frontline ability {} has unexpected target {:?}",
                             ability.name,
