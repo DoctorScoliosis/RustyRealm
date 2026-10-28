@@ -656,39 +656,45 @@ fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
+fn visible_party_members(
+    state: &GameState,
+) -> Vec<(crate::party::CompanionId, String, String)> {
+    // Keep each visible label paired with the ID it represents. A save with
+    // a party ID that has no matching recruited companion is filtered out,
+    // without shifting a later selection onto another ID.
+    state
+        .party
+        .members()
+        .iter()
+        .filter_map(|&id| {
+            state
+                .companions
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| {
+                    (
+                        id,
+                        format!(
+                            "{} · {} · HP {}/{}",
+                            c.display_name(),
+                            c.role().name(),
+                            c.current_hp,
+                            c.max_hp
+                        ),
+                        c.display_name().to_string(),
+                    )
+                })
+        })
+        .collect()
+}
+
 fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     use crate::party::{
         build_party_menu_actions, resolve_party_menu_action, PartyManager, PartyMenuAction,
     };
 
     loop {
-        // Keep each visible label paired with the ID it represents. A save
-        // with a party ID that has no matching recruited companion is filtered
-        // from the menu, without shifting a later selection onto another ID.
-        let party_members: Vec<_> = state
-            .party
-            .members()
-            .iter()
-            .filter_map(|&id| {
-                state
-                    .companions
-                    .iter()
-                    .find(|c| c.id == id)
-                    .map(|c| {
-                        (
-                            id,
-                            format!(
-                                "{} · {} · HP {}/{}",
-                                c.display_name(),
-                                c.role().name(),
-                                c.current_hp,
-                                c.max_hp
-                            ),
-                            c.display_name().to_string(),
-                        )
-                    })
-            })
-            .collect();
+        let party_members = visible_party_members(state);
 
         let member_count = party_members.len();
         let menu_actions = build_party_menu_actions(member_count);
@@ -885,6 +891,39 @@ mod travel_tests {
 
     fn test_state() -> GameState {
         GameState::new(Player::new("traveller".into(), "test-hash".into()))
+    }
+
+
+    #[test]
+    fn party_menu_selection_stays_aligned_when_a_saved_member_is_missing() {
+        use crate::party::{
+            build_party_menu_actions, resolve_party_menu_action, CompanionId, CompanionState,
+            Party, PartyMenuAction,
+        };
+
+        let mut state = test_state();
+        let lyra = crate::party::get_definition(CompanionId::LyraSwiftbow);
+        state.companions.push(CompanionState::new_from_definition(&lyra));
+        state.party = serde_json::from_str::<Party>(
+            r#"{"members":["bran_the_shield","lyra_swiftbow"],"size_limit":4}"#,
+        )
+        .expect("the simulated inconsistent party should deserialize");
+
+        let visible = visible_party_members(&state);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].0, CompanionId::LyraSwiftbow);
+        assert!(visible[0].1.starts_with("Lyra Swiftbow"));
+
+        let actions = build_party_menu_actions(visible.len());
+        assert_eq!(
+            resolve_party_menu_action(&actions, 0),
+            PartyMenuAction::Member(0)
+        );
+        assert_eq!(
+            visible[0].0,
+            CompanionId::LyraSwiftbow,
+            "the displayed first row must map back to Lyra, not the missing Bran ID"
+        );
     }
 
     #[test]
