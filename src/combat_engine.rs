@@ -512,7 +512,10 @@ mod tests {
             let mut target = Combatant::new_monster("Goblin", 10, 100);
             target.apply_status(kind, 2, 7);
             let logs = target.tick_status_effects();
-            assert_eq!(target.hp, 93, "{kind:?} should tick through shared lifecycle");
+            assert_eq!(
+                target.hp, 93,
+                "{kind:?} should tick through shared lifecycle"
+            );
             assert_eq!(target.status_effects[0].remaining_activations, 1);
             assert!(logs.iter().any(|line| line.contains("7")));
         }
