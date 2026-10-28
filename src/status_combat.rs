@@ -17,7 +17,6 @@ use crate::party_combat::{
     Allegiance, CombatAction, CombatantId, Encounter, EncounterCombatant, EncounterError,
     RangeBand, RangeProfile,
 };
-use rand::Rng;
 
 
 /// Apply/refresh one effect using caller-provided 0..99 roll and resistance.
