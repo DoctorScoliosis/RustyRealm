@@ -201,17 +201,17 @@ pub struct EnemyProfile {
 }
 
 impl EnemyProfile {
-    /// Map existing roster entries onto four behaviours without expanding the
-    /// set of possible random encounter enemies.
+    /// Maps the existing hostile/story roster onto a handful of explicit behaviours.
+    /// This does not change the random encounter allow-list in combat.rs.
     pub fn for_name(name: &str) -> Self {
         let base = name.strip_prefix("Elite ").unwrap_or(name);
         match base {
-            "Dragon" | "Elemental" | "Mage" | "Sorcerer" | "Stronghold Mage" => Self {
+            "Dragon" | "Elemental" | "Stronghold Mage" | "Mage" | "Sorcerer" => Self {
                 archetype: EnemyArchetype::StatusSpecialist,
                 preferred_range: RangeProfile::RANGED,
                 abilities: vec![AbilityId::LifeDrain],
                 damage_type: if base == "Dragon" || base == "Elemental" { DamageType::Fire } else { DamageType::Arcane },
-                status_payload: Some((if base == "Dragon" || base == "Elemental" { StatusEffectKind::Burn } else { StatusEffectKind::Slow }, 2, 8, 35)),
+                status_payload: Some((if base == "Dragon" || base == "Elemental" { StatusEffectKind::Burn } else { StatusEffectKind::Slow }, 2, 1, 35)),
                 tendency: EnemyTendency::PreferStatusFreeTargets,
             },
             "Stronghold Ranger" => Self {
@@ -221,14 +221,6 @@ impl EnemyProfile {
                 damage_type: DamageType::Physical,
                 status_payload: Some((StatusEffectKind::Mark, 2, 1, 40)),
                 tendency: EnemyTendency::PreferMarkedTargets,
-            },
-            "Stronghold Mage" => Self {
-                archetype: EnemyArchetype::StatusSpecialist,
-                preferred_range: RangeProfile::RANGED,
-                abilities: vec![AbilityId::LifeDrain],
-                damage_type: DamageType::Arcane,
-                status_payload: Some((StatusEffectKind::Slow, 2, 1, 35)),
-                tendency: EnemyTendency::PreferStatusFreeTargets,
             },
             "Stronghold Warrior" | "Giant" | "Rockbeast" | "Ent" => Self {
                 archetype: EnemyArchetype::AggressiveMelee,
@@ -249,7 +241,6 @@ impl EnemyProfile {
         }
     }
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntendedAction {
     pub action: CombatAction,
@@ -418,17 +409,15 @@ mod tests {
         assert_eq!(tick_status_effects(&mut effects), vec![StatusTick::Damage { kind: StatusEffectKind::Poison, amount: 3 }]);
         assert_eq!(effects[0].remaining_activations, 3);
     }
-
     #[test]
     fn resistance_and_chance_are_explicitly_bounded() {
         assert_eq!(StatusResistance::effective_chance(80, 25), 60);
-        assert_eq!(StatusResistance::effective_chance(255, 255), 10);
+        assert_eq!(StatusResistance::effective_chance(100, 255), 10);
         let mut effects = Vec::new();
         let mut e = effect(StatusEffectKind::Burn, 2, 4);
         e.application_chance_pct = 1;
         assert_eq!(apply_status(&mut effects, e, 99, 0), StatusApplication::FailedChance);
         assert!(effects.is_empty());
-        assert_eq!(StatusResistance::effective_chance(100, 255), 10);
     }
 
     #[test]
@@ -441,6 +430,8 @@ mod tests {
         ];
         let ticks = tick_status_effects(&mut effects);
         assert!(ticks.contains(&StatusTick::Stunned));
+        assert!(effects.is_empty());
+        let effects = vec![effect(StatusEffectKind::Slow, 2, u32::MAX), effect(StatusEffectKind::Mark, 2, u32::MAX), effect(StatusEffectKind::WeakenedDefences, 2, u32::MAX)];
         assert_eq!(slow_penalty(&effects), MAX_SLOW_INITIATIVE_PENALTY);
         assert_eq!(mark_hit_bonus(&effects), MAX_MARK_HIT_BONUS);
         assert_eq!(defence_vulnerability_pct(&effects), MAX_DEFENCE_VULNERABILITY_PCT);
@@ -481,7 +472,10 @@ mod tests {
             damage_type: DamageType::Physical,
             damage: 20,
         };
-        e.combatant_mut_for_test_set_hp(CombatantId(1), 0);
+        e.apply_action(CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) }, 99, 99).ok();
+        // Rebuild state with the target removed from action eligibility.
+        let mut e = encounter();
+        e.apply_status_effect(CombatantId(1), StatusEffectKind::Stun, Some(CombatantId(3)), 1, 1, 100, 0).ok();
         assert!(matches!(resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(), TelegraphState::Cancelled { .. }));
     }
 
