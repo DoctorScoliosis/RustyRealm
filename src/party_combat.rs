@@ -6,6 +6,8 @@
 //! Position uses encounter-owned range bands, not grid coordinates.
 
 use crate::data::{get_ability, AbilityId};
+use crate::party::{CompanionId, CompanionState, Party};
+use crate::state::Player;
 use crate::status_combat::{
     apply_status, defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects,
     StatusApplication, StatusEffect, StatusEffectKind, StatusResistance, StatusTick,
