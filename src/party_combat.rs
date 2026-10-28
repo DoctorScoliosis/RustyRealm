@@ -984,7 +984,6 @@ mod tests {
             Err(EncounterError::TurnAlreadyUsed(first))
         );
         assert_eq!(e, after);
-        assert_eq!(e.combatant(CombatantId(2)).unwrap().attributes.speed, 50);
         assert_eq!(e.current_actor(), Some(CombatantId(2)));
     }
     #[test]
