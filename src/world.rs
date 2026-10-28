@@ -234,9 +234,11 @@ impl World {
         if travel_cost == 0 {
             return Err(WorldError::ZeroTravelCost);
         }
-        if self.routes.get(from_id).is_some_and(|routes| {
-            routes.iter().any(|route| &route.destination_id == to_id)
-        }) {
+        if self
+            .routes
+            .get(from_id)
+            .is_some_and(|routes| routes.iter().any(|route| &route.destination_id == to_id))
+        {
             return Err(WorldError::DuplicateRoute {
                 from: from_id.clone(),
                 to: to_id.clone(),
@@ -362,9 +364,9 @@ impl World {
         self.shortest_distances(start_location)
             .into_iter()
             .filter(|(id, _)| {
-                self.locations.get(id).is_some_and(|location| {
-                    location.category == LocationCategory::Settlement
-                })
+                self.locations
+                    .get(id)
+                    .is_some_and(|location| location.category == LocationCategory::Settlement)
             })
             .min_by(|(left_id, left_cost), (right_id, right_cost)| {
                 left_cost
@@ -685,10 +687,7 @@ mod tests {
         world.add_route(&a, &b, 1, 0).unwrap();
         assert_eq!(
             world.add_route(&a, &b, 2, 0),
-            Err(WorldError::DuplicateRoute {
-                from: a,
-                to: b,
-            })
+            Err(WorldError::DuplicateRoute { from: a, to: b })
         );
         assert!(world.validate().is_ok());
     }
