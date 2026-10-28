@@ -15,14 +15,15 @@ mod skills;
 mod state;
 mod stronghold;
 mod ui;
-// Section 9.1 introduces the domain model before save/UI integration in 9.2–9.3.
-// Remove this temporary allowance once gameplay consumes the world APIs.
+// Some world queries are reserved for later gameplay slices; remove this
+// allowance as the remaining APIs gain consumers.
 #[allow(dead_code)]
 mod world;
 
 use crate::data::ItemType;
 use crate::state::GameState;
 use crate::ui::Tui;
+use crate::world::{build_initial_world, LocationId, World};
 use std::io;
 
 fn main() -> io::Result<()> {
@@ -158,7 +159,9 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
 }
 
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
     let options = [
+        "Travel / Explore Region",
         "Wander Gielinor",
         "Weapon Shop",
         "Armour Shop",
@@ -195,22 +198,33 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             )?;
         }
 
-        let choice = tui.select_menu("Final Realm · Varrock", &options, Some(state))?;
+        let current_location_name = world
+            .get_location(&state.current_location)
+            .map(|location| location.name.clone())
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "Unknown current location '{}'.",
+                    state.current_location
+                ))
+            })?;
+        let title = format!("Rusty Realm · {current_location_name}");
+        let choice = tui.select_menu(&title, &options, Some(state))?;
         match choice {
-            0 => combat::wander_gielinor(tui, state)?,
-            1 => shops::weapon_shop(tui, state)?,
-            2 => shops::armour_shop(tui, state)?,
-            3 => shops::legends_store(tui, state)?,
-            4 => general_store(tui, state)?,
-            5 => shops::max_shop(tui, state)?,
-            6 => shops::smuggler(tui, state)?,
-            7 => stronghold::enter_stronghold(tui, state)?,
-            8 => skills::skill_plot(tui, state)?,
-            9 => bank::bank_menu(tui, state)?,
-            10 => quests::quest_hall(tui, state)?,
-            11 => inventory::view_inventory(tui, state, false)?,
-            12 => crate::achievements::progression_menu(tui, state)?,
-            13 => settings_menu(tui, state)?,
+            0 => travel_menu(tui, state, &world)?,
+            1 => combat::wander_gielinor(tui, state)?,
+            2 => shops::weapon_shop(tui, state)?,
+            3 => shops::armour_shop(tui, state)?,
+            4 => shops::legends_store(tui, state)?,
+            5 => general_store(tui, state)?,
+            6 => shops::max_shop(tui, state)?,
+            7 => shops::smuggler(tui, state)?,
+            8 => stronghold::enter_stronghold(tui, state)?,
+            9 => skills::skill_plot(tui, state)?,
+            10 => bank::bank_menu(tui, state)?,
+            11 => quests::quest_hall(tui, state)?,
+            12 => inventory::view_inventory(tui, state, false)?,
+            13 => crate::achievements::progression_menu(tui, state)?,
+            14 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
@@ -218,6 +232,103 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             }
         }
         state.market_state.advance_turn();
+    }
+}
+
+/// Applies a single directly connected journey after validating the route,
+/// destination, and positive travel cost. An error leaves the saved location
+/// unchanged.
+fn apply_travel(
+    state: &mut GameState,
+    world: &World,
+    destination_id: &LocationId,
+) -> Result<u32, &'static str> {
+    let current_id = state.current_location.clone();
+    let route = world
+        .get_direct_routes(&current_id)
+        .iter()
+        .find(|route| &route.destination_id == destination_id)
+        .ok_or("That destination is not directly connected to your current location.")?;
+
+    if route.travel_cost == 0 {
+        return Err("This route has an invalid travel cost.");
+    }
+    let destination = world
+        .get_location(destination_id)
+        .ok_or("That destination is not known to the world.")?;
+    let travel_cost = route.travel_cost;
+
+    // Mutate only after the direct route and its cost have been validated.
+    state.current_location = destination.id.clone();
+    Ok(travel_cost)
+}
+
+fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
+    loop {
+        let current_id = state.current_location.clone();
+        let current_name = world
+            .get_location(&current_id)
+            .map(|location| location.name.clone())
+            .ok_or_else(|| {
+                io::Error::other(format!("Unknown current location '{current_id}'."))
+            })?;
+
+        let destinations: Vec<(LocationId, String, u32, u32)> = world
+            .get_direct_routes(&current_id)
+            .iter()
+            .filter_map(|route| {
+                world.get_location(&route.destination_id).map(|location| {
+                    (
+                        location.id.clone(),
+                        location.name.clone(),
+                        route.travel_cost,
+                        route.danger_level,
+                    )
+                })
+            })
+            .collect();
+
+        if destinations.is_empty() {
+            tui.show_message(
+                "No routes available",
+                "There are no direct travel connections from this location.",
+                Some(state),
+            )?;
+            return Ok(());
+        }
+
+        let labels: Vec<String> = destinations
+            .iter()
+            .map(|(_, name, cost, danger)| {
+                format!("{name} · travel cost {cost} · danger {danger}")
+            })
+            .collect();
+        let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        options.push("Back");
+
+        let title = format!("Travel from {current_name}");
+        let choice = tui.select_menu(&title, &options, Some(state))?;
+        if choice >= destinations.len() {
+            return Ok(());
+        }
+
+        let (destination_id, destination_name, _listed_cost, danger_level) =
+            &destinations[choice];
+        match apply_travel(state, world, destination_id) {
+            Ok(travel_cost) => {
+                tui.show_message(
+                    "Travel complete",
+                    &format!(
+                        "You arrive at {destination_name}.\n\nTravel cost: {travel_cost}\nRoute danger: {danger_level}"
+                    ),
+                    Some(state),
+                )?;
+                return Ok(());
+            }
+            Err(message) => {
+                tui.show_message("Travel unavailable", message, Some(state))?;
+            }
+        }
     }
 }
 
@@ -418,5 +529,57 @@ fn admin_commands(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             )?,
             _ => return Ok(()),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod travel_tests {
+    use super::*;
+    use crate::state::Player;
+
+    fn test_state() -> GameState {
+        GameState::new(Player::new("traveller".into(), "test-hash".into()))
+    }
+
+    #[test]
+    fn direct_travel_updates_location_after_route_validation() {
+        let world = build_initial_world().expect("initial world should be valid");
+        let mut state = test_state();
+        let destination = LocationId::from("abandoned_mill");
+
+        let cost = apply_travel(&mut state, &world, &destination)
+            .expect("direct route should be traversable");
+
+        assert_eq!(cost, 5);
+        assert_eq!(state.current_location, destination);
+    }
+
+    #[test]
+    fn non_adjacent_destination_is_rejected_without_changing_location() {
+        let world = build_initial_world().expect("initial world should be valid");
+        let mut state = test_state();
+        let starting_location = state.current_location.clone();
+        let destination = LocationId::from("goblin_caves");
+
+        assert!(world.is_reachable(&starting_location, &destination));
+        assert!(!world.can_travel(&starting_location, &destination));
+        assert!(apply_travel(&mut state, &world, &destination).is_err());
+        assert_eq!(state.current_location, starting_location);
+    }
+
+    #[test]
+    fn unknown_destination_is_rejected_without_changing_location() {
+        let world = build_initial_world().expect("initial world should be valid");
+        let mut state = test_state();
+        let starting_location = state.current_location.clone();
+
+        assert!(apply_travel(
+            &mut state,
+            &world,
+            &LocationId::from("unknown_location")
+        )
+        .is_err());
+        assert_eq!(state.current_location, starting_location);
     }
 }
