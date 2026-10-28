@@ -505,6 +505,7 @@ mod tests {
             Err(EncounterError::TurnAlreadyUsed(first))
         );
         assert_eq!(e, after);
+        assert_eq!(e.combatant(CombatantId(2)).unwrap().attributes.speed, 50);
         assert_eq!(e.current_actor(), Some(CombatantId(2)));
     }
     #[test]
@@ -631,6 +632,8 @@ mod tests {
         roster[0].set_class(CharacterClass::Warrior);
         roster[1].set_class(CharacterClass::Rogue);
         roster[2].set_class(CharacterClass::Mage);
+        roster[3].base_attributes.speed = 20;
+        roster[3].recalculate_attributes();
         let mut e = Encounter::new(roster).unwrap();
         assert_eq!(e.current_actor(), Some(CombatantId(2)));
         let mut tied = e.combatants.clone();
