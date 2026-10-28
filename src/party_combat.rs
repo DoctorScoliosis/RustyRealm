@@ -717,11 +717,28 @@ impl Encounter {
         if !actor.can_act() {
             return Err(EncounterError::ActorIneligible(actor_id));
         }
-        if actor.status_effects.iter().any(|e| e.kind == StatusEffectKind::Stun) {
-            return Err(EncounterError::ActorIneligible(actor_id));
-        }
         if self.acted_this_round.contains(&actor_id) {
             return Err(EncounterError::TurnAlreadyUsed(actor_id));
+        }
+        let stunned = self.combatant(actor_id).is_some_and(|actor| {
+            actor.status_effects.iter().any(|effect| effect.kind == StatusEffectKind::Stun)
+        });
+        if stunned {
+            let actor = self.combatant_mut(actor_id).expect("actor validated");
+            let ticks = tick_status_effects(&mut actor.status_effects);
+            for tick in &ticks {
+                if let StatusTick::Damage { amount, .. } = tick {
+                    actor.hp = actor.hp.saturating_sub(*amount);
+                }
+            }
+            actor.sync_condition();
+            self.consume_turn(actor_id);
+            self.refresh_outcome();
+            return Ok(ActionResult {
+                actor: actor_id, target: None, damage: 0, healing: 0,
+                outcome: self.outcome, hit: None, hit_chance: None,
+                message: "stunned; activation skipped",
+            });
         }
         if matches!(&action, CombatAction::Retreat { .. }) {
             self.consume_turn(actor_id);
