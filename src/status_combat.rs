@@ -383,7 +383,7 @@ pub fn propose_enemy_action(
     } else {
         CombatAction::Move { actor: actor_id }
     };
-        let telegraph = match intended_action {
+    let telegraph = match intended_action {
         CombatAction::BasicAttack { .. } | CombatAction::UseAbility { .. } if roll % 4 == 0 => {
             Some(TelegraphedAction {
                 actor: actor_id,
