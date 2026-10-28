@@ -573,7 +573,10 @@ mod tests {
             migrated.player.get_item_count(crate::data::ItemType::Logs),
             9
         );
-        assert_eq!(migrated.player.quests_completed, vec!["historic_quest"]);
+        assert_eq!(
+            migrated.player.quests_completed,
+            vec!["historic_quest".to_string()]
+        );
         assert!(migrated
             .unlocked_achievements
             .contains(&"first_steps".to_string()));
