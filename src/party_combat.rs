@@ -875,6 +875,23 @@ impl Encounter {
             target.hp -= damage;
             target.sync_condition();
         }
+        if hit {
+            let payload = match ability_id {
+                Some(AbilityId::HeavyStrike) => Some((StatusEffectKind::Bleed, 2, 6, 100)),
+                Some(AbilityId::Cleave) => Some((StatusEffectKind::Stun, 1, 1, 100)),
+                _ => None,
+            };
+            if let Some((kind, duration, potency, chance_pct)) = payload {
+                let resistance = self.combatant(target_id).expect("target validated").status_resistance.resistance_pct;
+                let effect = StatusEffect {
+                    kind, source: Some(actor_id), potency,
+                    remaining_activations: duration,
+                    application_chance_pct: chance_pct,
+                };
+                let target = self.combatant_mut(target_id).expect("target validated");
+                let _ = apply_status(&mut target.status_effects, effect, resistance, hit_roll);
+            }
+        }
         self.consume_turn(actor_id);
         self.refresh_outcome();
         Ok(ActionResult {
