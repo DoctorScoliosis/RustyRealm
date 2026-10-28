@@ -679,11 +679,17 @@ mod tests {
             EnemyArchetype::AggressiveMelee
         );
         assert_eq!(
-            EnemyProfile::for_name("Stronghold Mage").status_payload.unwrap().0,
+            EnemyProfile::for_name("Stronghold Mage")
+                .status_payload
+                .unwrap()
+                .0,
             StatusEffectKind::Slow
         );
         assert_eq!(
-            EnemyProfile::for_name("Stronghold Ranger").status_payload.unwrap().0,
+            EnemyProfile::for_name("Stronghold Ranger")
+                .status_payload
+                .unwrap()
+                .0,
             StatusEffectKind::Mark
         );
         assert_eq!(
