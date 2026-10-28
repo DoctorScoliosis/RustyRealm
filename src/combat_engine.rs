@@ -1,8 +1,6 @@
-use crate::data::{
-    get_ability, get_npc_resistance, AbilityId, DamageType, LacoyxPhase, StatusEffect,
-    StatusEffectKind,
-};
+use crate::data::{get_ability, get_npc_resistance, AbilityId, DamageType, LacoyxPhase};
 use crate::state::Player;
+use crate::status_combat::{StatusEffect, StatusEffectKind, StatusTick};
 use rand::Rng;
 
 /// Defensive response to an incoming attack. Consumable represents using one
@@ -87,68 +85,42 @@ impl Combatant {
         }
     }
 
-    /// Refresh duration and potency instead of stacking duplicate effects.
+    /// Apply through the shared Section 13 lifecycle. Legacy abilities use
+    /// guaranteed, non-resisted application to preserve their existing rules.
     pub fn apply_status(&mut self, kind: StatusEffectKind, duration: u32, potency: u32) {
         if duration == 0 {
             return;
         }
-        if let Some(existing) = self
-            .status_effects
-            .iter_mut()
-            .find(|effect| effect.kind == kind)
-        {
-            existing.duration = existing.duration.max(duration);
-            existing.potency = existing.potency.max(potency);
-        } else {
-            self.status_effects.push(StatusEffect {
-                kind,
-                duration,
-                potency,
-            });
-        }
+        let effect = StatusEffect {
+            kind,
+            source: None,
+            potency,
+            remaining_activations: duration,
+            application_chance_pct: 100,
+        };
+        let _ = crate::status_combat::apply_status(&mut self.status_effects, effect, 0, 0);
     }
 
-    /// Apply each status at the start of this combatant's turn and age it.
+    /// The legacy battle and party encounter now share the same effect clock.
+    /// Effects tick at the start of this combatant's activation, then age.
     pub fn tick_status_effects(&mut self) -> Vec<String> {
         let mut logs = Vec::new();
         self.is_stunned = false;
-        let mut index = 0;
-
-        while index < self.status_effects.len() {
-            let effect = &mut self.status_effects[index];
-            match effect.kind {
-                StatusEffectKind::Bleed => {
-                    self.hp = self.hp.saturating_sub(effect.potency);
+        let ticks = crate::status_combat::tick_status_effects(&mut self.status_effects);
+        for tick in ticks {
+            match tick {
+                StatusTick::Damage { kind, amount } => {
+                    self.hp = self.hp.saturating_sub(amount);
                     logs.push(format!(
-                        "{} suffers {} Bleed damage!",
-                        self.name, effect.potency
+                        "{} suffers {} {:?} damage!",
+                        self.name, amount, kind
                     ));
                 }
-                StatusEffectKind::Poison => {
-                    self.hp = self.hp.saturating_sub(effect.potency);
-                    logs.push(format!(
-                        "{} suffers {} Poison damage!",
-                        self.name, effect.potency
-                    ));
-                }
-                StatusEffectKind::Burn => {
-                    self.hp = self.hp.saturating_sub(effect.potency);
-                    logs.push(format!(
-                        "{} suffers {} Burn damage!",
-                        self.name, effect.potency
-                    ));
-                }
-                StatusEffectKind::Stun => {
+                StatusTick::Stunned => {
                     self.is_stunned = true;
                     logs.push(format!("{} is Stunned and loses this turn!", self.name));
                 }
-            }
-
-            effect.duration = effect.duration.saturating_sub(1);
-            if effect.duration == 0 {
-                self.status_effects.remove(index);
-            } else {
-                index += 1;
+                StatusTick::Expired(_) => {}
             }
         }
 
@@ -455,12 +427,12 @@ mod tests {
         target.apply_status(StatusEffectKind::Bleed, 2, 10);
         target.apply_status(StatusEffectKind::Bleed, 4, 15);
         assert_eq!(target.status_effects.len(), 1);
-        assert_eq!(target.status_effects[0].duration, 4);
+        assert_eq!(target.status_effects[0].remaining_activations, 4);
         assert_eq!(target.status_effects[0].potency, 15);
 
         let logs = target.tick_status_effects();
         assert_eq!(target.hp, 85);
-        assert_eq!(target.status_effects[0].duration, 3);
+        assert_eq!(target.status_effects[0].remaining_activations, 3);
         assert!(!logs.is_empty());
     }
 

@@ -455,21 +455,6 @@ pub enum DamageType {
     Arcane,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum StatusEffectKind {
-    Bleed,
-    Poison,
-    Burn,
-    Stun,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StatusEffect {
-    pub kind: StatusEffectKind,
-    pub duration: u32,
-    pub potency: u32,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AbilityId {
     HeavyStrike,

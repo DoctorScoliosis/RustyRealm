@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 
-use crate::data::{ArmourTier, DamageType, StatusEffectKind, WeaponTier};
+use crate::data::{ArmourTier, DamageType, WeaponTier};
+use crate::status_combat::StatusEffectKind;
 
 /// Maximum number of companions that can be active in a party at once,
 /// including the player character. The player always occupies one slot.
