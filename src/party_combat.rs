@@ -583,7 +583,7 @@ mod tests {
                     actor: first,
                     target: CombatantId(3),
                 },
-                99
+                99,
             ),
             Err(EncounterError::TurnAlreadyUsed(first))
         );
