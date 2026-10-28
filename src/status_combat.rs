@@ -625,7 +625,7 @@ mod tests {
     #[test]
     fn action_is_cancelled_not_mutated_when_out_of_range() {
         let mut e = encounter();
-        let telegraph = TelegraphedAction {
+        let mut telegraph = TelegraphedAction {
             actor: CombatantId(3),
             target: CombatantId(1),
             action: CombatAction::UseAbility {
@@ -640,6 +640,13 @@ mod tests {
         };
         e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
         e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
+        // The action itself must obey Section 12 range validation. Basic attacks
+        // use the actor attack range; a melee ability has its own range restriction.
+        telegraph.action = CombatAction::UseAbility {
+            actor: CombatantId(3),
+            target: CombatantId(1),
+            ability: AbilityId::HeavyStrike,
+        };
         let before = e.clone();
         assert!(matches!(
             resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
