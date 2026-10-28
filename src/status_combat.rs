@@ -638,8 +638,8 @@ mod tests {
             damage_type: DamageType::Physical,
             damage: 40,
         };
-        e.set_position(CombatantId(3), RangeBand::Far).unwrap();
-        e.set_position(CombatantId(1), RangeBand::Near).unwrap();
+        // A non-hostile target must cancel before the resolver is called.
+        e.combatant_mut(CombatantId(1)).unwrap().allegiance = Allegiance::Enemies;
         let before = e.clone();
         assert!(matches!(
             resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
