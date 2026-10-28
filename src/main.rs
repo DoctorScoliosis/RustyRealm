@@ -662,7 +662,10 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     };
 
     loop {
-        let party_members: Vec<String> = state
+        // Keep each visible label paired with the ID it represents. A save
+        // with a party ID that has no matching recruited companion is filtered
+        // from the menu, without shifting a later selection onto another ID.
+        let party_members: Vec<_> = state
             .party
             .members()
             .iter()
@@ -672,12 +675,16 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .iter()
                     .find(|c| c.id == id)
                     .map(|c| {
-                        format!(
-                            "{} · {} · HP {}/{}",
-                            c.display_name(),
-                            c.role().name(),
-                            c.current_hp,
-                            c.max_hp
+                        (
+                            id,
+                            format!(
+                                "{} · {} · HP {}/{}",
+                                c.display_name(),
+                                c.role().name(),
+                                c.current_hp,
+                                c.max_hp
+                            ),
+                            c.display_name().to_string(),
                         )
                     })
             })
@@ -689,7 +696,10 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         // Build display labels that match the menu_actions list exactly.
         // When the party is empty, show "No companions in party" as an
         // informational line in the title instead of a selectable entry.
-        let mut labels: Vec<String> = party_members.clone();
+        let mut labels: Vec<String> = party_members
+            .iter()
+            .map(|(_, label, _)| label.clone())
+            .collect();
         labels.push(format!(
             "Add companion ({}/{})",
             state.party.companion_count(),
@@ -713,14 +723,18 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 
         match resolved {
             PartyMenuAction::Member(index) => {
-                // Remove companion from party
-                let id = state.party.members()[index];
-                let name = state
-                    .companions
-                    .iter()
-                    .find(|c| c.id == id)
-                    .map(|c| c.display_name())
-                    .unwrap_or("Unknown");
+                // Resolve through the same filtered list used to render the menu,
+                // rather than indexing the raw saved party IDs.
+                let Some((id, _, name)) = party_members.get(index) else {
+                    tui.show_message(
+                        "Party updated",
+                        "That party member is no longer available. The menu has been refreshed.",
+                        Some(state),
+                    )?;
+                    continue;
+                };
+                let id = *id;
+                let name = name.clone();
                 match PartyManager::remove_from_party(&mut state.party, id) {
                     Ok(()) => {
                         tui.show_message(
