@@ -429,6 +429,7 @@ mod tests {
                     actor: CombatantId(1),
                     target: CombatantId(99),
                 },
+                0,
                 0
             ),
             Err(EncounterError::MissingTarget(CombatantId(99)))
@@ -440,6 +441,7 @@ mod tests {
                     actor: CombatantId(999),
                     target: CombatantId(3),
                 },
+                0,
                 0
             ),
             Err(EncounterError::MissingActor(CombatantId(999)))
@@ -459,6 +461,7 @@ mod tests {
                     target: CombatantId(3),
                     ability: AbilityId::HeavyStrike,
                 },
+                0,
                 0
             ),
             Err(EncounterError::InsufficientStamina)
@@ -484,6 +487,7 @@ mod tests {
                 actor: first,
                 target: CombatantId(3),
             },
+            0,
             99,
         )
         .unwrap();
@@ -494,6 +498,7 @@ mod tests {
                     actor: first,
                     target: CombatantId(3),
                 },
+                0,
                 99,
             ),
             Err(EncounterError::TurnAlreadyUsed(first))
@@ -534,6 +539,7 @@ mod tests {
                     actor: CombatantId(1),
                     target: CombatantId(2),
                 },
+                0,
                 99,
             )
             .unwrap()
@@ -545,6 +551,7 @@ mod tests {
                 CombatAction::Defend {
                     actor: CombatantId(1),
                 },
+                0,
                 0,
             ),
             Err(EncounterError::EncounterFinished)
@@ -562,6 +569,7 @@ mod tests {
                     actor: CombatantId(1),
                     target: CombatantId(3),
                 },
+                0,
                 0
             ),
             Err(EncounterError::TargetIneligible(CombatantId(3)))
@@ -576,6 +584,7 @@ mod tests {
                 CombatAction::Retreat {
                     actor: CombatantId(1),
                 },
+                0,
                 0,
             )
             .unwrap()
