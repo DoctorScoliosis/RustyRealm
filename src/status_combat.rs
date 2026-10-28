@@ -394,7 +394,7 @@ pub fn resolve_telegraph(
 mod tests {
     use super::*;
     use crate::party::CompanionId;
-    use crate::party_combat::{CombatantSource, CombatAttributes, CharacterClass};
+    use crate::party_combat::{CharacterClass, CombatantSource};
 
     fn encounter() -> Encounter {
         let mut hero = EncounterCombatant::new(CombatantId(1), CombatantSource::Player, "Hero", Allegiance::Allies, 100, 40, 25, 30, 5);
@@ -427,7 +427,10 @@ mod tests {
         let mut effects = Vec::new();
         let mut e = effect(StatusEffectKind::Burn, 2, 4);
         e.application_chance_pct = 1;
-        assert_eq!(apply_status(&mut effects, e, 99, 0), StatusApplication::Resisted);
+        assert_eq!(
+            apply_status(&mut effects, e, 99, 0),
+            StatusApplication::Resisted
+        );
         assert!(effects.is_empty());
     }
 
@@ -447,15 +450,27 @@ mod tests {
         let effects = vec![effect(StatusEffectKind::Slow, 2, u32::MAX), effect(StatusEffectKind::Mark, 2, u32::MAX), effect(StatusEffectKind::WeakenedDefences, 2, u32::MAX)];
         assert_eq!(slow_penalty(&effects), MAX_SLOW_INITIATIVE_PENALTY);
         assert_eq!(mark_hit_bonus(&effects), MAX_MARK_HIT_BONUS);
-        assert_eq!(defence_vulnerability_pct(&effects), MAX_DEFENCE_VULNERABILITY_PCT);
+        assert_eq!(
+            defence_vulnerability_pct(&effects),
+            MAX_DEFENCE_VULNERABILITY_PCT
+        );
     }
 
     #[test]
     fn enemy_policy_is_repeatable_and_profiles_are_distinct() {
         let e = encounter();
-        assert_eq!(propose_enemy_action(&e, CombatantId(3), 7), propose_enemy_action(&e, CombatantId(3), 7));
-        assert_ne!(EnemyProfile::for_name("Dragon").archetype, EnemyProfile::for_name("Goblin").archetype);
-        assert_ne!(EnemyProfile::for_name("Stronghold Ranger").archetype, EnemyProfile::for_name("Stronghold Warrior").archetype);
+        assert_eq!(
+            propose_enemy_action(&e, CombatantId(3), 7),
+            propose_enemy_action(&e, CombatantId(3), 7)
+        );
+        assert_ne!(
+            EnemyProfile::for_name("Dragon").archetype,
+            EnemyProfile::for_name("Goblin").archetype
+        );
+        assert_ne!(
+            EnemyProfile::for_name("Stronghold Ranger").archetype,
+            EnemyProfile::for_name("Stronghold Warrior").archetype
+        );
     }
 
     #[test]
@@ -480,10 +495,14 @@ mod tests {
 
         let mut e = encounter();
         e.apply_action(
-            CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) },
+            CombatAction::BasicAttack {
+                actor: CombatantId(3),
+                target: CombatantId(1),
+            },
             0,
             0,
-        ).unwrap();
+        )
+        .unwrap();
         // The actor has already acted; a second telegraph is cancelled by common validation.
         assert!(matches!(
             resolve_telegraph(&mut e, telegraph, 0, 0).unwrap(),
