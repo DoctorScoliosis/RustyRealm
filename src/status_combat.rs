@@ -38,10 +38,10 @@ pub fn apply_status(
         resistance_pct,
     );
     if roll % 100 >= u32::from(chance) {
-        return if incoming.application_chance_pct == 0 {
-            StatusApplication::FailedChance
-        } else {
+        return if resistance_pct.min(MAX_STATUS_RESISTANCE_PCT) > 0 && incoming.application_chance_pct > 0 {
             StatusApplication::Resisted
+        } else {
+            StatusApplication::FailedChance
         };
     }
     if let Some(current) = effects.iter_mut().find(|e| e.kind == incoming.kind) {
@@ -151,9 +151,9 @@ pub struct StatusResistance {
 
 impl StatusResistance {
     pub fn effective_chance(base_chance_pct: u8, resistance_pct: u8) -> u8 {
-        let chance = base_chance_pct.min(MAX_EFFECT_CHANCE_PCT);
-        let resistance = resistance_pct.min(MAX_STATUS_RESISTANCE_PCT);
-        chance.saturating_mul(100_u8.saturating_sub(resistance)) / 100
+        let chance = u16::from(base_chance_pct.min(MAX_EFFECT_CHANCE_PCT));
+        let resistance = u16::from(resistance_pct.min(MAX_STATUS_RESISTANCE_PCT));
+        (chance * (100 - resistance) / 100) as u8
     }
 }
 
@@ -205,12 +205,20 @@ impl EnemyProfile {
     pub fn for_name(name: &str) -> Self {
         let base = name.strip_prefix("Elite ").unwrap_or(name);
         match base {
-            "Dragon" | "Elemental" | "Stronghold Mage" | "Mage" | "Sorcerer" => Self {
+            "Dragon" | "Elemental" | "Mage" | "Sorcerer" => Self {
                 archetype: EnemyArchetype::StatusSpecialist,
                 preferred_range: RangeProfile::RANGED,
                 abilities: vec![AbilityId::LifeDrain],
                 damage_type: if base == "Dragon" || base == "Elemental" { DamageType::Fire } else { DamageType::Arcane },
                 status_payload: Some((if base == "Dragon" || base == "Elemental" { StatusEffectKind::Burn } else { StatusEffectKind::Slow }, 2, 1, 35)),
+                tendency: EnemyTendency::PreferStatusFreeTargets,
+            },
+            "Stronghold Mage" => Self {
+                archetype: EnemyArchetype::StatusSpecialist,
+                preferred_range: RangeProfile::RANGED,
+                abilities: vec![AbilityId::LifeDrain],
+                damage_type: DamageType::Arcane,
+                status_payload: Some((StatusEffectKind::Slow, 2, 1, 35)),
                 tendency: EnemyTendency::PreferStatusFreeTargets,
             },
             "Stronghold Ranger" => Self {
