@@ -428,7 +428,7 @@ pub fn resolve_telegraph(
                     .any(|effect| effect.kind == StatusEffectKind::Stun)
                 && t.can_act()
                 && t.allegiance != a.allegiance
-        },
+        }
         _ => false,
     };
     if !valid {
