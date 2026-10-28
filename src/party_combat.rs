@@ -165,7 +165,7 @@ pub struct ActionResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Encounter {
     combatants: Vec<EncounterCombatant>, initiative: Vec<CombatantId>, turn_index: usize,
-    round: u64, acted_this_round: HashSet<CombatantId>, positions: Vec<(CombatantId, RangeBand)>,
+    round: u64, acted_this_round: HashSet<CombatantId>, positions: Vec<(CombatantId, i32)>,
     pub outcome: EncounterOutcome, pub phase: EncounterPhase,
 }
 impl Encounter {
@@ -178,7 +178,7 @@ impl Encounter {
             let c = combatants.iter().find(|c| c.id == *id).expect("ID from combatant roster");
             (std::cmp::Reverse(c.attributes.speed), c.id)
         });
-        let positions = combatants.iter().map(|c| (c.id, if c.allegiance == Allegiance::Allies { RangeBand::Melee } else { RangeBand::Near })).collect();
+        let positions = combatants.iter().map(|c| (c.id, if c.allegiance == Allegiance::Allies { 0 } else { 2 })).collect();
         let mut encounter = Self { combatants, initiative, turn_index: 0, round: 1, acted_this_round: HashSet::new(), positions, outcome: EncounterOutcome::Ongoing, phase: EncounterPhase::Active };
         encounter.refresh_outcome();
         Ok(encounter)
@@ -215,36 +215,49 @@ impl Encounter {
     pub fn combatants(&self) -> &[EncounterCombatant] { &self.combatants }
     pub fn round(&self) -> u64 { self.round }
     pub fn combatant(&self, id: CombatantId) -> Option<&EncounterCombatant> { self.combatants.iter().find(|c| c.id == id) }
+    fn combatant_mut(&mut self, id: CombatantId) -> Option<&mut EncounterCombatant> {
+        self.combatants.iter_mut().find(|c| c.id == id)
+    }
     pub fn range_between(&self, actor: CombatantId, target: CombatantId) -> Option<RangeBand> {
         let a = self.positions.iter().find(|(id, _)| *id == actor)?.1;
         let t = self.positions.iter().find(|(id, _)| *id == target)?.1;
-        Some(if a == t { RangeBand::Melee } else if (a as u8).abs_diff(t as u8) == 1 { RangeBand::Near } else { RangeBand::Far })
+        Some(match a.abs_diff(t) {
+            0 => RangeBand::Melee,
+            1 => RangeBand::Near,
+            _ => RangeBand::Far,
+        })
     }
+
+    /// Small encounter-local coordinates, not grid tiles. Distance projects to
+    /// melee (0), near (1), and far (2+), so movement can change range bands.
     pub fn set_position(&mut self, id: CombatantId, position: RangeBand) -> Result<(), EncounterError> {
-        if self.combatant(id).is_none() { return Err(EncounterError::MissingActor(id)); }
-        if let Some((_, p)) = self.positions.iter_mut().find(|(who, _)| *who == id) { *p = position; }
+        if self.combatant(id).is_none() {
+            return Err(EncounterError::MissingActor(id));
+        }
+        if let Some((_, coordinate)) = self.positions.iter_mut().find(|(who, _)| *who == id) {
+            *coordinate = position as i32;
+        }
         Ok(())
     }
+
     pub fn move_towards(&mut self, id: CombatantId, target_id: CombatantId) -> Result<RangeBand, EncounterError> {
-        if self.combatant(id).is_none() { return Err(EncounterError::MissingActor(id)); }
-        if self.combatant(target_id).is_none() { return Err(EncounterError::MissingTarget(target_id)); }
-        let current = self.range_between(id, target_id).expect("validated positions");
-        let next = match current { RangeBand::Far => RangeBand::Near, RangeBand::Near => RangeBand::Melee, RangeBand::Melee => RangeBand::Melee };
-        let target_pos = self.positions.iter().find(|(who, _)| *who == target_id).expect("target exists").1;
-        let p = match (target_pos, next) {
-            (RangeBand::Melee, RangeBand::Melee) => RangeBand::Near,
-            (RangeBand::Melee, RangeBand::Near) => RangeBand::Near,
-            (RangeBand::Melee, RangeBand::Far) => RangeBand::Far,
-            (RangeBand::Near, RangeBand::Melee) => RangeBand::Melee,
-            (RangeBand::Near, RangeBand::Near) => RangeBand::Far,
-            (RangeBand::Near, RangeBand::Far) => RangeBand::Far,
-            (RangeBand::Far, RangeBand::Melee) => RangeBand::Near,
-            (RangeBand::Far, RangeBand::Near) => RangeBand::Near,
-            (RangeBand::Far, RangeBand::Far) => RangeBand::Far,
-        };
-        self.set_position(id, p)?;
+        if self.combatant(id).is_none() {
+            return Err(EncounterError::MissingActor(id));
+        }
+        if self.combatant(target_id).is_none() {
+            return Err(EncounterError::MissingTarget(target_id));
+        }
+        let actor_index = self.positions.iter().position(|(who, _)| *who == id).expect("actor position exists");
+        let target_coordinate = self.positions.iter().find(|(who, _)| *who == target_id).expect("target position exists").1;
+        let actor_coordinate = self.positions[actor_index].1;
+        if actor_coordinate < target_coordinate {
+            self.positions[actor_index].1 += 1;
+        } else if actor_coordinate > target_coordinate {
+            self.positions[actor_index].1 -= 1;
+        }
         self.range_between(id, target_id).ok_or(EncounterError::MissingTarget(target_id))
     }
+
     pub fn hit_chance(attacker: &EncounterCombatant, defender: &EncounterCombatant, range: RangeBand) -> u8 {
         let penalty = match range { RangeBand::Melee => 0_i16, RangeBand::Near => 5, RangeBand::Far => 15 };
         (70_i16 + (attacker.attributes.accuracy - BASE_STAT) / 2
@@ -311,7 +324,7 @@ impl Encounter {
         let source = self.combatant(actor_id).expect("actor validated");
         let ability = ability_id.map(get_ability);
         let max_range = if source.class == CharacterClass::Ranger { RangeBand::Far } else { source.attack_range.max };
-        if (ability == Some(AbilityId::ShieldWall)) || range < source.attack_range.min || range > max_range {
+        if (ability_id == Some(AbilityId::ShieldWall)) || range < source.attack_range.min || range > max_range {
             return Err(EncounterError::OutOfRange { actor: actor_id, target: target_id, actual: range, min: source.attack_range.min, max: max_range });
         }
         if let Some(def) = &ability {
@@ -437,6 +450,7 @@ mod tests {
     fn insufficient_resources_do_not_mutate_encounter() {
         let mut e = encounter();
         e.combatant_mut(CombatantId(1)).unwrap().stamina = 0;
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
         let before = e.clone();
         assert_eq!(
             e.apply_action(
