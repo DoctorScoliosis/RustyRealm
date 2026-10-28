@@ -15,13 +15,24 @@ use std::collections::HashSet;
 pub struct CombatantId(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Allegiance {\n    Allies,\n    Enemies,\n}
+pub enum Allegiance {
+    Allies,
+    Enemies,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CombatantSource {\n    Player,\n    Companion(CompanionId),\n    Enemy,\n}
+pub enum CombatantSource {
+    Player,
+    Companion(CompanionId),
+    Enemy,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CombatantCondition {\n    Ready,\n    KnockedOut,\n    Removed,\n}
+pub enum CombatantCondition {
+    Ready,
+    KnockedOut,
+    Removed,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncounterCombatant {
@@ -41,24 +52,76 @@ pub struct EncounterCombatant {
 }
 
 impl EncounterCombatant {
-    pub fn new(\n        id: CombatantId,\n        source: CombatantSource,\n        name: impl Into<String>,\n        allegiance: Allegiance,\n        hp: u32,\n        stamina: u32,\n        mana: u32,\n        attack: u32,\n        defence: u32,\n    ) -> Self {
-        Self {\n            id,\n            source,\n            name: name.into(),\n            allegiance,\n            hp,\n            max_hp: hp,\n            stamina,\n            max_stamina: stamina,\n            mana,\n            max_mana: mana,\n            attack,\n            defence,\n            condition: if hp == 0 {\n                CombatantCondition::KnockedOut\n            } else {\n                CombatantCondition::Ready\n            },\n        }
+    pub fn new(
+        id: CombatantId,
+        source: CombatantSource,
+        name: impl Into<String>,
+        allegiance: Allegiance,
+        hp: u32,
+        stamina: u32,
+        mana: u32,
+        attack: u32,
+        defence: u32,
+    ) -> Self {
+        Self {
+            id,
+            source,
+            name: name.into(),
+            allegiance,
+            hp,
+            max_hp: hp,
+            stamina,
+            max_stamina: stamina,
+            mana,
+            max_mana: mana,
+            attack,
+            defence,
+            condition: if hp == 0 {
+                CombatantCondition::KnockedOut
+            } else {
+                CombatantCondition::Ready
+            },
+        }
     }
-    pub fn can_act(&self) -> bool {\n        self.condition == CombatantCondition::Ready && self.hp > 0\n    }
+    pub fn can_act(&self) -> bool {
+        self.condition == CombatantCondition::Ready && self.hp > 0
+    }
     fn sync_condition(&mut self) {
-        if self.hp == 0 {\n            self.condition = CombatantCondition::KnockedOut;\n        } else if self.condition == CombatantCondition::KnockedOut {\n            self.condition = CombatantCondition::Ready;\n        }
+        if self.hp == 0 {
+            self.condition = CombatantCondition::KnockedOut;
+        } else if self.condition == CombatantCondition::KnockedOut {
+            self.condition = CombatantCondition::Ready;
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EncounterOutcome {\n    Ongoing,\n    Victory,\n    PartyDefeated,\n    Retreated,\n}
+pub enum EncounterOutcome {
+    Ongoing,
+    Victory,
+    PartyDefeated,
+    Retreated,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EncounterPhase {\n    Active,\n    Finished(EncounterOutcome),\n}
+pub enum EncounterPhase {
+    Active,
+    Finished(EncounterOutcome),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EncounterError {
-    DuplicateId(CombatantId),\n    MissingActor(CombatantId),\n    MissingTarget(CombatantId),\n    ActorIneligible(CombatantId),\n    TargetIneligible(CombatantId),\n    WrongAllegiance,\n    InsufficientStamina,\n    InsufficientMana,\n    TurnAlreadyUsed(CombatantId),\n    EncounterFinished,\n    NoHostiles,
+    DuplicateId(CombatantId),
+    MissingActor(CombatantId),
+    MissingTarget(CombatantId),
+    ActorIneligible(CombatantId),
+    TargetIneligible(CombatantId),
+    WrongAllegiance,
+    InsufficientStamina,
+    InsufficientMana,
+    TurnAlreadyUsed(CombatantId),
+    EncounterFinished,
+    NoHostiles,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,7 +135,11 @@ pub enum CombatAction {
 impl CombatAction {
     fn actor(&self) -> CombatantId {
         match *self {
-            Self::BasicAttack { actor, .. }\n            | Self::UseAbility { actor, .. }\n            | Self::Defend { actor }\n            | Self::Move { actor }\n            | Self::Retreat { actor } => actor,
+            Self::BasicAttack { actor, .. }
+            | Self::UseAbility { actor, .. }
+            | Self::Defend { actor }
+            | Self::Move { actor }
+            | Self::Retreat { actor } => actor,
         }
     }
 }
