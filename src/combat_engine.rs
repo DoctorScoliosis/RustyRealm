@@ -482,6 +482,43 @@ mod tests {
     }
 
     #[test]
+    fn committed_telegraph_resolves_its_exact_attack_once_then_clears() {
+        let mut enemy = Combatant::new_monster("Lacoyx", 741, 1000);
+        let player = player();
+        let attack = TelegraphedAttack {
+            name: "Infernal Nova".into(),
+            description: "Lacoyx channels infernal flames!".into(),
+            damage: 100,
+            damage_type: DamageType::Fire,
+        };
+        enemy.telegraphed_attack = Some(attack.clone());
+
+        let (damage, damage_type, next_telegraph, logs) =
+            CombatEngine::generate_enemy_turn(&mut enemy, &player);
+        assert_eq!(damage, attack.damage);
+        assert_eq!(damage_type, attack.damage_type);
+        assert_eq!(next_telegraph, None);
+        assert!(logs.iter().any(|line| line.contains("Infernal Nova")));
+        assert_eq!(enemy.telegraphed_attack, None);
+    }
+
+    #[test]
+    fn legacy_battle_status_tick_uses_shared_effect_rules_for_every_dot_kind() {
+        for kind in [
+            StatusEffectKind::Poison,
+            StatusEffectKind::Bleed,
+            StatusEffectKind::Burn,
+        ] {
+            let mut target = Combatant::new_monster("Goblin", 10, 100);
+            target.apply_status(kind, 2, 7);
+            let logs = target.tick_status_effects();
+            assert_eq!(target.hp, 93, "{kind:?} should tick through shared lifecycle");
+            assert_eq!(target.status_effects[0].remaining_activations, 1);
+            assert!(logs.iter().any(|line| line.contains("7")));
+        }
+    }
+
+    #[test]
     fn block_and_consumable_reduce_damage() {
         assert_eq!(
             CombatEngine::calculate_damage(
