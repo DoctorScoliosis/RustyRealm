@@ -105,7 +105,9 @@ pub fn mark_hit_bonus(effects: &[StatusEffect]) -> u8 {
     effects
         .iter()
         .filter(|e| e.kind == StatusEffectKind::Mark)
-        .fold(0_u32, |sum, e| sum.saturating_add(e.potency.min(3).saturating_mul(5)))
+        .fold(0_u32, |sum, e| {
+            sum.saturating_add(e.potency.min(3).saturating_mul(5))
+        })
         .min(u32::from(MAX_MARK_HIT_BONUS)) as u8
 }
 
@@ -113,7 +115,9 @@ pub fn defence_vulnerability_pct(effects: &[StatusEffect]) -> u8 {
     effects
         .iter()
         .filter(|e| e.kind == StatusEffectKind::WeakenedDefences)
-        .fold(0_u32, |sum, e| sum.saturating_add(e.potency.min(2).saturating_mul(25)))
+        .fold(0_u32, |sum, e| {
+            sum.saturating_add(e.potency.min(2).saturating_mul(25))
+        })
         .min(u32::from(MAX_DEFENCE_VULNERABILITY_PCT)) as u8
 }
 
@@ -217,8 +221,21 @@ impl EnemyProfile {
                 archetype: EnemyArchetype::StatusSpecialist,
                 preferred_range: RangeProfile::RANGED,
                 abilities: vec![AbilityId::LifeDrain],
-                damage_type: if base == "Dragon" || base == "Elemental" { DamageType::Fire } else { DamageType::Arcane },
-                status_payload: Some((if base == "Dragon" || base == "Elemental" { StatusEffectKind::Burn } else { StatusEffectKind::Slow }, 2, 1, 35)),
+                damage_type: if base == "Dragon" || base == "Elemental" {
+                    DamageType::Fire
+                } else {
+                    DamageType::Arcane
+                },
+                status_payload: Some((
+                    if base == "Dragon" || base == "Elemental" {
+                        StatusEffectKind::Burn
+                    } else {
+                        StatusEffectKind::Slow
+                    },
+                    2,
+                    1,
+                    35,
+                )),
                 tendency: EnemyTendency::PreferStatusFreeTargets,
             },
             "Stronghold Mage" => Self {
@@ -310,7 +327,11 @@ pub fn propose_enemy_action(
         let range = encounter
             .range_between(actor_id, target.id)
             .unwrap_or(RangeBand::Far);
-        let range_penalty = if profile.preferred_range.allows(range) { 0 } else { 1 };
+        let range_penalty = if profile.preferred_range.allows(range) {
+            0
+        } else {
+            1
+        };
         let tactical = match profile.tendency {
             EnemyTendency::PreferDamagedTargets => target.hp,
             EnemyTendency::PreferLowDefenceTargets => target.defence,
@@ -320,33 +341,28 @@ pub fn propose_enemy_action(
         (range_penalty, tactical, target.id)
     });
     // The roll rotates only among equal-policy candidates, preserving reproducibility.
-    let best_key = {
-        let target = targets[0];
-        let range = encounter
-        .range_between(actor_id, target.id)
-        .unwrap_or(RangeBand::Far);
-        let penalty = if profile.preferred_range.allows(range) { 0 } else { 1 };
-        let tactical = match profile.tendency {
-            EnemyTendency::PreferDamagedTargets => target.hp,
-            EnemyTendency::PreferLowDefenceTargets => target.defence,
-            EnemyTendency::PreferMarkedTargets => target.id.0 as u32,
-            EnemyTendency::PreferStatusFreeTargets => target.stamina,
-        };
-        (penalty, tactical)
-    };
-    let tied: Vec<_> = targets.into_iter().filter(|target| {
+    let tactical_key = |target: &EncounterCombatant| {
         let range = encounter
             .range_between(actor_id, target.id)
             .unwrap_or(RangeBand::Far);
-        let penalty = if profile.preferred_range.allows(range) { 0 } else { 1 };
-        let tactical = match profile.tendency {
+        let range_penalty = if profile.preferred_range.allows(range) {
+            0
+        } else {
+            1
+        };
+        let preference = match profile.tendency {
             EnemyTendency::PreferDamagedTargets => target.hp,
             EnemyTendency::PreferLowDefenceTargets => target.defence,
             EnemyTendency::PreferMarkedTargets => target.id.0 as u32,
             EnemyTendency::PreferStatusFreeTargets => target.stamina,
         };
-        (penalty, tactical) == best_key
-    }).collect();
+        (range_penalty, preference)
+    };
+    let best_key = tactical_key(targets[0]);
+    let tied: Vec<_> = targets
+        .into_iter()
+        .filter(|target| tactical_key(target) == best_key)
+        .collect();
     let target = tied[(roll as usize) % tied.len()];
     let range = encounter
         .range_between(actor_id, target.id)
