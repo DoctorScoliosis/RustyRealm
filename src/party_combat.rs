@@ -1205,14 +1205,26 @@ mod tests {
 
         e.tick_current_actor_statuses();
         assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 93);
-        e.apply_action(CombatAction::Defend { actor: CombatantId(1) }, 0, 0)
-            .unwrap();
+        e.apply_action(
+            CombatAction::Defend {
+                actor: CombatantId(1),
+            },
+            0,
+            0,
+        )
+        .unwrap();
 
         assert_eq!(e.current_actor(), Some(CombatantId(2)));
         e.tick_current_actor_statuses();
         assert_eq!(e.combatant(CombatantId(2)).unwrap().hp, 5);
-        e.apply_action(CombatAction::Defend { actor: CombatantId(2) }, 0, 0)
-            .unwrap();
+        e.apply_action(
+            CombatAction::Defend {
+                actor: CombatantId(2),
+            },
+            0,
+            0,
+        )
+        .unwrap();
 
         assert_eq!(e.current_actor(), Some(CombatantId(3)));
         e.tick_current_actor_statuses();
