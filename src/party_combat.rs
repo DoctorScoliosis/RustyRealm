@@ -6,7 +6,7 @@
 //! Position uses encounter-owned range bands, not grid coordinates.
 
 use crate::data::{get_ability, AbilityId};
-use crate::status_combat::{defence_vulnerability_pct, mark_hit_bonus, slow_penalty, StatusEffect, StatusEffectKind, StatusResistance, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY};
+use crate::status_combat::{defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects, StatusEffect, StatusEffectKind, StatusResistance, StatusApplication, StatusTick, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
 use std::collections::HashSet;
@@ -640,6 +640,55 @@ impl Encounter {
             .then_some(id)
         })
     }
+    /// Apply status ticks at the start of the selected combatant's activation.
+    /// A status inflicted during an action therefore begins ticking next activation.
+    pub fn tick_current_actor_statuses(&mut self) -> Vec<(CombatantId, StatusTick)> {
+        let Some(id) = self.current_actor() else { return Vec::new(); };
+        let Some(actor) = self.combatant_mut(id) else { return Vec::new(); };
+        let ticks = tick_status_effects(&mut actor.status_effects);
+        let mut results = Vec::new();
+        for tick in ticks {
+            match tick {
+                StatusTick::Damage { amount, .. } => {
+                    actor.hp = actor.hp.saturating_sub(amount);
+                    actor.sync_condition();
+                }
+                StatusTick::Stunned => {}
+                StatusTick::Expired(_) => {}
+            }
+            results.push((id, tick));
+        }
+        results
+    }
+
+    /// Status application shares the same typed storage for every combatant role.
+    pub fn apply_status_effect(
+        &mut self,
+        target_id: CombatantId,
+        kind: StatusEffectKind,
+        source: Option<CombatantId>,
+        potency: u32,
+        duration: u32,
+        chance_pct: u8,
+        roll: u32,
+    ) -> Result<StatusApplication, EncounterError> {
+        let target = self.combatant_mut(target_id).ok_or(EncounterError::MissingTarget(target_id))?;
+        let effect = StatusEffect {
+            kind,
+            source,
+            potency: potency.min(MAX_EFFECT_POTENCY),
+            remaining_activations: duration.min(MAX_EFFECT_DURATION),
+            application_chance_pct: chance_pct.min(100),
+        };
+        let result = crate::status_combat::apply_status(
+            &mut target.status_effects,
+            effect,
+            target.status_resistance.resistance_pct,
+            roll,
+        );
+        Ok(result)
+    }
+
     fn consume_turn(&mut self, actor: CombatantId) {
         self.acted_this_round.insert(actor);
         if let Some(idx) = self.initiative.iter().position(|id| *id == actor) {
