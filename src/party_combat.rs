@@ -126,11 +126,24 @@ pub enum EncounterError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CombatAction {
-    BasicAttack { actor: CombatantId, target: CombatantId },
-    UseAbility { actor: CombatantId, target: CombatantId, ability: AbilityId },
-    Defend { actor: CombatantId },
-    Move { actor: CombatantId },
-    Retreat { actor: CombatantId },
+    BasicAttack {
+        actor: CombatantId,
+        target: CombatantId,
+    },
+    UseAbility {
+        actor: CombatantId,
+        target: CombatantId,
+        ability: AbilityId,
+    },
+    Defend {
+        actor: CombatantId,
+    },
+    Move {
+        actor: CombatantId,
+    },
+    Retreat {
+        actor: CombatantId,
+    },
 }
 impl CombatAction {
     fn actor(&self) -> CombatantId {
@@ -169,15 +182,25 @@ impl Encounter {
     pub fn new(combatants: Vec<EncounterCombatant>) -> Result<Self, EncounterError> {
         let mut seen = HashSet::new();
         for c in &combatants {
-            if !seen.insert(c.id) { return Err(EncounterError::DuplicateId(c.id)); }
+            if !seen.insert(c.id) {
+                return Err(EncounterError::DuplicateId(c.id));
+            }
         }
-        if !combatants.iter().any(|c| c.allegiance == Allegiance::Enemies && c.can_act()) {
+        if !combatants
+            .iter()
+            .any(|c| c.allegiance == Allegiance::Enemies && c.can_act())
+        {
             return Err(EncounterError::NoHostiles);
         }
         let initiative = combatants.iter().map(|c| c.id).collect();
         let mut encounter = Self {
-            combatants, initiative, turn_index: 0, round: 1, acted_this_round: HashSet::new(),
-            outcome: EncounterOutcome::Ongoing, phase: EncounterPhase::Active,
+            combatants,
+            initiative,
+            turn_index: 0,
+            round: 1,
+            acted_this_round: HashSet::new(),
+            outcome: EncounterOutcome::Ongoing,
+            phase: EncounterPhase::Active,
         };
         encounter.refresh_outcome();
         Ok(encounter)
@@ -185,36 +208,68 @@ impl Encounter {
 
     /// Builds encounter-local combatants from Section 10 player/party state.
     /// Encounter IDs are deterministic and independent of display names.
-    pub fn from_party(player: &Player, party: &Party, companions: &[CompanionState], enemies: Vec<EncounterCombatant>) -> Result<Self, EncounterError> {
+    pub fn from_party(
+        player: &Player,
+        party: &Party,
+        companions: &[CompanionState],
+        enemies: Vec<EncounterCombatant>,
+    ) -> Result<Self, EncounterError> {
         let mut combatants = Vec::with_capacity(1 + party.companion_count() + enemies.len());
         combatants.push(EncounterCombatant::new(
-            CombatantId(1), CombatantSource::Player, player.username.clone(), Allegiance::Allies,
-            player.hp, player.stamina, player.mana, player.weapon.max_damage().max(1), player.armour.max_dr(),
+            CombatantId(1),
+            CombatantSource::Player,
+            player.username.clone(),
+            Allegiance::Allies,
+            player.hp,
+            player.stamina,
+            player.mana,
+            player.weapon.max_damage().max(1),
+            player.armour.max_dr(),
         ));
         let mut next_id = 2;
         for id in party.members() {
             if let Some(c) = companions.iter().find(|c| c.id == *id) {
                 if c.condition.can_join_party() && c.current_hp > 0 {
                     combatants.push(EncounterCombatant::new(
-                        CombatantId(next_id), CombatantSource::Companion(c.id), c.display_name(),
-                        Allegiance::Allies, c.current_hp, c.current_stamina, c.current_mana, c.attack, c.defence,
+                        CombatantId(next_id),
+                        CombatantSource::Companion(c.id),
+                        c.display_name(),
+                        Allegiance::Allies,
+                        c.current_hp,
+                        c.current_stamina,
+                        c.current_mana,
+                        c.attack,
+                        c.defence,
                     ));
                     next_id += 1;
                 }
             }
         }
         for enemy in enemies {
-            if enemy.allegiance != Allegiance::Enemies { return Err(EncounterError::WrongAllegiance); }
-            combatants.push(EncounterCombatant { id: CombatantId(next_id), ..enemy });
+            if enemy.allegiance != Allegiance::Enemies {
+                return Err(EncounterError::WrongAllegiance);
+            }
+            combatants.push(EncounterCombatant {
+                id: CombatantId(next_id),
+                ..enemy
+            });
             next_id += 1;
         }
         Self::new(combatants)
     }
 
-    pub fn combatants(&self) -> &[EncounterCombatant] { &self.combatants }
-    pub fn round(&self) -> u64 { self.round }
+    pub fn combatants(&self) -> &[EncounterCombatant] {
+        &self.combatants
+    }
+    pub fn round(&self) -> u64 {
+        self.round
+    }
     pub fn eligible_actors(&self) -> Vec<CombatantId> {
-        self.combatants.iter().filter(|c| c.can_act()).map(|c| c.id).collect()
+        self.combatants
+            .iter()
+            .filter(|c| c.can_act())
+            .map(|c| c.id)
+            .collect()
     }
     pub fn combatant(&self, id: CombatantId) -> Option<&EncounterCombatant> {
         self.combatants.iter().find(|c| c.id == id)
@@ -223,11 +278,15 @@ impl Encounter {
         self.combatants.iter_mut().find(|c| c.id == id)
     }
     pub fn current_actor(&self) -> Option<CombatantId> {
-        if self.outcome != EncounterOutcome::Ongoing || self.initiative.is_empty() { return None; }
+        if self.outcome != EncounterOutcome::Ongoing || self.initiative.is_empty() {
+            return None;
+        }
         (0..self.initiative.len()).find_map(|offset| {
             let idx = (self.turn_index + offset) % self.initiative.len();
             let id = self.initiative[idx];
-            (!self.acted_this_round.contains(&id) && self.combatant(id).is_some_and(EncounterCombatant::can_act)).then_some(id)
+            (!self.acted_this_round.contains(&id)
+                && self.combatant(id).is_some_and(EncounterCombatant::can_act))
+            .then_some(id)
         })
     }
 
@@ -237,7 +296,8 @@ impl Encounter {
             self.turn_index = (idx + 1) % self.initiative.len().max(1);
         }
         let remaining = self.initiative.iter().any(|id| {
-            !self.acted_this_round.contains(id) && self.combatant(*id).is_some_and(EncounterCombatant::can_act)
+            !self.acted_this_round.contains(id)
+                && self.combatant(*id).is_some_and(EncounterCombatant::can_act)
         });
         if !remaining {
             self.acted_this_round.clear();
@@ -249,21 +309,45 @@ impl Encounter {
     /// Validates the entire action before mutation. Supplying the critical roll
     /// keeps the domain deterministic and easy to test.
     pub fn apply_action(&mut self, action: CombatAction, critical_roll: u32) -> Result<ActionResult, EncounterError> {
-        if self.outcome != EncounterOutcome::Ongoing { return Err(EncounterError::EncounterFinished); }
+        if self.outcome != EncounterOutcome::Ongoing {
+            return Err(EncounterError::EncounterFinished);
+        }
         let actor_id = action.actor();
         let actor = self.combatant(actor_id).ok_or(EncounterError::MissingActor(actor_id))?;
-        if !actor.can_act() { return Err(EncounterError::ActorIneligible(actor_id)); }
-        if self.acted_this_round.contains(&actor_id) { return Err(EncounterError::TurnAlreadyUsed(actor_id)); }
+        if !actor.can_act() {
+            return Err(EncounterError::ActorIneligible(actor_id));
+        }
+        if self.acted_this_round.contains(&actor_id) {
+            return Err(EncounterError::TurnAlreadyUsed(actor_id));
+        }
 
         if matches!(&action, CombatAction::Retreat { .. }) {
             self.consume_turn(actor_id);
             self.outcome = EncounterOutcome::Retreated;
             self.phase = EncounterPhase::Finished(self.outcome);
-            return Ok(ActionResult { actor: actor_id, target: None, damage: 0, healing: 0, outcome: self.outcome, message: "retreated" });
+            return Ok(ActionResult {
+                actor: actor_id,
+                target: None,
+                damage: 0,
+                healing: 0,
+                outcome: self.outcome,
+                message: "retreated",
+            });
         }
         if matches!(&action, CombatAction::Move { .. } | CombatAction::Defend { .. }) {
             self.consume_turn(actor_id);
-            return Ok(ActionResult { actor: actor_id, target: None, damage: 0, healing: 0, outcome: self.outcome, message: if matches!(&action, CombatAction::Move { .. }) { "movement reserved for section 12" } else { "defended" } });
+            return Ok(ActionResult {
+                actor: actor_id,
+                target: None,
+                damage: 0,
+                healing: 0,
+                outcome: self.outcome,
+                message: if matches!(&action, CombatAction::Move { .. }) {
+                    "movement reserved for section 12"
+                } else {
+                    "defended"
+                },
+            });
         }
 
         let (target_id, ability_id) = match action {
@@ -272,12 +356,20 @@ impl Encounter {
             _ => unreachable!("non-targeted actions returned above"),
         };
         let target = self.combatant(target_id).ok_or(EncounterError::MissingTarget(target_id))?;
-        if !target.can_act() { return Err(EncounterError::TargetIneligible(target_id)); }
-        if target.allegiance == actor.allegiance { return Err(EncounterError::WrongAllegiance); }
+        if !target.can_act() {
+            return Err(EncounterError::TargetIneligible(target_id));
+        }
+        if target.allegiance == actor.allegiance {
+            return Err(EncounterError::WrongAllegiance);
+        }
         let ability = ability_id.map(get_ability);
         if let Some(def) = &ability {
-            if actor.stamina < def.stamina_cost { return Err(EncounterError::InsufficientStamina); }
-            if actor.mana < def.mana_cost { return Err(EncounterError::InsufficientMana); }
+            if actor.stamina < def.stamina_cost {
+                return Err(EncounterError::InsufficientStamina);
+            }
+            if actor.mana < def.mana_cost {
+                return Err(EncounterError::InsufficientMana);
+            }
         }
 
         // Compute from snapshots after validation, then commit all effects.
@@ -287,7 +379,11 @@ impl Encounter {
         let raw = source.attack.saturating_mul(multiplier) / 100;
         let critical = critical_roll % 100 < if source.allegiance == Allegiance::Allies { 5 } else { 0 };
         let scaled = if critical { raw.saturating_mul(2) } else { raw };
-        let damage = if scaled == 0 { 0 } else { scaled.saturating_sub(target.defence).max(1).min(target.hp) };
+        let damage = if scaled == 0 {
+            0
+        } else {
+            scaled.saturating_sub(target.defence).max(1).min(target.hp)
+        };
 
         if let Some(def) = &ability {
             let source = self.combatant_mut(actor_id).expect("validated actor");
@@ -300,16 +396,40 @@ impl Encounter {
         self.consume_turn(actor_id);
         self.refresh_outcome();
         Ok(ActionResult {
-            actor: actor_id, target: Some(target_id), damage, healing: 0, outcome: self.outcome,
-            message: if self.outcome == EncounterOutcome::Victory { "victory" } else { "action resolved" },
+            actor: actor_id,
+            target: Some(target_id),
+            damage,
+            healing: 0,
+            outcome: self.outcome,
+            message: if self.outcome == EncounterOutcome::Victory {
+                "victory"
+            } else {
+                "action resolved"
+            },
         })
     }
 
     fn refresh_outcome(&mut self) {
-        let enemies = self.combatants.iter().any(|c| c.allegiance == Allegiance::Enemies && c.can_act());
-        let allies = self.combatants.iter().any(|c| c.allegiance == Allegiance::Allies && c.can_act());
-        self.outcome = if !enemies { EncounterOutcome::Victory } else if !allies { EncounterOutcome::PartyDefeated } else { EncounterOutcome::Ongoing };
-        self.phase = if self.outcome == EncounterOutcome::Ongoing { EncounterPhase::Active } else { EncounterPhase::Finished(self.outcome) };
+        let enemies = self
+            .combatants
+            .iter()
+            .any(|c| c.allegiance == Allegiance::Enemies && c.can_act());
+        let allies = self
+            .combatants
+            .iter()
+            .any(|c| c.allegiance == Allegiance::Allies && c.can_act());
+        self.outcome = if !enemies {
+            EncounterOutcome::Victory
+        } else if !allies {
+            EncounterOutcome::PartyDefeated
+        } else {
+            EncounterOutcome::Ongoing
+        };
+        self.phase = if self.outcome == EncounterOutcome::Ongoing {
+            EncounterPhase::Active
+        } else {
+            EncounterPhase::Finished(self.outcome)
+        };
     }
 }
 
