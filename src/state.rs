@@ -4,6 +4,7 @@ use crate::data::{
 };
 use crate::economy::MarketState;
 use crate::event::WorldEvent;
+use crate::party::{CompanionState, Party};
 use crate::quests::Quest;
 use crate::world::LocationId;
 use chrono::{DateTime, Utc};
@@ -305,6 +306,12 @@ pub struct GameState {
     pub active_theme: String,
     #[serde(default)]
     pub mastery_perks: Vec<MasteryPerkId>,
+    /// Recruited companions and their mutable state.
+    #[serde(default)]
+    pub companions: Vec<CompanionState>,
+    /// Active party composition (player always occupies one implicit slot).
+    #[serde(default)]
+    pub party: Party,
 }
 
 impl GameState {
@@ -323,6 +330,8 @@ impl GameState {
             unlocked_themes: default_unlocked_themes(),
             active_theme: default_theme(),
             mastery_perks: Vec::new(),
+            companions: Vec::new(),
+            party: Party::new(),
         };
         crate::quests::check_and_refresh_quests(&mut state);
         state

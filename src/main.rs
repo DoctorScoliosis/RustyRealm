@@ -8,6 +8,7 @@ mod economy;
 mod event;
 mod inventory;
 mod mastery;
+mod party;
 mod quests;
 mod save;
 mod shops;
@@ -175,6 +176,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         "Quest Hall",
         "Your Inventory",
         "Mastery & Achievements",
+        "Companions & Party",
         "Settings",
         "Log Out",
     ];
@@ -224,7 +226,8 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             11 => quests::quest_hall(tui, state)?,
             12 => inventory::view_inventory(tui, state, false)?,
             13 => crate::achievements::progression_menu(tui, state)?,
-            14 => settings_menu(tui, state)?,
+            14 => companion_menu(tui, state)?,
+            15 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
@@ -445,6 +448,327 @@ fn buy_sell_item(tui: &mut Tui, state: &mut GameState, item: ItemType) -> io::Re
                 }
             }
             _ => return Ok(()),
+        }
+    }
+}
+
+fn companion_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    loop {
+        let party_count = state.party.companion_count();
+        let party_limit = state.party.max_companions();
+        let roster_count = state.companions.len();
+        let title = format!(
+            "Companions & Party · {} recruited · {}/{} party slots",
+            roster_count, party_count, party_limit
+        );
+        let choice = tui.select_menu(
+            &title,
+            &["View Roster", "Manage Party", "Back"],
+            Some(state),
+        )?;
+        match choice {
+            0 => view_roster(tui, state)?,
+            1 => manage_party(tui, state)?,
+            _ => return Ok(()),
+        }
+    }
+}
+
+fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    use crate::party::{all_companion_definitions, CompanionCondition, PartyManager};
+
+    let definitions = all_companion_definitions();
+
+    loop {
+        let mut labels: Vec<String> = definitions
+            .iter()
+            .map(|def| {
+                let recruited = state.companions.iter().find(|c| c.id == def.id);
+                let status = match recruited {
+                    Some(c) => format!("Recruited · {}", c.condition.name()),
+                    None => {
+                        let mut req = String::new();
+                        if def.recruitment_level > 0 {
+                            req.push_str(&format!("Lvl {}", def.recruitment_level));
+                        }
+                        if def.recruitment_cost > 0 {
+                            if !req.is_empty() {
+                                req.push_str(" · ");
+                            }
+                            req.push_str(&format!("{}g", def.recruitment_cost));
+                        }
+                        if req.is_empty() {
+                            "Not recruited".to_string()
+                        } else {
+                            format!("Not recruited · {}", req)
+                        }
+                    }
+                };
+                format!(
+                    "{} · {} · {}",
+                    def.name,
+                    def.role.name(),
+                    status
+                )
+            })
+            .collect();
+        labels.push("Back".to_string());
+
+        let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let choice = tui.select_menu("Companion Roster", &options, Some(state))?;
+        if choice >= definitions.len() {
+            return Ok(());
+        }
+
+        let def = &definitions[choice];
+        let recruited = state.companions.iter().find(|c| c.id == def.id);
+
+        if let Some(companion) = recruited {
+            // Show companion details and options
+            let in_party = state.party.contains(def.id);
+            let mut detail = format!(
+                "Name: {}\nRole: {}\nCondition: {}\nHP: {}/{}\nAttack: {}\nDefence: {}\nWeapon: {}\nArmour: {}",
+                def.name,
+                def.role.name(),
+                companion.condition.name(),
+                companion.current_hp,
+                companion.max_hp,
+                companion.attack,
+                companion.defence,
+                companion.equipped_weapon.name(),
+                companion.equipped_armour.name(),
+            );
+            if in_party {
+                detail.push_str("\n\nCurrently in active party.");
+            }
+
+            let mut actions = vec!["Details"];
+            if in_party {
+                actions.push("Remove from Party");
+            } else if (companion.condition == CompanionCondition::Available || companion.condition == CompanionCondition::Active)
+                && state.party.has_room()
+            {
+                actions.push("Add to Party");
+            }
+            actions.push("Dismiss");
+            actions.push("Back");
+
+            let action_choice = tui.select_menu(def.name, &actions, Some(state))?;
+            match action_choice {
+                0 => {
+                    tui.show_message(def.name, &detail, Some(state))?;
+                }
+                1 => {
+                    if in_party {
+                        match PartyManager::remove_from_party(&mut state.party, def.id) {
+                            Ok(()) => tui.show_message(
+                                "Party updated",
+                                &format!("{} removed from the party.", def.name),
+                                Some(state),
+                            )?,
+                            Err(e) => tui.show_message(
+                                "Could not remove",
+                                &e.to_string(),
+                                Some(state),
+                            )?,
+                        }
+                    } else {
+                        match PartyManager::add_to_party(&mut state.party, &state.companions, def.id) {
+                            Ok(()) => tui.show_message(
+                                "Party updated",
+                                &format!("{} added to the party.", def.name),
+                                Some(state),
+                            )?,
+                            Err(e) => tui.show_message(
+                                "Could not add",
+                                &e.to_string(),
+                                Some(state),
+                            )?,
+                        }
+                    }
+                }
+                2 => {
+                    match PartyManager::dismiss(&mut state.companions, &mut state.party, def.id) {
+                        Ok(()) => tui.show_message(
+                            "Companion dismissed",
+                            &format!("{} has left your company.", def.name),
+                            Some(state),
+                        )?,
+                        Err(e) => tui.show_message(
+                            "Could not dismiss",
+                            &e.to_string(),
+                            Some(state),
+                        )?,
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            // Not recruited - show recruitment option
+            let detail = format!(
+                "Name: {}\nRole: {}\n\n{}\n\nBase HP: {}\nBase Attack: {}\nBase Defence: {}\n\nRecruitment requires: Level {} · {} gold",
+                def.name,
+                def.role.name(),
+                def.description,
+                def.base_hp,
+                def.base_attack,
+                def.base_defence,
+                def.recruitment_level,
+                def.recruitment_cost,
+            );
+            let action_choice = tui.select_menu(
+                &format!("{} · Recruit", def.name),
+                &["View Details", "Recruit", "Back"],
+                Some(state),
+            )?;
+            match action_choice {
+                0 => {
+                    tui.show_message(def.name, &detail, Some(state))?;
+                }
+                1 => {
+                    match PartyManager::recruit(
+                        &mut state.companions,
+                        def.id,
+                        state.player.combat_level,
+                        state.player.gold,
+                    ) {
+                        Ok(cost) => {
+                            state.player.gold -= cost;
+                            tui.show_message(
+                                "Companion recruited",
+                                &format!(
+                                    "{} has joined your company!\nGold spent: {}",
+                                    def.name, cost
+                                ),
+                                Some(state),
+                            )?;
+                        }
+                        Err(e) => {
+                            tui.show_message("Recruitment failed", &e.to_string(), Some(state))?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    use crate::party::PartyManager;
+
+    loop {
+        let party_members: Vec<String> = state
+            .party
+            .members()
+            .iter()
+            .filter_map(|&id| {
+                state
+                    .companions
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|c| {
+                        format!(
+                            "{} · {} · HP {}/{}",
+                            c.display_name(),
+                            c.role().name(),
+                            c.current_hp,
+                            c.max_hp
+                        )
+                    })
+            })
+            .collect();
+
+        let mut labels: Vec<String> = party_members.clone();
+        if labels.is_empty() {
+            labels.push("No companions in party".to_string());
+        }
+        labels.push(format!(
+            "Add companion ({}/{})",
+            state.party.companion_count(),
+            state.party.max_companions()
+        ));
+        labels.push("Back".to_string());
+
+        let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let title = format!(
+            "Active Party · {} companion{}",
+            state.party.companion_count(),
+            if state.party.companion_count() == 1 { "" } else { "s" }
+        );
+        let choice = tui.select_menu(&title, &options, Some(state))?;
+
+        let member_count = if party_members.is_empty() { 0 } else { party_members.len() };
+
+        if choice == member_count {
+            // Add companion
+            let available: Vec<_> = state
+                .companions
+                .iter()
+                .filter(|c| c.can_join_party() && !state.party.contains(c.id))
+                .collect();
+            if available.is_empty() {
+                tui.show_message(
+                    "No companions available",
+                    "All recruited companions are already in the party, unavailable, or you have no companions.",
+                    Some(state),
+                )?;
+                continue;
+            }
+            let add_labels: Vec<String> = available
+                .iter()
+                .map(|c| {
+                    format!(
+                        "{} · {} · HP {}/{}",
+                        c.display_name(),
+                        c.role().name(),
+                        c.current_hp,
+                        c.max_hp
+                    )
+                })
+                .collect();
+            let mut add_options: Vec<&str> = add_labels.iter().map(String::as_str).collect();
+            add_options.push("Back");
+            let add_choice = tui.select_menu("Add to Party", &add_options, Some(state))?;
+            if add_choice < available.len() {
+                let id = available[add_choice].id;
+                match PartyManager::add_to_party(&mut state.party, &state.companions, id) {
+                    Ok(()) => {
+                        tui.show_message(
+                            "Party updated",
+                            &format!("{} added to the party.", available[add_choice].display_name()),
+                            Some(state),
+                        )?;
+                    }
+                    Err(e) => {
+                        tui.show_message("Could not add", &e.to_string(), Some(state))?;
+                    }
+                }
+            }
+        } else if choice == member_count + 1 {
+            // Back
+            return Ok(());
+        } else if choice < member_count {
+            // Remove companion
+            let id = state.party.members()[choice];
+            let name = state
+                .companions
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| c.display_name())
+                .unwrap_or("Unknown");
+            match PartyManager::remove_from_party(&mut state.party, id) {
+                Ok(()) => {
+                    tui.show_message(
+                        "Party updated",
+                        &format!("{} removed from the party.", name),
+                        Some(state),
+                    )?;
+                }
+                Err(e) => {
+                    tui.show_message("Could not remove", &e.to_string(), Some(state))?;
+                }
+            }
         }
     }
 }
