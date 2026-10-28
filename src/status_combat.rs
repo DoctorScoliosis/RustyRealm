@@ -665,6 +665,37 @@ mod tests {
     }
 
     #[test]
+    fn stronghold_guardians_keep_distinct_tactical_profiles() {
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Mage").archetype,
+            EnemyArchetype::StatusSpecialist
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Ranger").archetype,
+            EnemyArchetype::RangedPressure
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Warrior").archetype,
+            EnemyArchetype::AggressiveMelee
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Mage").status_payload.unwrap().0,
+            StatusEffectKind::Slow
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Ranger").status_payload.unwrap().0,
+            StatusEffectKind::Mark
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Warrior")
+                .status_payload
+                .unwrap()
+                .0,
+            StatusEffectKind::WeakenedDefences
+        );
+    }
+
+    #[test]
     fn telegraph_resolves_exact_action_and_cancels_when_target_is_defeated() {
         let mut e = encounter();
         e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
