@@ -538,9 +538,7 @@ mod tests {
             GameState::new(Player::new("legacy".into(), "discarded-hash".into()));
         legacy_state.player.xp = 12_345;
         legacy_state.player.gold = 4_321;
-        legacy_state
-            .player
-            .add_item(crate::data::ItemType::Logs, 9);
+        legacy_state.player.add_item(crate::data::ItemType::Logs, 9);
         legacy_state
             .player
             .quests_completed
