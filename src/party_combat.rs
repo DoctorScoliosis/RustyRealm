@@ -1303,6 +1303,40 @@ mod tests {
     }
 
     #[test]
+    fn status_application_refreshes_and_ticks_across_all_combatant_sources() {
+        let mut e = encounter();
+        for target in [CombatantId(1), CombatantId(2), CombatantId(3)] {
+            assert_eq!(
+                e.apply_status_effect(target, StatusEffectKind::Poison, Some(CombatantId(3)), 4, 2, 100, 0).unwrap(),
+                StatusApplication::Applied
+            );
+            assert_eq!(e.combatant(target).unwrap().status_effects.len(), 1);
+        }
+        assert_eq!(
+            e.apply_status_effect(CombatantId(1), StatusEffectKind::Poison, Some(CombatantId(3)), 2, 4, 100, 0).unwrap(),
+            StatusApplication::Refreshed
+        );
+        let hero = e.combatant(CombatantId(1)).unwrap();
+        assert_eq!(hero.status_effects[0].potency, 4);
+        assert_eq!(hero.status_effects[0].remaining_activations, 4);
+    }
+
+    #[test]
+    fn resisted_status_does_not_mutate_effect_list() {
+        let mut e = encounter();
+        e.combatant_mut(CombatantId(1)).unwrap().status_resistance = StatusResistance { resistance_pct: 90 };
+        assert_eq!(
+            e.apply_status_effect(CombatantId(1), StatusEffectKind::Burn, Some(CombatantId(3)), 5, 2, 50, 0).unwrap(),
+            StatusApplication::Applied
+        );
+        let before_second = e.combatant(CombatantId(2)).unwrap().status_effects.clone();
+        assert_eq!(
+            e.apply_status_effect(CombatantId(2), StatusEffectKind::Burn, Some(CombatantId(3)), 5, 2, 50, 6).unwrap(),
+            StatusApplication::Resisted
+        );
+        assert_eq!(e.combatant(CombatantId(2)).unwrap().status_effects, before_second);
+    }
+    #[test]
     fn out_of_range_actions_do_not_spend_resources_or_change_health() {
         let mut e = encounter();
         let before_stamina = e.combatant(CombatantId(1)).unwrap().stamina;
