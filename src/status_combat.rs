@@ -292,7 +292,6 @@ pub struct TelegraphedAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TelegraphState {
-    Announced(TelegraphedAction),
     Resolved(TelegraphedAction),
     Cancelled { name: String, reason: &'static str },
 }
@@ -303,153 +302,150 @@ pub struct EnemyDecision {
     pub selected_target: CombatantId,
 }
 
-/// Pure policy except for caller-supplied random roll. The returned action must
-/// be passed to Encounter::apply_action; this policy never mutates the encounter.
+/// Target score helper; lower values are tactically preferred.
+fn target_priority(profile: &EnemyProfile, target: &EncounterCombatant) -> u32 {
+    match profile.tendency {
+        EnemyTendency::PreferDamagedTargets => target.hp,
+        EnemyTendency::PreferLowDefenceTargets => target.defence,
+        EnemyTendency::PreferMarkedTargets => {
+            if target.status_effects.iter().any(|e| e.kind == StatusEffectKind::Mark) { 0 } else { 1 }
+        }
+        EnemyTendency::PreferStatusFreeTargets => {
+            if target.status_effects.is_empty() { 0 } else { 1 }
+        }
+    }
+}
+
+fn range_preference(profile: &EnemyProfile, range: RangeBand) -> u8 {
+    match profile.archetype {
+        EnemyArchetype::AggressiveMelee | EnemyArchetype::DefensiveProtector => match range {
+            RangeBand::Melee => 0,
+            RangeBand::Near => 1,
+            RangeBand::Far => 2,
+        },
+        EnemyArchetype::RangedPressure | EnemyArchetype::StatusSpecialist => match range {
+            RangeBand::Far => 0,
+            RangeBand::Near => 1,
+            RangeBand::Melee => 2,
+        },
+    }
+}
+
+/// Pure policy except for caller-supplied random roll. The returned action is
+/// passed to Encounter::apply_action; the AI never mutates encounter state.
+/// Section 12 supplies legal target/range decisions. If no attack target is
+/// legal, movement is proposed and the resolver performs the movement.
 pub fn propose_enemy_action(
     encounter: &Encounter,
     actor_id: CombatantId,
     roll: u32,
 ) -> Option<EnemyDecision> {
     let actor = encounter.combatant(actor_id)?;
-    if actor.allegiance != Allegiance::Enemies || !actor.can_act() {
+    if actor.allegiance != Allegiance::Enemies
+        || !actor.can_act()
+        || actor.status_effects.iter().any(|e| e.kind == StatusEffectKind::Stun)
+    {
         return None;
     }
     let profile = EnemyProfile::for_name(&actor.name);
-    let mut targets: Vec<&EncounterCombatant> = encounter
+    let hostiles: Vec<&EncounterCombatant> = encounter
         .combatants()
         .iter()
         .filter(|target| target.allegiance != actor.allegiance && target.can_act())
         .collect();
-    if targets.is_empty() {
+    if hostiles.is_empty() {
         return None;
     }
-    targets.sort_by_key(|target| {
-        let range = encounter
-            .range_between(actor_id, target.id)
-            .unwrap_or(RangeBand::Far);
-        let range_penalty = if profile.preferred_range.allows(range) {
-            0
-        } else {
-            1
-        };
-        let tactical = match profile.tendency {
-            EnemyTendency::PreferDamagedTargets => target.hp,
-            EnemyTendency::PreferLowDefenceTargets => target.defence,
-            EnemyTendency::PreferMarkedTargets => target.id.0 as u32,
-            EnemyTendency::PreferStatusFreeTargets => target.stamina,
-        };
-        (range_penalty, tactical, target.id)
-    });
-    // The roll rotates only among equal-policy candidates, preserving reproducibility.
-    let tactical_key = |target: &EncounterCombatant| {
-        let range = encounter
-            .range_between(actor_id, target.id)
-            .unwrap_or(RangeBand::Far);
-        let range_penalty = if profile.preferred_range.allows(range) {
-            0
-        } else {
-            1
-        };
-        let preference = match profile.tendency {
-            EnemyTendency::PreferDamagedTargets => target.hp,
-            EnemyTendency::PreferLowDefenceTargets => target.defence,
-            EnemyTendency::PreferMarkedTargets => target.id.0 as u32,
-            EnemyTendency::PreferStatusFreeTargets => target.stamina,
-        };
-        (range_penalty, preference)
-    };
-    let best_key = tactical_key(targets[0]);
-    let tied: Vec<_> = targets
-        .into_iter()
-        .filter(|target| tactical_key(target) == best_key)
+
+    let legal_ids = encounter.legal_targets(actor_id, None);
+    let mut targets: Vec<&EncounterCombatant> = legal_ids
+        .iter()
+        .filter_map(|id| encounter.combatant(*id))
         .collect();
-    let target = tied[(roll as usize) % tied.len()];
-    let range = encounter
-        .range_between(actor_id, target.id)
-        .unwrap_or(RangeBand::Far);
-    let intended_action = if profile.preferred_range.allows(range) {
-        if !profile.abilities.is_empty() && roll % 3 == 0 {
+    let action;
+    let selected_target;
+    if targets.is_empty() {
+        let target = hostiles.into_iter().min_by_key(|target| {
+            (
+                encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far),
+                target.id,
+            )
+        })?;
+        selected_target = target.id;
+        action = CombatAction::Move { actor: actor_id };
+    } else {
+        targets.sort_by_key(|target| {
+            let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
+            (range_preference(&profile, range), target_priority(&profile, target), target.id)
+        });
+        let best = targets.first()?;
+        let best_key = (
+            range_preference(
+                &profile,
+                encounter.range_between(actor_id, best.id).unwrap_or(RangeBand::Far),
+            ),
+            target_priority(&profile, best),
+        );
+        let tied: Vec<_> = targets.into_iter().filter(|target| {
+            let range = encounter.range_between(actor_id, target.id).unwrap_or(RangeBand::Far);
+            (range_preference(&profile, range), target_priority(&profile, target)) == best_key
+        }).collect();
+        let target = tied[(roll as usize) % tied.len()];
+        selected_target = target.id;
+        action = if !profile.abilities.is_empty() && roll % 3 == 0 {
             CombatAction::UseAbility {
                 actor: actor_id,
                 target: target.id,
                 ability: profile.abilities[(roll as usize / 3) % profile.abilities.len()],
             }
         } else {
-            CombatAction::BasicAttack {
-                actor: actor_id,
-                target: target.id,
-            }
-        }
-    } else {
-        CombatAction::Move { actor: actor_id }
-    };
-    let telegraph = match intended_action {
+            CombatAction::BasicAttack { actor: actor_id, target: target.id }
+        };
+    }
+
+    let telegraph = match action {
         CombatAction::BasicAttack { .. } | CombatAction::UseAbility { .. } if roll % 4 == 0 => {
+            let target = encounter.combatant(selected_target)?;
             Some(TelegraphedAction {
                 actor: actor_id,
-                target: target.id,
-                action: intended_action.clone(),
+                target: selected_target,
+                action: action.clone(),
                 name: format!("{} prepares an attack", actor.name),
-                description: format!(
-                    "{} prepares {:?} against {}.",
-                    actor.name, intended_action, target.name
-                ),
-                damage_type: profile.damage_type,
-                damage: actor.attack,
+                description: format!("{} prepares {:?} against {}.", actor.name, action, target.name),
             })
         }
         _ => None,
     };
     Some(EnemyDecision {
-        intended: IntendedAction {
-            action: intended_action,
-            telegraph,
-        },
-        selected_target: target.id,
+        intended: IntendedAction { action, telegraph },
+        selected_target,
     })
 }
 
-/// A telegraph resolves only if the original target remains valid at resolution.
-/// Caller validates its action through the common resolver; cancellation is explicit.
+/// A telegraph resolves only if its original actor and target remain valid.
+/// The exact stored action is passed through Section 12's shared resolver.
 pub fn resolve_telegraph(
     encounter: &mut Encounter,
     telegraph: TelegraphedAction,
     hit_roll: u32,
     critical_roll: u32,
 ) -> Result<TelegraphState, EncounterError> {
-    let actor = encounter.combatant(telegraph.actor);
-    let target = encounter.combatant(telegraph.target);
-    let valid = match (actor, target) {
-        (Some(a), Some(t)) => {
-            a.can_act()
-                && !a
-                    .status_effects
-                    .iter()
-                    .any(|effect| effect.kind == StatusEffectKind::Stun)
-                && t.can_act()
-                && t.allegiance != a.allegiance
-        }
-        _ => false,
+    let Some(actor) = encounter.combatant(telegraph.actor) else {
+        return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
     };
-    if !valid {
-        return Ok(TelegraphState::Cancelled {
-            name: telegraph.name,
-            reason: "actor or target is no longer valid",
-        });
+    let Some(target) = encounter.combatant(telegraph.target) else {
+        return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
+    };
+    if !actor.can_act()
+        || actor.status_effects.iter().any(|e| e.kind == StatusEffectKind::Stun)
+        || !target.can_act()
+        || target.allegiance == actor.allegiance
+    {
+        return Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "actor or target is no longer valid" });
     }
     match encounter.apply_action(telegraph.action.clone(), hit_roll, critical_roll) {
         Ok(_) => Ok(TelegraphState::Resolved(telegraph)),
-        Err(
-            EncounterError::MissingActor(_)
-            | EncounterError::MissingTarget(_)
-            | EncounterError::TargetIneligible(_)
-            | EncounterError::WrongAllegiance
-            | EncounterError::OutOfRange { .. }
-            | EncounterError::TurnAlreadyUsed(_),
-        ) => Ok(TelegraphState::Cancelled {
-            name: telegraph.name,
-            reason: "action is no longer legal",
-        }),
+        Err(EncounterError::ActorIneligible(_) | EncounterError::MissingActor(_) | EncounterError::MissingTarget(_) | EncounterError::TargetIneligible(_) | EncounterError::WrongAllegiance | EncounterError::OutOfRange { .. } | EncounterError::TurnAlreadyUsed(_)) => Ok(TelegraphState::Cancelled { name: telegraph.name, reason: "action is no longer legal" }),
         Err(error) => Err(error),
     }
 }
@@ -607,8 +603,6 @@ mod tests {
             },
             name: "Dragon Bite".into(),
             description: "A physical bite at Hero".into(),
-            damage_type: DamageType::Physical,
-            damage: 20,
         };
         let resolved = resolve_telegraph(&mut e, telegraph.clone(), 0, 99).unwrap();
         assert!(matches!(resolved, TelegraphState::Resolved(_)));
@@ -646,8 +640,6 @@ mod tests {
             },
             name: "Dragon Heavy Strike".into(),
             description: "A heavy strike at Hero".into(),
-            damage_type: DamageType::Physical,
-            damage: 40,
         };
         // Stun the actor: telegraph resolution must cancel and remain mutation-free.
         #[allow(clippy::too_many_arguments)]
