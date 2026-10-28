@@ -489,7 +489,6 @@ mod tests {
             },
             0,
             99,
-                0,
         )
         .unwrap();
         let after = e.clone();
