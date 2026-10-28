@@ -19,6 +19,97 @@ use crate::party_combat::{
 };
 use rand::Rng;
 
+
+/// Apply/refresh one effect using caller-provided 0..99 roll and resistance.
+/// The current effect set is changed only after duration/chance checks pass.
+pub fn apply_status(
+    effects: &mut Vec<StatusEffect>,
+    mut incoming: StatusEffect,
+    resistance_pct: u8,
+    roll: u32,
+) -> StatusApplication {
+    if incoming.remaining_activations == 0 {
+        return StatusApplication::InvalidDuration;
+    }
+    incoming.remaining_activations = incoming.remaining_activations.min(MAX_EFFECT_DURATION);
+    incoming.potency = incoming.potency.min(MAX_EFFECT_POTENCY);
+    incoming.application_chance_pct = incoming.application_chance_pct.min(MAX_EFFECT_CHANCE_PCT);
+    let chance = StatusResistance::effective_chance(
+        incoming.application_chance_pct,
+        resistance_pct,
+    );
+    if roll % 100 >= u32::from(chance) {
+        return if incoming.application_chance_pct == 0 {
+            StatusApplication::FailedChance
+        } else {
+            StatusApplication::Resisted
+        };
+    }
+    if let Some(current) = effects.iter_mut().find(|e| e.kind == incoming.kind) {
+        current.remaining_activations = current.remaining_activations.max(incoming.remaining_activations);
+        current.potency = current.potency.max(incoming.potency);
+        current.application_chance_pct = current.application_chance_pct.max(incoming.application_chance_pct);
+        if incoming.source.is_some() {
+            current.source = incoming.source;
+        }
+        StatusApplication::Refreshed
+    } else {
+        effects.push(incoming);
+        StatusApplication::Applied
+    }
+}
+
+/// Resolve all effects at the start of an affected combatant's activation, then
+/// decrement their duration and remove expired effects. A newly applied effect
+/// is not ticked until its target next activates.
+pub fn tick_status_effects(effects: &mut Vec<StatusEffect>) -> Vec<StatusTick> {
+    let mut ticks = Vec::new();
+    for effect in effects.iter_mut() {
+        match effect.kind {
+            StatusEffectKind::Poison | StatusEffectKind::Bleed | StatusEffectKind::Burn => {
+                ticks.push(StatusTick::Damage {
+                    kind: effect.kind,
+                    amount: effect.potency.min(MAX_EFFECT_POTENCY),
+                });
+            }
+            StatusEffectKind::Stun => ticks.push(StatusTick::Stunned),
+            StatusEffectKind::Slow | StatusEffectKind::Mark | StatusEffectKind::WeakenedDefences => {}
+        }
+        effect.remaining_activations = effect.remaining_activations.saturating_sub(1);
+    }
+    effects.retain(|effect| {
+        if effect.remaining_activations == 0 {
+            ticks.push(StatusTick::Expired(effect.kind));
+            false
+        } else {
+            true
+        }
+    });
+    ticks
+}
+
+pub fn slow_penalty(effects: &[StatusEffect]) -> i16 {
+    let potency: u32 = effects.iter()
+        .filter(|e| e.kind == StatusEffectKind::Slow)
+        .map(|e| e.potency.min(2))
+        .sum();
+    ((potency.saturating_mul(10)).min(MAX_SLOW_INITIATIVE_PENALTY as u32)) as i16
+}
+
+pub fn mark_hit_bonus(effects: &[StatusEffect]) -> u8 {
+    effects.iter()
+        .filter(|e| e.kind == StatusEffectKind::Mark)
+        .fold(0_u32, |sum, e| sum.saturating_add(e.potency.min(3).saturating_mul(5)))
+        .min(u32::from(MAX_MARK_HIT_BONUS)) as u8
+}
+
+pub fn defence_vulnerability_pct(effects: &[StatusEffect]) -> u8 {
+    effects.iter()
+        .filter(|e| e.kind == StatusEffectKind::WeakenedDefences)
+        .fold(0_u32, |sum, e| sum.saturating_add(e.potency.min(2).saturating_mul(25)))
+        .min(u32::from(MAX_DEFENCE_VULNERABILITY_PCT)) as u8
+}
+
 pub const MAX_EFFECT_DURATION: u32 = 12;
 pub const MAX_EFFECT_POTENCY: u32 = 100;
 pub const MAX_EFFECT_CHANCE_PCT: u8 = 100;
