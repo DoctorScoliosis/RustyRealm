@@ -544,7 +544,7 @@ mod tests {
             20,
             10,
         );
-        let mut enemy = EncounterCombatant::new(
+        let enemy = EncounterCombatant::new(
             CombatantId(3),
             CombatantSource::Enemy,
             enemy_name,
