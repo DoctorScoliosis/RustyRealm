@@ -461,8 +461,14 @@ pub enum StatusEffectKind {
     Poison,
     Burn,
     Stun,
+    Slow,
+    Mark,
+    WeakenedDefences,
 }
 
+/// Legacy combat-engine status storage. The Section 13 shared lifecycle lives
+/// in status_combat::StatusEffect; this data shape remains for save/API
+/// compatibility while legacy battle flows are migrated incrementally.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusEffect {
     pub kind: StatusEffectKind,
