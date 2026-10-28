@@ -1,6 +1,6 @@
 # Section 9 — World Model and Connected Locations
 
-**Status:** Slice 9.1 domain model implemented on the working branch; local verification pending. Slices 9.2 and 9.3 remain open.  
+**Status:** Slice 9.1 domain model implemented and locally verified. Slices 9.2 and 9.3 remain open.  
 **Branch:** `work/world-model-foundation`
 
 ## Goal
@@ -18,7 +18,7 @@ This is an implementation brief, not a claim that save persistence or the travel
 - Registered the module in `src/main.rs`. A documented temporary `dead_code` allowance is in place until the world APIs are consumed by later state/UI integration.
 - Initial local validation (2026-10-28): `cargo test --package rustyrealm` passed all 73 tests (0 failures). The first `cargo fmt --check` report included formatting differences in `src/combat.rs` and `src/world.rs`; a later rerun found three residual `rustfmt` differences in `src/world.rs`, corrected in follow-up commit `9ae8b54`. Rerun the check against the latest branch head to confirm.
 - Initial `cargo clippy --package rustyrealm --tests` completed with a warning for unused `ItemType::sell_price` and four `unnecessary_map_or` suggestions in this module. The four world-module cases have been changed to `is_some_and` / `is_none_or`. Rerun Clippy to confirm those warnings are resolved; the existing `sell_price` warning remains to be reviewed separately.
-- The updated source has not yet been rechecked by the developer after these follow-up commits. Do not mark the checks clean until they are rerun locally.
+- Final local verification (2026-10-28): `cargo fmt --check` passed with no output; `cargo test --package rustyrealm` passed all 73 tests (0 failures); `cargo clippy --package rustyrealm --tests` completed with only the pre-existing unused `ItemType::sell_price` warning. `git status --short --branch` reported `work/world-model-foundation...origin/work/world-model-foundation` with no working-tree changes.
 - No changes have been made to `GameState`, save migration, or terminal travel UI. Those belong to slices 9.2 and 9.3.
 
 ## Repository context
