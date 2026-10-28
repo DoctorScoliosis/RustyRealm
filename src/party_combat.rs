@@ -1329,6 +1329,7 @@ mod tests {
             e.apply_status_effect(CombatantId(1), StatusEffectKind::Burn, Some(CombatantId(3)), 5, 2, 50, 0).unwrap(),
             StatusApplication::Applied
         );
+        e.combatant_mut(CombatantId(2)).unwrap().status_resistance = StatusResistance { resistance_pct: 90 };
         let before_second = e.combatant(CombatantId(2)).unwrap().status_effects.clone();
         assert_eq!(
             e.apply_status_effect(CombatantId(2), StatusEffectKind::Burn, Some(CombatantId(3)), 5, 2, 50, 6).unwrap(),
