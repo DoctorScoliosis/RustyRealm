@@ -934,7 +934,11 @@ impl Encounter {
             target.hp -= damage;
             target.sync_condition();
         }
-        if hit && self.combatant(target_id).is_some_and(EncounterCombatant::can_act) {
+        if hit
+            && self
+                .combatant(target_id)
+                .is_some_and(EncounterCombatant::can_act)
+        {
             let source_is_enemy = self
                 .combatant(actor_id)
                 .is_some_and(|source| source.allegiance == Allegiance::Enemies);
@@ -1114,13 +1118,36 @@ mod tests {
     fn shared_status_lifecycle_ticks_all_combatant_roles_and_skips_stun() {
         let mut e = encounter();
         assert_eq!(e.current_actor(), Some(CombatantId(1)));
-        e.apply_status_effect(CombatantId(1), StatusEffectKind::Poison, Some(CombatantId(3)), 7, 2, 100, 0).unwrap();
+        e.apply_status_effect(
+            CombatantId(1),
+            StatusEffectKind::Poison,
+            Some(CombatantId(3)),
+            7,
+            2,
+            100,
+            0,
+        )
+        .unwrap();
         let ticks = e.tick_current_actor_statuses();
-        assert!(ticks.iter().any(|(_, tick)| matches!(tick, StatusTick::Damage { amount: 7, .. })));
+        assert!(ticks
+            .iter()
+            .any(|(_, tick)| matches!(tick, StatusTick::Damage { amount: 7, .. })));
         assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 93);
-        assert_eq!(e.combatant(CombatantId(1)).unwrap().status_effects[0].remaining_activations, 1);
+        assert_eq!(
+            e.combatant(CombatantId(1)).unwrap().status_effects[0].remaining_activations,
+            1
+        );
 
-        e.apply_status_effect(CombatantId(1), StatusEffectKind::Stun, Some(CombatantId(3)), 1, 1, 100, 0).unwrap();
+        e.apply_status_effect(
+            CombatantId(1),
+            StatusEffectKind::Stun,
+            Some(CombatantId(3)),
+            1,
+            1,
+            100,
+            0,
+        )
+        .unwrap();
         // Poison ticks again at this activation; Stun then consumes the activation.
         let ticks = e.tick_current_actor_statuses();
         assert!(ticks.iter().any(|(_, tick)| matches!(tick, StatusTick::Stunned)));
@@ -1134,13 +1161,20 @@ mod tests {
         e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
         // Section 12's hit roll is explicit; this hit is deterministic.
         e.apply_action(
-            CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) },
+            CombatAction::BasicAttack {
+                actor: CombatantId(3),
+                target: CombatantId(1),
+            },
             0,
             0,
-        ).unwrap();
-        assert!(e.combatant(CombatantId(1)).unwrap().status_effects.iter().any(|effect| {
-            effect.kind == StatusEffectKind::Burn
-        }));
+        )
+        .unwrap();
+        assert!(e
+            .combatant(CombatantId(1))
+            .unwrap()
+            .status_effects
+            .iter()
+            .any(|effect| { effect.kind == StatusEffectKind::Burn }));
     }
 
     #[test]
@@ -1487,7 +1521,16 @@ mod tests {
             let defender = e.combatant(CombatantId(3)).unwrap();
             Encounter::hit_chance(attacker, defender, RangeBand::Melee)
         };
-        e.apply_status_effect(CombatantId(3), StatusEffectKind::Mark, Some(CombatantId(1)), 1, 2, 100, 0).unwrap();
+        e.apply_status_effect(
+            CombatantId(3),
+            StatusEffectKind::Mark,
+            Some(CombatantId(1)),
+            1,
+            2,
+            100,
+            0,
+        )
+        .unwrap();
         let marked = {
             let attacker = e.combatant(CombatantId(1)).unwrap();
             let defender = e.combatant(CombatantId(3)).unwrap();
@@ -1498,11 +1541,28 @@ mod tests {
         let mut e = encounter();
         let initial_first = e.current_actor().unwrap();
         assert_eq!(initial_first, CombatantId(1));
-        e.apply_status_effect(CombatantId(1), StatusEffectKind::Slow, Some(CombatantId(3)), 2, 3, 100, 0).unwrap();
+        e.apply_status_effect(
+            CombatantId(1),
+            StatusEffectKind::Slow,
+            Some(CombatantId(3)),
+            2,
+            3,
+            100,
+            0,
+        )
+        .unwrap();
         // End this round in the existing deterministic actor order.
-        e.apply_action(CombatAction::Defend { actor: CombatantId(1) }, 0, 0).unwrap();
+        e.apply_action(
+            CombatAction::Defend {
+                actor: CombatantId(1),
+            },
+            0,
+            0,
+        )
+        .unwrap();
         while let Some(actor) = e.current_actor() {
-            e.apply_action(CombatAction::Defend { actor }, 0, 0).unwrap();
+            e.apply_action(CombatAction::Defend { actor }, 0, 0)
+                .unwrap();
         }
         assert_eq!(e.round(), 2);
         assert_ne!(e.current_actor(), Some(CombatantId(1)));
