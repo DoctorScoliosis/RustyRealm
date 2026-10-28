@@ -500,7 +500,8 @@ mod tests {
                 8,
                 1,
             ),
-        ]).unwrap()
+        ])
+        .unwrap()
     }
     #[test]
     fn stable_ids_allow_duplicate_display_names() {
@@ -604,15 +605,23 @@ mod tests {
                 0,
             ),
             EncounterCombatant::new(
-                CombatantId(2), CombatantSource::Enemy, "Rat", Allegiance::Enemies, 1, 0, 0, 2, 0,
+                CombatantId(2),
+                CombatantSource::Enemy,
+                "Rat",
+                Allegiance::Enemies,
+                1,
+                0,
+                0,
+                2,
+                0,
             ),
         ]).unwrap();
         assert_eq!(
             e.apply_action(
                 CombatAction::BasicAttack {
-                actor: CombatantId(1),
-                target: CombatantId(2),
-            },
+                    actor: CombatantId(1),
+                    target: CombatantId(2),
+                },
                 99,
             )
             .unwrap()
@@ -621,7 +630,9 @@ mod tests {
         );
         assert_eq!(
             e.apply_action(
-                CombatAction::Defend { actor: CombatantId(1) },
+                CombatAction::Defend {
+                    actor: CombatantId(1),
+                },
                 0,
             ),
             Err(EncounterError::EncounterFinished)
@@ -655,8 +666,8 @@ mod tests {
                 },
                 0,
             )
-                    .unwrap()
-                .outcome,
+            .unwrap()
+            .outcome,
             EncounterOutcome::Retreated
         );
         assert_eq!(e.current_actor(), None);
