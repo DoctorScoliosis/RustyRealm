@@ -923,27 +923,30 @@ impl Encounter {
             target.hp -= damage;
             target.sync_condition();
         }
-        if hit {
-            let payload = match ability_id {
-                Some(AbilityId::HeavyStrike) => Some((StatusEffectKind::Bleed, 2, 6, 100)),
-                Some(AbilityId::Cleave) => Some((StatusEffectKind::Stun, 1, 1, 100)),
-                _ => None,
+        if hit && self.combatant(target_id).is_some_and(EncounterCombatant::can_act) {
+            let source_is_enemy = self
+                .combatant(actor_id)
+                .is_some_and(|source| source.allegiance == Allegiance::Enemies);
+            let payload = if source_is_enemy {
+                let source_name = &self.combatant(actor_id).expect("actor validated").name;
+                crate::status_combat::EnemyProfile::for_name(source_name).status_payload
+            } else {
+                match ability_id {
+                    Some(AbilityId::HeavyStrike) => Some((StatusEffectKind::Bleed, 2, 6, 100)),
+                    Some(AbilityId::Cleave) => Some((StatusEffectKind::Stun, 1, 1, 100)),
+                    _ => None,
+                }
             };
             if let Some((kind, duration, potency, chance_pct)) = payload {
-                let resistance = self
-                    .combatant(target_id)
-                    .expect("target validated")
-                    .status_resistance
-                    .resistance_pct;
-                let effect = StatusEffect {
+                let _ = self.apply_status_effect(
+                    target_id,
                     kind,
-                    source: Some(actor_id),
+                    Some(actor_id),
                     potency,
-                    remaining_activations: duration,
-                    application_chance_pct: chance_pct,
-                };
-                let target = self.combatant_mut(target_id).expect("target validated");
-                let _ = apply_status(&mut target.status_effects, effect, resistance, hit_roll);
+                    duration,
+                    chance_pct,
+                    critical_roll,
+                )?;
             }
         }
         self.consume_turn(actor_id);
@@ -1096,6 +1099,39 @@ mod tests {
         );
         assert_eq!(e, before);
     }
+    #[test]
+    fn shared_status_lifecycle_ticks_all_combatant_roles_and_skips_stun() {
+        let mut e = encounter();
+        assert_eq!(e.current_actor(), Some(CombatantId(1)));
+        e.apply_status_effect(CombatantId(1), StatusEffectKind::Poison, Some(CombatantId(3)), 7, 2, 100, 0).unwrap();
+        let ticks = e.tick_current_actor_statuses();
+        assert!(ticks.iter().any(|(_, tick)| matches!(tick, StatusTick::Damage { amount: 7, .. })));
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 93);
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().status_effects[0].remaining_activations, 1);
+
+        e.apply_status_effect(CombatantId(1), StatusEffectKind::Stun, Some(CombatantId(3)), 1, 1, 100, 0).unwrap();
+        // Poison ticks again at this activation; Stun then consumes the activation.
+        let ticks = e.tick_current_actor_statuses();
+        assert!(ticks.iter().any(|(_, tick)| matches!(tick, StatusTick::Stunned)));
+        assert_ne!(e.current_actor(), Some(CombatantId(1)));
+    }
+
+    #[test]
+    fn enemy_status_payload_is_applied_through_the_common_resolver() {
+        let mut e = encounter();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
+        e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
+        // Section 12's hit roll is explicit; this hit is deterministic.
+        e.apply_action(
+            CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(1) },
+            0,
+            0,
+        ).unwrap();
+        assert!(e.combatant(CombatantId(1)).unwrap().status_effects.iter().any(|effect| {
+            effect.kind == StatusEffectKind::Burn
+        }));
+    }
+
     #[test]
     fn partial_knockout_does_not_end_combat() {
         let mut e = encounter();
