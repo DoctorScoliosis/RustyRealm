@@ -286,8 +286,6 @@ pub struct TelegraphedAction {
     pub action: CombatAction,
     pub name: String,
     pub description: String,
-    pub damage_type: DamageType,
-    pub damage: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
