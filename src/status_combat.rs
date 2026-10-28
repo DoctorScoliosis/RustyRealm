@@ -383,16 +383,19 @@ pub fn propose_enemy_action(
     } else {
         CombatAction::Move { actor: actor_id }
     };
-    let telegraph = match intended_action {
+        let telegraph = match intended_action {
         CombatAction::BasicAttack { .. } | CombatAction::UseAbility { .. } if roll % 4 == 0 => {
             Some(TelegraphedAction {
-            actor: actor_id,
-            target: target.id,
-            action: intended_action.clone(),
-            name: format!("{} prepares an attack", actor.name),
-            description: format!("{} prepares {:?} against {}.", actor.name, intended_action, target.name),
-            damage_type: profile.damage_type,
-            damage: actor.attack,
+                actor: actor_id,
+                target: target.id,
+                action: intended_action.clone(),
+                name: format!("{} prepares an attack", actor.name),
+                description: format!(
+                    "{} prepares {:?} against {}.",
+                    actor.name, intended_action, target.name
+                ),
+                damage_type: profile.damage_type,
+                damage: actor.attack,
             })
         }
         _ => None,
