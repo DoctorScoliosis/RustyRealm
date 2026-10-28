@@ -597,6 +597,7 @@ mod tests {
     fn telegraph_cancelled_when_target_becomes_invalid_and_resolution_uses_resolver() {
         let mut e = encounter();
         e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
         let telegraph = TelegraphedAction {
             actor: CombatantId(3),
             target: CombatantId(1),
@@ -614,13 +615,15 @@ mod tests {
         assert!(e.combatant(CombatantId(1)).unwrap().hp < 100);
 
         let mut e = encounter();
+        e.set_position(CombatantId(1), RangeBand::Melee).unwrap();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
         e.apply_action(
             CombatAction::BasicAttack {
                 actor: CombatantId(3),
                 target: CombatantId(1),
             },
             0,
-            0,
+            99,
         )
         .unwrap();
         // The actor has already acted; a second telegraph is cancelled by common validation.
