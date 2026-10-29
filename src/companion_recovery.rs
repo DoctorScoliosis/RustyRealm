@@ -345,6 +345,7 @@ mod tests {
     fn knockout_is_idempotent_and_uses_nearest_reachable_settlement() {
     let world = build_initial_world().unwrap();
     let mut state = state_with_companion();
+    state.companions[0].current_hp = 0;
     state.current_location = LocationId::from("whispering_woods");
     let mut recovery = RecoveryState::default();
     let id = CompanionId::BranTheShield;
@@ -367,6 +368,7 @@ mod tests {
         "isolated", "Isolated", "No route to a settlement.", LocationCategory::Wilderness
     )).unwrap();
     let mut state = state_with_companion();
+    state.companions[0].current_hp = 0;
     state.current_location = LocationId::from("isolated");
     let mut recovery = RecoveryState::default();
     recovery.record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world).unwrap();
@@ -384,7 +386,6 @@ mod tests {
     state.companions[0].current_hp = 0;
     let mut recovery = RecoveryState::default();
     recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
-    state.party.remove_member(id).unwrap();
     state.player.gold = TREATMENT_COST - 1;
     let before = state.clone();
     let location = state.current_location.clone();
@@ -422,7 +423,6 @@ mod tests {
     let mut recovery = RecoveryState::default();
     let world = build_initial_world().unwrap();
     recovery.record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world).unwrap();
-    state.party.remove_member(CompanionId::BranTheShield).unwrap();
     assert!(recovery.advance_committed_turn(&mut state.companions).is_empty());
     assert_eq!(recovery.record(CompanionId::BranTheShield).unwrap().turns_remaining, 2);
     let mut loaded: RecoveryState = serde_json::from_str(&serde_json::to_string(&recovery).unwrap()).unwrap();
@@ -461,6 +461,7 @@ mod tests {
         ),
     ]).unwrap();
     let mut encounter = encounter;
+    encounter.set_position(CombatantId(3), crate::party_combat::RangeBand::Melee).unwrap();
     let result = encounter.apply_action(
         CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(2) },
         0, 99
@@ -487,6 +488,7 @@ mod tests {
         "isolated_recovery", "Isolated recovery", "Disconnected.", LocationCategory::Wilderness
     )).unwrap();
     let mut state = state_with_companion();
+    state.companions[0].current_hp = 0;
     state.current_location = LocationId::from("isolated_recovery");
     state.companions[0].current_hp = 0;
     let mut recovery = RecoveryState::default();
