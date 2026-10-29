@@ -17,7 +17,7 @@ fn gathering_check(skill_level: u32, difficulty: i32, roll: u8) -> crate::skill_
 }
 
 fn thieving_check(skill_level: u32, roll: u8) -> crate::skill_checks::SkillCheckResult {
-    SkillCheck { skill_level, difficulty: 35, modifier: 0 }
+    SkillCheck { skill_level, difficulty: 25, modifier: 0 }
         .resolve(roll)
         .expect("generated skill-check roll is within 0..=99")
 }
