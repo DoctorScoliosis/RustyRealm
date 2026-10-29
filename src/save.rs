@@ -894,7 +894,10 @@ mod tests {
             .unwrap()
             .remove("companions");
         document["data"].as_object_mut().unwrap().remove("party");
-        document["data"].as_object_mut().unwrap().remove("region_progress");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("region_progress");
         let checksum = compute_checksum_payload(&document["data"]).unwrap();
         document["checksum"] = serde_json::json!(checksum);
         fs::write(&path, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
@@ -919,21 +922,43 @@ mod tests {
         let mut state = test_state("region-progress", "secret");
         crate::adventure::ensure_region_quest(&mut state);
         state.current_location = crate::world::LocationId::from("sunken_ruins");
-        state.region_progress.cleared_encounters.push("woods_patrol".into());
-        state.region_progress.landmark_interactions.push("standing_stones_survey".into());
-        crate::quests::notify_event(&mut state, &crate::event::GameEvent::LocationReached {
-            location_id: crate::world::LocationId::from("standing_stones"),
-        });
-        crate::quests::notify_event(&mut state, &crate::event::GameEvent::TargetInteracted {
-            target_id: "standing_stones_survey".into(),
-        });
+        state
+            .region_progress
+            .cleared_encounters
+            .push("woods_patrol".into());
+        state
+            .region_progress
+            .landmark_interactions
+            .push("standing_stones_survey".into());
+        crate::quests::notify_event(
+            &mut state,
+            &crate::event::GameEvent::LocationReached {
+                location_id: crate::world::LocationId::from("standing_stones"),
+            },
+        );
+        crate::quests::notify_event(
+            &mut state,
+            &crate::event::GameEvent::TargetInteracted {
+                target_id: "standing_stones_survey".into(),
+            },
+        );
 
         save_to_path(&state, &path).unwrap();
         let loaded = load_game_at(&path, "region-progress", "secret").unwrap();
         assert_eq!(loaded.current_location.as_str(), "sunken_ruins");
-        assert_eq!(loaded.region_progress.cleared_encounters, vec!["woods_patrol"]);
-        assert_eq!(loaded.region_progress.landmark_interactions, vec!["standing_stones_survey"]);
-        let quest = loaded.active_quests.iter().find(|q| q.id == crate::adventure::REGION_QUEST_ID).unwrap();
+        assert_eq!(
+            loaded.region_progress.cleared_encounters,
+            vec!["woods_patrol"]
+        );
+        assert_eq!(
+            loaded.region_progress.landmark_interactions,
+            vec!["standing_stones_survey"]
+        );
+        let quest = loaded
+            .active_quests
+            .iter()
+            .find(|q| q.id == crate::adventure::REGION_QUEST_ID)
+            .unwrap();
         assert_eq!(quest.stages[0].objectives[0].progress, 1);
         assert!(quest.stages[0].objectives[0].is_completed);
         assert!(!quest.stages[1].is_completed);
