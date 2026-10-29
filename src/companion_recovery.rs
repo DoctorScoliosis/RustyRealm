@@ -311,36 +311,52 @@ impl RecoveryState {
         Ok(newly_knocked_out)
     }
 
-    pub fn resolve_player_defeat(&mut self, state: &mut GameState, world: &World) -> Result<(), RecoveryError> {
-    if state.player.hp > 0 {
-        return Err(RecoveryError::PlayerAlreadyDefeated);
-    }
+    pub fn resolve_player_defeat(
+        &mut self,
+        state: &mut GameState,
+        world: &World,
+    ) -> Result<(), RecoveryError> {
+        if state.player.hp > 0 {
+            return Err(RecoveryError::PlayerAlreadyDefeated);
+        }
 
-    let destination = world.get_nearest_settlement(&state.current_location);
-    let destination = destination.ok_or(RecoveryError::NoTreatmentSettlement)?;
+        let destination = world
+            .get_nearest_settlement(&state.current_location)
+            .ok_or(RecoveryError::NoTreatmentSettlement)?;
 
-    // Work on a clone and commit only once all required destinations are valid.
-    let mut next_state = state.clone();
-    let mut next_recovery = self.clone();
-    let origin = next_state.current_location.clone();
-    let knocked_out: Vec<_> = next_state.party.members().iter().copied()
-        .filter(|id| next_state.companions.iter().any(|companion|
-            companion.id == *id && companion.current_hp == 0))
-        .collect();
-    for id in knocked_out {
-        let companion = next_state.companions.iter_mut()
-            .find(|companion| companion.id == id)
-            .ok_or(RecoveryError::CompanionNotRecruited(id))?;
-        next_recovery.record_knockout(companion, world, &origin)?;
-    }
-    next_state.player.hp = next_state.player.max_hp;
-    next_state.current_location = destination;
-    next_state.party.clear();
-    next_recovery.expedition_defeat_count = next_recovery.expedition_defeat_count.saturating_add(1);
+        // Work on a clone and commit only once all required destinations are valid.
+        let mut next_state = state.clone();
+        let mut next_recovery = self.clone();
+        let origin = next_state.current_location.clone();
+        let knocked_out: Vec<_> = next_state
+            .party
+            .members()
+            .iter()
+            .copied()
+            .filter(|id| {
+                next_state
+                    .companions
+                    .iter()
+                    .any(|companion| companion.id == *id && companion.current_hp == 0)
+            })
+            .collect();
+        for id in knocked_out {
+            let companion = next_state
+                .companions
+                .iter_mut()
+                .find(|companion| companion.id == id)
+                .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+            next_recovery.record_knockout(companion, world, &origin)?;
+        }
+        next_state.player.hp = next_state.player.max_hp;
+        next_state.current_location = destination;
+        next_state.party.clear();
+        next_recovery.expedition_defeat_count =
+            next_recovery.expedition_defeat_count.saturating_add(1);
 
-    *state = next_state;
-    *self = next_recovery;
-    Ok(())
+        *state = next_state;
+        *self = next_recovery;
+        Ok(())
     }
 }
 
