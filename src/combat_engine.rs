@@ -433,7 +433,7 @@ impl CombatEngine {
 
         if enemy.name == "Lacoyx" {
             let phase = enemy.lacoyx_phase.unwrap_or(LacoyxPhase::Phase1Commander);
-            let (chance, mut attack) = match phase {
+            let (chance, attack) = match phase {
                 LacoyxPhase::Phase1Commander => (
                     0.4,
                     TelegraphedAttack {
