@@ -28,7 +28,6 @@ pub struct RegionProgress {
     pub landmark_interactions: Vec<String>,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EncounterBand {
     SafeRoad,
@@ -191,8 +190,15 @@ pub fn landmark_for_location(location_id: &LocationId) -> Option<&'static Landma
 /// and uses the existing composite-quest engine for staged travel, combat, and
 /// gathering objectives.
 pub fn ensure_region_quest(state: &mut GameState) -> bool {
-    if state.active_quests.iter().any(|quest| quest.id == REGION_QUEST_ID)
-        || state.player.quests_completed.iter().any(|id| id == REGION_QUEST_ID)
+    if state
+        .active_quests
+        .iter()
+        .any(|quest| quest.id == REGION_QUEST_ID)
+        || state
+            .player
+            .quests_completed
+            .iter()
+            .any(|id| id == REGION_QUEST_ID)
     {
         return false;
     }
@@ -284,7 +290,9 @@ impl std::fmt::Display for ExpeditionError {
             Self::WrongLocation => f.write_str("The party is not at this encounter location."),
             Self::AlreadyClaimed => f.write_str("This region reward has already been claimed."),
             Self::QuestNotReady => f.write_str("The region quest is not yet complete."),
-            Self::NotAtSettlement => f.write_str("Return to Oakhaven Village to claim the supplies."),
+            Self::NotAtSettlement => {
+                f.write_str("Return to Oakhaven Village to claim the supplies.")
+            }
         }
     }
 }
@@ -306,13 +314,29 @@ pub fn claim_encounter_clear_reward(
         return Err(ExpeditionError::WrongLocation);
     }
 
-    if state.region_progress.cleared_encounters.iter().any(|id| id == encounter_id) {
+    if state
+        .region_progress
+        .cleared_encounters
+        .iter()
+        .any(|id| id == encounter_id)
+    {
         return Err(ExpeditionError::AlreadyClaimed);
     }
 
-    state.player.gold = state.player.gold.saturating_add(encounter.reward_gold).min(crate::data::MAX_GOLD);
-    state.player.xp = state.player.xp.saturating_add(encounter.reward_xp).min(1_000_000);
-    state.region_progress.cleared_encounters.push(encounter_id.to_string());
+    state.player.gold = state
+        .player
+        .gold
+        .saturating_add(encounter.reward_gold)
+        .min(crate::data::MAX_GOLD);
+    state.player.xp = state
+        .player
+        .xp
+        .saturating_add(encounter.reward_xp)
+        .min(1_000_000);
+    state
+        .region_progress
+        .cleared_encounters
+        .push(encounter_id.to_string());
     Ok((encounter.reward_gold, encounter.reward_xp))
 }
 
@@ -323,7 +347,12 @@ pub fn claim_region_quest(state: &mut GameState) -> Result<QuestReward, Expediti
     if state.current_location.as_str() != "village_start" {
         return Err(ExpeditionError::NotAtSettlement);
     }
-    if state.player.quests_completed.iter().any(|id| id == REGION_QUEST_ID) {
+    if state
+        .player
+        .quests_completed
+        .iter()
+        .any(|id| id == REGION_QUEST_ID)
+    {
         return Err(ExpeditionError::AlreadyClaimed);
     }
     let quest = state
@@ -336,14 +365,28 @@ pub fn claim_region_quest(state: &mut GameState) -> Result<QuestReward, Expediti
     }
     let reward = crate::quests::claim_quest_reward(state, REGION_QUEST_ID)
         .map_err(|_| ExpeditionError::QuestNotReady)?;
-    state.player.add_item(ItemType::Logs, REGION_QUEST_REWARD_LOGS);
-    state.player.xp = state.player.xp.saturating_add(REGION_QUEST_REWARD_XP).min(1_000_000);
+    state
+        .player
+        .add_item(ItemType::Logs, REGION_QUEST_REWARD_LOGS);
+    state.player.xp = state
+        .player
+        .xp
+        .saturating_add(REGION_QUEST_REWARD_XP)
+        .min(1_000_000);
     Ok(reward)
 }
 
 pub fn notify_landmark_interaction(state: &mut GameState, target_id: &str) {
-    if !state.region_progress.landmark_interactions.iter().any(|known| known == target_id) {
-        state.region_progress.landmark_interactions.push(target_id.to_string());
+    if !state
+        .region_progress
+        .landmark_interactions
+        .iter()
+        .any(|known| known == target_id)
+    {
+        state
+            .region_progress
+            .landmark_interactions
+            .push(target_id.to_string());
     }
     crate::quests::notify_event(
         state,
@@ -374,7 +417,10 @@ mod tests {
     fn region_has_multiple_encounters_and_landmarks_reuse_world_locations() {
         let world = build_initial_world().unwrap();
         assert!(world.validate().is_ok());
-        assert!(world.can_travel(&LocationId::from("village_start"), &LocationId::from("whispering_woods")));
+        assert!(world.can_travel(
+            &LocationId::from("village_start"),
+            &LocationId::from("whispering_woods")
+        ));
         assert_eq!(ENCOUNTERS.len(), 3);
         assert!(ENCOUNTERS.iter().any(|e| e.danger == 5 && e.location_id == "goblin_caves"));
         assert!(LANDMARKS.iter().all(|landmark| world.get_location(&LocationId::from(landmark.location_id)).is_some()));
@@ -387,16 +433,47 @@ mod tests {
         let mut state = state();
         ensure_region_quest(&mut state);
         let before = state.player.gold;
-        crate::quests::notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("standing_stones") });
+        crate::quests::notify_event(
+            &mut state,
+            &GameEvent::LocationReached {
+                location_id: LocationId::from("standing_stones"),
+            },
+        );
         notify_landmark_interaction(&mut state, "standing_stones_survey");
-        crate::quests::notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("sunken_ruins") });
-        crate::quests::notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Stone Guardian".into(), is_stronghold: false });
-        crate::quests::notify_event(&mut state, &GameEvent::ResourceGathered { skill_name: "Woodcutting".into(), item_type: ItemType::Logs, count: 3 });
+        crate::quests::notify_event(
+            &mut state,
+            &GameEvent::LocationReached {
+                location_id: LocationId::from("sunken_ruins"),
+            },
+        );
+        crate::quests::notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Stone Guardian".into(),
+                is_stronghold: false,
+            },
+        );
+        crate::quests::notify_event(
+            &mut state,
+            &GameEvent::ResourceGathered {
+                skill_name: "Woodcutting".into(),
+                item_type: ItemType::Logs,
+                count: 3,
+            },
+        );
         state.current_location = LocationId::from("village_start");
-        crate::quests::notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("village_start") });
+        crate::quests::notify_event(
+            &mut state,
+            &GameEvent::LocationReached {
+                location_id: LocationId::from("village_start"),
+            },
+        );
         notify_landmark_interaction(&mut state, "village_supply_board");
         assert!(state.active_quests.iter().find(|q| q.id == REGION_QUEST_ID).unwrap().is_completed);
-        assert_eq!(claim_region_quest(&mut state), Ok(QuestReward::Gold(REGION_QUEST_REWARD_GOLD)));
+        assert_eq!(
+            claim_region_quest(&mut state),
+            Ok(QuestReward::Gold(REGION_QUEST_REWARD_GOLD))
+        );
         assert_eq!(state.player.gold, before + REGION_QUEST_REWARD_GOLD);
         let gold = state.player.gold;
         assert_eq!(claim_region_quest(&mut state), Err(ExpeditionError::AlreadyClaimed));
@@ -407,14 +484,23 @@ mod tests {
     fn encounter_clear_reward_rejects_wrong_location_and_duplicates() {
         let mut state = state();
         state.current_location = LocationId::from("whispering_woods");
-        assert_eq!(claim_encounter_clear_reward(&mut state, "cave_expedition"), Err(ExpeditionError::WrongLocation));
+        assert_eq!(
+            claim_encounter_clear_reward(&mut state, "cave_expedition"),
+            Err(ExpeditionError::WrongLocation)
+        );
         let before = state.player.gold;
         assert_eq!(claim_encounter_clear_reward(&mut state, "woods_patrol"), Ok((35, 60)));
         assert_eq!(state.player.gold, before + 35);
         let encoded = serde_json::to_string(&state).unwrap();
         let loaded: GameState = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(loaded.region_progress.cleared_encounters, vec!["woods_patrol"]);
-        assert_eq!(claim_encounter_clear_reward(&mut state, "woods_patrol"), Err(ExpeditionError::AlreadyClaimed));
+        assert_eq!(
+            loaded.region_progress.cleared_encounters,
+            vec!["woods_patrol"]
+        );
+        assert_eq!(
+            claim_encounter_clear_reward(&mut state, "woods_patrol"),
+            Err(ExpeditionError::AlreadyClaimed)
+        );
         assert_eq!(state.player.gold, before + 35);
     }
 
@@ -423,7 +509,13 @@ mod tests {
         let mut state = state();
         let world = build_initial_world().unwrap();
         let id = CompanionId::BranTheShield;
-        let cost = PartyManager::recruit(&mut state.companions, id, state.player.combat_level, state.player.gold).unwrap();
+        let cost = PartyManager::recruit(
+            &mut state.companions,
+            id,
+            state.player.combat_level,
+            state.player.gold,
+        )
+        .unwrap();
         state.player.gold -= cost;
         PartyManager::add_to_party(&mut state.party, &state.companions, id).unwrap();
         state.companions.iter_mut().find(|c| c.id == id).unwrap().current_hp = 0;
@@ -438,6 +530,14 @@ mod tests {
         loaded.advance_world_turn();
         loaded.advance_world_turn();
         assert!(loaded.companion_recovery.records.is_empty());
-        assert!(loaded.companions.iter().find(|c| c.id == id).unwrap().current_hp > 0);
+        assert!(
+            loaded
+                .companions
+                .iter()
+                .find(|c| c.id == id)
+                .unwrap()
+                .current_hp
+                > 0
+        );
     }
 }
