@@ -284,7 +284,7 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
 #[cfg(test)]
 mod tests {
      use super::*;
-     use crate::party::{all_companion_definitions, PartyManager};
+     use crate::party::{CompanionId, PartyManager};
      use crate::state::{GameState, Player};
      use crate::world::build_initial_world;
 
