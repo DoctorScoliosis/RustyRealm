@@ -431,8 +431,13 @@ fn region_expedition_menu(tui: &mut Tui, state: &mut GameState, world: &World) -
             .saturating_add(enemy.level_offset)
             .max(1);
         let enemy_hp = (80_u32.saturating_add(level.saturating_mul(22)))
-            .saturating_mul(enemy.health_multiplier_pct) / 100;
-        let attack = enemy.kind.max_damage().saturating_mul(enemy.attack_multiplier_pct) / 100;
+            .saturating_mul(enemy.health_multiplier_pct)
+            / 100;
+        let attack = enemy
+            .kind
+            .max_damage()
+            .saturating_mul(enemy.attack_multiplier_pct)
+            / 100;
         match run_party_battle(
             tui,
             state,
