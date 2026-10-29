@@ -559,19 +559,17 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
             let recovery = &mut state.companion_recovery;
             let companion = state.companions.iter_mut().find(|companion| companion.id == id);
             let Some(companion) = companion else {
-                tui.show_message("Treatment unavailable", "That companion is no longer in the roster.", Some(state))?;
-                continue;
+                return Err(io::Error::other("Recovery record refers to a missing companion."));
             };
-            // Validate and mutate the record, companion and gold using split state
-            // borrows rather than re-borrowing the entire GameState.
-            recovery.apply_treatment_parts(
+            let result = recovery.apply_treatment_parts(
                 &mut state.player.gold,
                 &mut state.party,
                 companion,
                 id,
                 &treatment_location,
                 world,
-            )
+            );
+            result
         };
         match treatment_result {
             Ok(cost) => tui.show_message(
