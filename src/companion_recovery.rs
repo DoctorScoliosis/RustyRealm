@@ -263,10 +263,16 @@ impl RecoveryState {
          // Work on a clone and commit only once all required destinations are valid.
          let mut next_state = state.clone();
          let mut next_recovery = self.clone();
-         for companion in next_state.companions.iter_mut() {
-             if next_state.party.contains(companion.id) && companion.current_hp == 0 {
-                 next_recovery.record_knockout(companion, world, &next_state.current_location)?;
-             }
+         let origin = next_state.current_location.clone();
+         let knocked_out: Vec<_> = next_state.party.members().iter().copied()
+             .filter(|id| next_state.companions.iter().any(|companion|
+                 companion.id == *id && companion.current_hp == 0))
+             .collect();
+         for id in knocked_out {
+             let companion = next_state.companions.iter_mut()
+                 .find(|companion| companion.id == id)
+                 .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+             next_recovery.record_knockout(companion, world, &origin)?;
          }
          next_state.player.hp = next_state.player.max_hp;
          next_state.current_location = destination;
