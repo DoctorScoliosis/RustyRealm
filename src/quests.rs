@@ -732,8 +732,8 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                                     .iter()
                                     .map(|objective| {
                                         let mark = if objective.is_completed { "✓" } else { "·" };
-                                        let optional =
-                                            if objective.optional { " (optional)" } else { "" };
+                                let optional =
+                                    if objective.optional { " (optional)" } else { "" };
                                         format!(
                                             "    {mark} {}/{} {:?}{optional}",
                                             objective.progress,
