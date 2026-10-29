@@ -251,55 +251,64 @@ impl RecoveryState {
     /// state. Calling this repeatedly is safe: previously recorded knockouts keep
     /// their original destination and timer.
     pub fn sync_party_encounter(
-    &mut self,
-    state: &mut GameState,
-    encounter: &crate::party_combat::Encounter,
-    world: &World,
+        &mut self,
+        state: &mut GameState,
+        encounter: &crate::party_combat::Encounter,
+        world: &World,
     ) -> Result<Vec<CompanionId>, RecoveryError> {
-    let updates: Vec<_> = encounter.combatants().iter().filter_map(|combatant| {
-        match combatant.source {
-            crate::party_combat::CombatantSource::Companion(id) => Some((
-              id,
-              combatant.hp,
-              combatant.stamina,
-              combatant.mana,
-              !combatant.can_act(),
-            )),
-            _ => None,
-        }
-    }).collect();
-    let mut newly_knocked_out = Vec::new();
-    for (id, hp, stamina, mana, knocked_out) in updates {
-        let already_recorded = self.record(id).is_some();
-        if !state.companions.iter().any(|companion| companion.id == id) {
-            return Err(RecoveryError::CompanionNotRecruited(id));
-        }
-        let origin = state.current_location.clone();
-        if knocked_out && !already_recorded {
-            {
-              let companion = state.companions.iter_mut().find(|c| c.id == id).expect("validated companion");
-              companion.current_hp = 0;
-              companion.condition = CompanionCondition::KnockedOut;
-              companion.current_stamina = stamina.min(companion.max_stamina);
-              companion.current_mana = mana.min(companion.max_mana);
+        let updates: Vec<_> = encounter
+            .combatants()
+            .iter()
+            .filter_map(|combatant| match combatant.source {
+                crate::party_combat::CombatantSource::Companion(id) => Some((
+                    id,
+                    combatant.hp,
+                    combatant.stamina,
+                    combatant.mana,
+                    !combatant.can_act(),
+                )),
+                _ => None,
+            })
+            .collect();
+        let mut newly_knocked_out = Vec::new();
+        for (id, hp, stamina, mana, knocked_out) in updates {
+            let already_recorded = self.record(id).is_some();
+            if !state.companions.iter().any(|companion| companion.id == id) {
+                return Err(RecoveryError::CompanionNotRecruited(id));
             }
-            self.record_knockout_by_id(state, id, world)?;
-            newly_knocked_out.push(id);
-        } else {
-            let companion = state.companions.iter_mut().find(|c| c.id == id).expect("validated companion");
-            companion.current_hp = hp.min(companion.max_hp);
-            companion.current_stamina = stamina.min(companion.max_stamina);
-            companion.current_mana = mana.min(companion.max_mana);
+            if knocked_out && !already_recorded {
+                {
+                    let companion = state
+                        .companions
+                        .iter_mut()
+                        .find(|c| c.id == id)
+                        .expect("validated companion");
+                    companion.current_hp = 0;
+                    companion.condition = CompanionCondition::KnockedOut;
+                    companion.current_stamina = stamina.min(companion.max_stamina);
+                    companion.current_mana = mana.min(companion.max_mana);
+                }
+                self.record_knockout_by_id(state, id, world)?;
+                newly_knocked_out.push(id);
+            } else {
+                let companion = state
+                    .companions
+                    .iter_mut()
+                    .find(|c| c.id == id)
+                    .expect("validated companion");
+                companion.current_hp = hp.min(companion.max_hp);
+                companion.current_stamina = stamina.min(companion.max_stamina);
+                companion.current_mana = mana.min(companion.max_mana);
+                if knocked_out {
+                    companion.current_hp = 0;
+                    companion.condition = CompanionCondition::KnockedOut;
+                }
+            }
             if knocked_out {
-              companion.current_hp = 0;
-              companion.condition = CompanionCondition::KnockedOut;
+                let _ = state.party.remove_member(id);
             }
         }
-        if knocked_out {
-            let _ = state.party.remove_member(id);
-        }
-    }
-    Ok(newly_knocked_out)
+        Ok(newly_knocked_out)
     }
 
     pub fn resolve_player_defeat(&mut self, state: &mut GameState, world: &World) -> Result<(), RecoveryError> {
