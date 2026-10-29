@@ -1,7 +1,7 @@
 # Section 18 — Risk–Reward Balancing and Combat Simulation
 
 **Status:** In progress
-**Baseline version:** 1
+**Baseline version:** 2
 **Implementation:** `src/balance_simulation.rs`
 
 ## Purpose and method
@@ -28,6 +28,36 @@ The harness builds explicit low, middle and high characters with documented HP, 
 Each run captures the scenario, progression band, seed, outcome, actor activations, party damage taken, knockouts, ability use, stamina and mana spent, healing usage, recovery-gold assumption, and reward estimates. Healing currently remains zero because the one-character baseline policy does not consume healing items; the field is retained for future party-policy simulations and must not be read as proof of consumable balance.
 
 The `check_regressions` helper compares the recorded measurements to explicit action-count, incoming-damage and scenario reward envelopes. This creates a starting point for future multi-party and resource/economy sweeps; it does not yet simulate every shop, quest-claim, crafting or resale transaction sequence.
+
+## Adaptive expedition pressure — simulation model
+
+Section 18 now models an **Adaptive Expedition Pressure** curve as a simulation-only policy. The two opening warm-up encounters are separate from casualty-sensitive pressure so the system can ease returning players in without allowing later deaths to reset the opening rewards.
+
+| Next encounter | Enemy-stat multiplier | Reward multiplier | Purpose |
+| --- | ---: | ---: | --- |
+| Warm-up 1 | 0.65× | 0.40× | Gentle re-entry; rewards are always reduced |
+| Warm-up 2 | 0.80× | 0.60× | Second easy encounter; rewards are always reduced |
+| Post warm-up | 1.00× baseline, then rising | 1.00× before recovery caps | Normal pressure ramp begins |
+
+These are initial assumptions to test, not final balance claims. After warm-up, each clean victory raises pressure by 0.05×, up to a hard cap of 1.20×. Wins during warm-up do not bank pressure ahead of the third encounter. Fleeing consumes an encounter index but does not increase pressure.
+
+### Casualty response
+
+- A victory or flee with one party knockout reduces the pressure tier by one step; two or more knockouts reduce it by up to two steps.
+- A casualty grants two subsequent encounters of relief from pressure ramping. A clean win during those encounters does not immediately rebuild pressure.
+- A total-party kill resets the pressure tier and grants up to three recovery encounters capped at 0.85× enemy stats and 0.60× rewards.
+- A TPK during an already active recovery window consumes that encounter but does not refresh the timer. This prevents repeated deaths from extending easy encounters indefinitely while still giving a bounded recovery path.
+- Existing treatment/recovery costs remain separate and authoritative. The model does not waive the current 50-gold treatment assumption or change the live recovery flow.
+
+### Persistence and anti-reset rules
+
+The simulation state records completed encounters, pressure steps, remaining relief/grace windows, total casualty counts and the encounter index of the last knockout/TPK. Recency is based on encounter count, not wall-clock time. The serde round-trip test verifies the model survives serialization; fleeing and TPKs do not restart the opening warm-up.
+
+This state model is **not yet connected to the live game loop or save schema**. The tests establish expected progression and anti-reset behavior before a later implementation integrates the policy into gameplay. The profile applies multipliers to the actual simulation enemy health/attack and reward estimates so warm-up and recovery rows can be compared against the baseline with the same scenario and seed.
+
+### Adaptive regression coverage
+
+CI tests the two fixed warm-up stages and reduced rewards, a gradual pressure ramp and 1.20× cap, one- and multi-knockout responses, the finite TPK grace window, non-refreshing grace after repeated TPKs, and serde/flee behavior that prevents warm-up resets.
 
 ## Stronghold Gauntlet
 
