@@ -1,4 +1,4 @@
-use crate::crafting::{execute_recipe, get_recipes_for_skill};
+use crate::crafting::get_recipes_for_skill;
 use crate::data::{ItemType, MAX_GOLD, MAX_SKILL_LEVEL};
 use crate::event::GameEvent;
 use crate::skill_checks::SkillCheck;
@@ -191,6 +191,38 @@ impl SkillKind {
     }
 }
 
+fn award_skill_action_xp(
+    tui: &mut Tui,
+    state: &mut GameState,
+    skill: SkillKind,
+) -> io::Result<()> {
+    if award_xp(skill.data_mut(state)) {
+        let new_level = skill.data(state).level;
+        crate::quests::notify_event(
+            state,
+            &GameEvent::SkillLeveledUp {
+                skill_name: skill.name().to_string(),
+                new_level,
+            },
+        );
+        tui.show_message(
+            "Skill level up",
+            &format!(
+                "Congratulations, your {} level is now {}{}.",
+                skill.name(),
+                new_level,
+                if new_level >= MAX_SKILL_LEVEL {
+                    " (maximum level)"
+                } else {
+                    ""
+                }
+            ),
+            Some(state),
+        )?;
+    }
+    Ok(())
+}
+
 pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let skills = [
         SkillKind::Woodcutting,
@@ -358,48 +390,38 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
         status = match skill {
             SkillKind::Woodcutting => {
                 let level = skill.data(state).level;
-                let difficulty = 25;
-                let check =
-                    gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
+                let (stamina_cost, turns) = if level >= MAX_SKILL_LEVEL {
+                    (20, 5)
+                } else {
+                    (8, 1)
+                };
+                let Some(modifier) =
+                    begin_skill_action(tui, state, stamina_cost, turns)?
+                else {
+                    continue;
+                };
+                let check = roll_skill_check(level, 25, modifier);
                 if !check.succeeded {
                     format!(
-                        "You fail to find a good cut and gain no logs or XP ({}% chance).",
-                        check.success_chance
+                        "You fail to find a good cut ({}% success chance). No logs or XP gained; {} stamina and {} world turn(s) spent.",
+                        check.success_chance, stamina_cost, turns
                     )
-                } else if level >= MAX_SKILL_LEVEL {
-                    let count = crate::mastery::gathering_yield(state, 100);
-                    state.player.add_item(ItemType::Logs, count);
-                    format!("Mastery: instantly cut {count} logs.")
                 } else {
-                    let count = crate::mastery::gathering_yield(state, 1);
+                    let count = crate::mastery::gathering_yield(
+                        state,
+                        if level >= MAX_SKILL_LEVEL { 100 } else { 1 },
+                    );
                     state.player.add_item(ItemType::Logs, count);
-                    if award_xp(skill.data_mut(state)) {
-                        let new_level = skill.data(state).level;
-                        crate::quests::notify_event(
-                            state,
-                            &GameEvent::SkillLeveledUp {
-                                skill_name: skill.name().to_string(),
-                                new_level,
-                            },
-                        );
-                        tui.show_message(
-                            "Skill level up",
-                            &format!(
-                                "Congratulations, your Woodcutting level is now {}{}.",
-                                new_level,
-                                if new_level >= MAX_SKILL_LEVEL {
-                                    " (maximum level)"
-                                } else {
-                                    ""
-                                }
-                            ),
-                            Some(state),
-                        )?;
+                    if level < MAX_SKILL_LEVEL {
+                        award_skill_action_xp(tui, state, skill)?;
+                        "You cut some logs.".to_string()
+                    } else {
+                        format!("Mastery: cut {count} logs. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
                     }
-                    "You cut some logs.".to_string()
                 }
             }
             SkillKind::Cooking => {
+                let level = skill.data(state).level;
                 let raw_food = state.player.get_item_count(ItemType::RawFood);
                 if raw_food == 0 {
                     tui.show_message(
@@ -409,40 +431,43 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     )?;
                     continue;
                 }
-                if skill.data(state).level >= MAX_SKILL_LEVEL {
-                    state.player.remove_item(ItemType::RawFood, raw_food);
-                    state.player.add_item(ItemType::Food, raw_food);
-                    "Mastery: cooked all your raw food.".to_string()
+                let amount = if level >= MAX_SKILL_LEVEL {
+                    batch_count(raw_food)
                 } else {
-                    state.player.remove_item(ItemType::RawFood, 1);
-                    state.player.add_item(ItemType::Food, 1);
-                    if award_xp(skill.data_mut(state)) {
-                        let new_level = skill.data(state).level;
-                        crate::quests::notify_event(
-                            state,
-                            &GameEvent::SkillLeveledUp {
-                                skill_name: skill.name().to_string(),
-                                new_level,
-                            },
-                        );
-                        tui.show_message(
-                            "Skill level up",
-                            &format!(
-                                "Congratulations, your Cooking level is now {}{}.",
-                                new_level,
-                                if new_level >= MAX_SKILL_LEVEL {
-                                    " (maximum level)"
-                                } else {
-                                    ""
-                                }
-                            ),
-                            Some(state),
-                        )?;
+                    1
+                };
+                let (stamina_cost, turns) = if level >= MAX_SKILL_LEVEL {
+                    batch_budget(5, amount)
+                } else {
+                    (5, 1)
+                };
+                let Some(modifier) =
+                    begin_skill_action(tui, state, stamina_cost, turns)?
+                else {
+                    continue;
+                };
+                let check = roll_skill_check(level, if level >= MAX_SKILL_LEVEL { 10 } else { 15 }, modifier);
+                // Cooking always consumes the raw ingredients on an attempted
+                // action; a failed batch is spoiled rather than refunded.
+                let removed = state.player.remove_item(ItemType::RawFood, amount);
+                debug_assert!(removed, "validated raw food must still exist");
+                if !check.succeeded {
+                    format!(
+                        "The cooking attempt failed ({}% success chance). {amount} raw food spoiled; no food or XP gained. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
+                        check.success_chance
+                    )
+                } else {
+                    state.player.add_item(ItemType::Food, amount);
+                    if level < MAX_SKILL_LEVEL {
+                        award_skill_action_xp(tui, state, skill)?;
+                        "You cooked some food.".to_string()
+                    } else {
+                        format!("Mastery: cooked {amount} raw food. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
                     }
-                    "You cooked some food.".to_string()
                 }
             }
             SkillKind::Fishing => {
+                let level = skill.data(state).level;
                 let bait = state.player.get_item_count(ItemType::Bait);
                 if bait == 0 {
                     tui.show_message(
@@ -452,83 +477,73 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     )?;
                     continue;
                 }
-                if skill.data(state).level >= MAX_SKILL_LEVEL {
-                    state.player.remove_item(ItemType::Bait, bait);
-                    state.player.add_item(ItemType::RawFood, bait);
-                    "Mastery: used all your bait at once.".to_string()
+                let amount = if level >= MAX_SKILL_LEVEL {
+                    batch_count(bait)
                 } else {
-                    state.player.remove_item(ItemType::Bait, 1);
-                    state.player.add_item(ItemType::RawFood, 1);
-                    if award_xp(skill.data_mut(state)) {
-                        let new_level = skill.data(state).level;
-                        crate::quests::notify_event(
-                            state,
-                            &GameEvent::SkillLeveledUp {
-                                skill_name: skill.name().to_string(),
-                                new_level,
-                            },
-                        );
-                        tui.show_message(
-                            "Skill level up",
-                            &format!(
-                                "Congratulations, your Fishing level is now {}{}.",
-                                new_level,
-                                if new_level >= MAX_SKILL_LEVEL {
-                                    " (maximum level)"
-                                } else {
-                                    ""
-                                }
-                            ),
-                            Some(state),
-                        )?;
+                    1
+                };
+                let (stamina_cost, turns) = if level >= MAX_SKILL_LEVEL {
+                    batch_budget(6, amount)
+                } else {
+                    (6, 1)
+                };
+                let Some(modifier) =
+                    begin_skill_action(tui, state, stamina_cost, turns)?
+                else {
+                    continue;
+                };
+                let check = roll_skill_check(level, 25, modifier);
+                let removed = state.player.remove_item(ItemType::Bait, amount);
+                debug_assert!(removed, "validated bait must still exist");
+                if !check.succeeded {
+                    format!(
+                        "You failed to catch anything ({}% success chance). {amount} bait was lost; no fish or XP gained. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
+                        check.success_chance
+                    )
+                } else {
+                    state.player.add_item(ItemType::RawFood, amount);
+                    if level < MAX_SKILL_LEVEL {
+                        award_skill_action_xp(tui, state, skill)?;
+                        "You caught a fish.".to_string()
+                    } else {
+                        format!("Mastery: caught {amount} fish. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
                     }
-                    "You caught a fish.".to_string()
                 }
             }
             SkillKind::Mining => {
                 let level = skill.data(state).level;
-                let difficulty = 30;
-                let check =
-                    gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
+                let (stamina_cost, turns) = if level >= MAX_SKILL_LEVEL {
+                    (20, 5)
+                } else {
+                    (10, 1)
+                };
+                let Some(modifier) =
+                    begin_skill_action(tui, state, stamina_cost, turns)?
+                else {
+                    continue;
+                };
+                let check = roll_skill_check(level, 30, modifier);
                 if !check.succeeded {
                     format!(
-                        "You fail to extract usable ore and gain no ore or XP ({}% chance).",
-                        check.success_chance
+                        "You fail to extract usable ore ({}% success chance). No ore or XP gained; {} stamina and {} world turn(s) spent.",
+                        check.success_chance, stamina_cost, turns
                     )
-                } else if level >= MAX_SKILL_LEVEL {
-                    let count = crate::mastery::gathering_yield(state, 100);
-                    state.player.add_item(ItemType::Ore, count);
-                    format!("Mastery: instantly mined {count} ore.")
                 } else {
-                    let count = crate::mastery::gathering_yield(state, 1);
+                    let count = crate::mastery::gathering_yield(
+                        state,
+                        if level >= MAX_SKILL_LEVEL { 100 } else { 1 },
+                    );
                     state.player.add_item(ItemType::Ore, count);
-                    if award_xp(skill.data_mut(state)) {
-                        let new_level = skill.data(state).level;
-                        crate::quests::notify_event(
-                            state,
-                            &GameEvent::SkillLeveledUp {
-                                skill_name: skill.name().to_string(),
-                                new_level,
-                            },
-                        );
-                        tui.show_message(
-                            "Skill level up",
-                            &format!(
-                                "Congratulations, your Mining level is now {}{}.",
-                                new_level,
-                                if new_level >= MAX_SKILL_LEVEL {
-                                    " (maximum level)"
-                                } else {
-                                    ""
-                                }
-                            ),
-                            Some(state),
-                        )?;
+                    if level < MAX_SKILL_LEVEL {
+                        award_skill_action_xp(tui, state, skill)?;
+                        "You mined some ore.".to_string()
+                    } else {
+                        format!("Mastery: mined {count} ore. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
                     }
-                    "You mined some ore.".to_string()
                 }
             }
             SkillKind::Smithing => {
+                let level = skill.data(state).level;
                 let ore = state.player.get_item_count(ItemType::Ore);
                 if ore == 0 {
                     tui.show_message(
@@ -538,54 +553,70 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     )?;
                     continue;
                 }
-                if skill.data(state).level >= MAX_SKILL_LEVEL {
-                    state.player.remove_item(ItemType::Ore, ore);
-                    state.player.add_item(ItemType::Ingots, ore);
-                    "Mastery: smelted all your ore.".to_string()
+                let amount = batch_count(ore);
+                let (stamina_cost, turns) = if level >= MAX_SKILL_LEVEL {
+                    batch_budget(8, amount)
                 } else {
-                    state.player.remove_item(ItemType::Ore, 1);
-                    state.player.add_item(ItemType::Ingots, 1);
-                    if award_xp(skill.data_mut(state)) {
-                        let new_level = skill.data(state).level;
-                        crate::quests::notify_event(
-                            state,
-                            &GameEvent::SkillLeveledUp {
-                                skill_name: skill.name().to_string(),
-                                new_level,
-                            },
-                        );
-                        tui.show_message(
-                            "Skill level up",
-                            &format!(
-                                "Congratulations, your Smithing level is now {}{}.",
-                                new_level,
-                                if new_level >= MAX_SKILL_LEVEL {
-                                    " (maximum level)"
-                                } else {
-                                    ""
-                                }
-                            ),
-                            Some(state),
-                        )?;
+                    (8, 1)
+                };
+                let Some(modifier) =
+                    begin_skill_action(tui, state, stamina_cost, turns)?
+                else {
+                    continue;
+                };
+                let check = roll_skill_check(level, 25, modifier);
+                let removed = state.player.remove_item(ItemType::Ore, amount);
+                debug_assert!(removed, "validated ore must still exist");
+                if !check.succeeded {
+                    let scraps_after = state
+                        .player
+                        .get_item_count(ItemType::ScrapMetal)
+                        .checked_add(amount);
+                    if scraps_after.is_none() {
+                        // Keep the input transaction intact when salvage would overflow.
+                        state.player.add_item(ItemType::Ore, amount);
+                        state.player.stamina = state.player.stamina.saturating_add(stamina_cost).min(state.player.max_stamina);
+                        format!("The failed smelting batch would overflow your scrap inventory; no ore or stamina was lost.")
+                    } else {
+                        state.player.add_item(ItemType::ScrapMetal, amount);
+                        format!(
+                            "Smelting failed ({}% success chance). {amount} ore became Metal Scraps. You can try recovering ingots from scraps at a lower success chance. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
+                            check.success_chance
+                        )
                     }
-                    "You smithed an ingot.".to_string()
+                } else {
+                    state.player.add_item(ItemType::Ingots, amount);
+                    if level < MAX_SKILL_LEVEL {
+                        award_skill_action_xp(tui, state, skill)?;
+                        "You smithed an ingot.".to_string()
+                    } else {
+                        format!("Mastery: smelted {amount} ore into ingots. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
+                    }
                 }
             }
             SkillKind::Thieving => {
                 let level = skill.data(state).level;
-                let check = thieving_check(level, rand::thread_rng().gen_range(0..100));
+                let (stamina_cost, turns) = if level >= MAX_SKILL_LEVEL {
+                    (20, 5)
+                } else {
+                    (8, 1)
+                };
+                let Some(modifier) =
+                    begin_skill_action(tui, state, stamina_cost, turns)?
+                else {
+                    continue;
+                };
+                let check = roll_skill_check(level, 25, modifier);
                 if !check.succeeded {
-                    // Failure is a wasted attempt only: no gold, thread, or XP.
                     format!(
-                        "You get away empty-handed ({}% success chance).",
-                        check.success_chance
+                        "You get away empty-handed ({}% success chance). No gold, thread, or XP gained; {} stamina and {} world turn(s) spent.",
+                        check.success_chance, stamina_cost, turns
                     )
                 } else {
                     let found_thread = rand::thread_rng().gen_bool(0.4);
                     if found_thread {
                         state.player.add_item(ItemType::Thread, 1);
                     }
-
                     if level >= MAX_SKILL_LEVEL {
                         state.player.gold = state.player.gold.saturating_add(10_000).min(MAX_GOLD);
                         if found_thread {
@@ -595,29 +626,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         }
                     } else {
                         state.player.gold = state.player.gold.saturating_add(10).min(MAX_GOLD);
-                        if award_xp(skill.data_mut(state)) {
-                            let new_level = skill.data(state).level;
-                            crate::quests::notify_event(
-                                state,
-                                &GameEvent::SkillLeveledUp {
-                                    skill_name: skill.name().to_string(),
-                                    new_level,
-                                },
-                            );
-                            tui.show_message(
-                                "Skill level up",
-                                &format!(
-                                    "Congratulations, your Thieving level is now {}{}.",
-                                    new_level,
-                                    if new_level >= MAX_SKILL_LEVEL {
-                                        " (maximum level)"
-                                    } else {
-                                        ""
-                                    }
-                                ),
-                                Some(state),
-                            )?;
-                        }
+                        award_skill_action_xp(tui, state, skill)?;
                         if found_thread {
                             "You stole some coins and found a thread.".to_string()
                         } else {
