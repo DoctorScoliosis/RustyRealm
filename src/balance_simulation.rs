@@ -119,27 +119,25 @@ impl AdaptivePressureState {
     /// are easy and low-reward; later pressure rises only after clean victories.
     pub fn profile(&self) -> AdaptiveEncounterProfile {
         let encounter_number = self.completed_encounters.saturating_add(1);
-        let (mut enemy_stat_multiplier_bps, mut reward_multiplier_bps, warmup_stage) =
-            match self.completed_encounters {
-                0 => (WARMUP_ONE_ENEMY_BPS, WARMUP_ONE_REWARD_BPS, Some(1)),
-                1 => (WARMUP_TWO_ENEMY_BPS, WARMUP_TWO_REWARD_BPS, Some(2)),
-                _ => (
-                    (NORMAL_MULTIPLIER_BPS
-                        + u32::from(self.pressure_steps.min(MAX_PRESSURE_STEPS))
-                            * PRESSURE_STEP_BPS)
-                        .min(MAX_PRESSURE_MULTIPLIER_BPS),
-                    NORMAL_MULTIPLIER_BPS,
-                    None,
-                ),
-            };
+        let (mut enemy_stat_multiplier_bps, mut reward_multiplier_bps, warmup_stage) = match self
+            .completed_encounters
+        {
+            0 => (WARMUP_ONE_ENEMY_BPS, WARMUP_ONE_REWARD_BPS, Some(1)),
+            1 => (WARMUP_TWO_ENEMY_BPS, WARMUP_TWO_REWARD_BPS, Some(2)),
+            _ => (
+                (NORMAL_MULTIPLIER_BPS
+                    + u32::from(self.pressure_steps.min(MAX_PRESSURE_STEPS)) * PRESSURE_STEP_BPS)
+                    .min(MAX_PRESSURE_MULTIPLIER_BPS),
+                NORMAL_MULTIPLIER_BPS,
+                None,
+            ),
+        };
 
         let recovery_grace_active = self.recovery_grace_encounters_remaining > 0;
         if recovery_grace_active {
             // Recovery grace never stacks multiplicatively with warm-up.
-            enemy_stat_multiplier_bps =
-                enemy_stat_multiplier_bps.min(TPK_RECOVERY_ENEMY_CAP_BPS);
-            reward_multiplier_bps =
-                reward_multiplier_bps.min(TPK_RECOVERY_REWARD_CAP_BPS);
+            enemy_stat_multiplier_bps = enemy_stat_multiplier_bps.min(TPK_RECOVERY_ENEMY_CAP_BPS);
+            reward_multiplier_bps = reward_multiplier_bps.min(TPK_RECOVERY_REWARD_CAP_BPS);
         }
 
         AdaptiveEncounterProfile {
@@ -175,7 +173,8 @@ impl AdaptivePressureState {
                     self.total_party_knockouts = self
                         .total_party_knockouts
                         .saturating_add(u64::from(party_knockouts));
-                    self.pressure_steps = self.pressure_steps.saturating_sub(party_knockouts.min(2));
+                    self.pressure_steps =
+                        self.pressure_steps.saturating_sub(party_knockouts.min(2));
                     self.casualty_relief_encounters_remaining = CASUALTY_RELIEF_ENCOUNTERS;
                 } else if !was_warmup && !had_recovery_grace && !had_casualty_relief {
                     self.pressure_steps = self
@@ -190,7 +189,8 @@ impl AdaptivePressureState {
                     self.total_party_knockouts = self
                         .total_party_knockouts
                         .saturating_add(u64::from(party_knockouts));
-                    self.pressure_steps = self.pressure_steps.saturating_sub(party_knockouts.min(2));
+                    self.pressure_steps =
+                        self.pressure_steps.saturating_sub(party_knockouts.min(2));
                     self.casualty_relief_encounters_remaining = CASUALTY_RELIEF_ENCOUNTERS;
                 }
             }
@@ -246,8 +246,7 @@ impl AdaptiveEncounterProfile {
 }
 
 fn apply_multiplier(value: u32, multiplier_bps: u32) -> u32 {
-    ((u64::from(value) * u64::from(multiplier_bps)) / 10_000)
-        .min(u64::from(u32::MAX)) as u32
+    ((u64::from(value) * u64::from(multiplier_bps)) / 10_000).min(u64::from(u32::MAX)) as u32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -493,7 +492,12 @@ pub fn simulate_encounter(
     progression: ProgressionBand,
     seed: u64,
 ) -> SimulationMetrics {
-    simulate_encounter_with_profile(spec, progression, seed, AdaptiveEncounterProfile::baseline())
+    simulate_encounter_with_profile(
+        spec,
+        progression,
+        seed,
+        AdaptiveEncounterProfile::baseline(),
+    )
 }
 
 /// Simulates one encounter with the currently selected adaptive profile.
@@ -625,8 +629,7 @@ pub fn simulate_encounter_with_profile(
     }
     metrics.gold_reward =
         apply_multiplier(metrics.gold_reward, adaptive_profile.reward_multiplier_bps);
-    metrics.xp_reward =
-        apply_multiplier(metrics.xp_reward, adaptive_profile.reward_multiplier_bps);
+    metrics.xp_reward = apply_multiplier(metrics.xp_reward, adaptive_profile.reward_multiplier_bps);
     metrics
 }
 
