@@ -92,21 +92,27 @@ impl RecoveryState {
     }
 
     pub fn record_knockout_by_id(
-    &mut self,
-    state: &mut GameState,
-    id: CompanionId,
-    world: &World,
+        &mut self,
+        state: &mut GameState,
+        id: CompanionId,
+        world: &World,
     ) -> Result<bool, RecoveryError> {
-    let origin = state.current_location.clone();
-    let party = &mut state.party;
-    let companions = &mut state.companions;
-    let companion = companions.iter_mut().find(|c| c.id == id)
-        .ok_or(RecoveryError::CompanionNotRecruited(id))?;
-    let newly_recorded = self.record_knockout(companion, world, &origin)?;
-    // A knocked-out companion is removed from the active roster so party
-    // capacity and subsequent encounter construction stay consistent.
-    let _ = party.remove_member(id);
-    Ok(newly_recorded)
+        let origin = state.current_location.clone();
+        let already_recorded = self.record(id).is_some();
+        {
+            let companion = state.companions.iter_mut().find(|c| c.id == id)
+                .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+            if already_recorded {
+                companion.current_hp = 0;
+                companion.condition = CompanionCondition::KnockedOut;
+            } else {
+                self.record_knockout(companion, world, &origin)?;
+            }
+        }
+        // A knocked-out companion is removed from the active roster. Repeating
+        // this call is safe even if the first transition already removed them.
+        let _ = state.party.remove_member(id);
+        Ok(!already_recorded)
     }
 
     /// Transactional core used by the UI when borrowing GameState fields separately.
