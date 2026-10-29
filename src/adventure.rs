@@ -387,13 +387,13 @@ mod tests {
         let mut state = state();
         ensure_region_quest(&mut state);
         let before = state.player.gold;
-        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("standing_stones") });
+        crate::quests::notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("standing_stones") });
         notify_landmark_interaction(&mut state, "standing_stones_survey");
-        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("sunken_ruins") });
-        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Stone Guardian".into(), is_stronghold: false });
-        notify_event(&mut state, &GameEvent::ResourceGathered { skill_name: "Woodcutting".into(), item_type: ItemType::Logs, count: 3 });
+        crate::quests::notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("sunken_ruins") });
+        crate::quests::notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Stone Guardian".into(), is_stronghold: false });
+        crate::quests::notify_event(&mut state, &GameEvent::ResourceGathered { skill_name: "Woodcutting".into(), item_type: ItemType::Logs, count: 3 });
         state.current_location = LocationId::from("village_start");
-        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("village_start") });
+        crate::quests::notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("village_start") });
         notify_landmark_interaction(&mut state, "village_supply_board");
         assert!(state.active_quests.iter().find(|q| q.id == REGION_QUEST_ID).unwrap().is_completed);
         assert_eq!(claim_region_quest(&mut state), Ok(QuestReward::Gold(REGION_QUEST_REWARD_GOLD)));
