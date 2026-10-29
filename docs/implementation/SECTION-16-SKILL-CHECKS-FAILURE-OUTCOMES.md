@@ -1,45 +1,29 @@
 # Section 16 — Skill Checks and Failure Outcomes
 
-**Status:** Planned
-**Dependencies:** Existing skills and economy/inventory operations; later used by composite quests and realm content.
+**Status:** Implemented — review via the Section 16 pull request
+**Dependencies:** Existing skills, mastery and economy/inventory operations; later used by composite quests and realm content.
 
-## Objective
+## Implementation summary
 
-Introduce reusable, bounded uncertainty for selected non-combat actions while keeping outcomes predictable, testable, and fair.
+- Add `src/skill_checks.rs`, a UI-independent bounded probability model.
+- Formula: `clamp(30 + floor(min(skill_level, 100) / 2) - difficulty + modifier, 10, 95)` percent.
+- A controlled integer roll in `0..=99` succeeds when `roll < success_chance`. Invalid rolls are rejected.
+- Woodcutting difficulty is 25; Mining difficulty is 30; Thieving difficulty is 25. These are the only currently integrated actions.
+- Gathering failure is a wasted attempt: no item yield, mastery bonus, or skill XP. Thieving failure awards no gold, thread, or skill XP. No input materials or tools are consumed on these failures.
+- Existing Cooking, Fishing, Smithing/recipe actions and exploration routes are not yet checked: their current resource/reward semantics are deliberately preserved until separate activity-specific policies are implemented.
 
-## Implementation slices
+## Probability model and bounds
 
-### 16.1 — Skill-check model and probability
+Skill level is capped at 100 before calculation. Modifier values are action-specific percentage points and are clamped through the final probability bounds, so neither positive nor negative modifiers can exceed 95% or fall below 10%. The model accepts only integer rolls 0 through 99, supporting deterministic boundary tests.
 
-- Define a domain-level check input containing relevant skill value, action difficulty, and applicable modifiers.
-- Document the success-probability formula and configurable lower/upper bounds.
-- Allow equipment, class abilities, mastery, and environmental conditions to modify a check only when they are relevant to the action.
-- Use controlled randomness or an injected roll source so probability and boundary tests are reproducible.
+## Transaction policy
 
-### 16.2 — Action-specific outcomes
+The integrated gathering and thieving actions validate existing prerequisites before the check. These current checked actions have no consumed inputs, so failure is transactional by construction: failure only produces a result message and does not mutate inventory, currency, or skill XP. Success retains the existing yield, XP, mastery and thread reward behaviour. Resource-consuming recipes and fishing/cooking/smithing have no new rolls in this slice.
 
-- Apply checks selectively to activities such as gathering, thieving, crafting, and exploration; do not add a roll to every routine interaction by default.
-- Define outcomes for each activity: for example, wasted time, reduced yield, lost opportunity, or alerted enemies where contextually appropriate.
-- Specify whether any materials, currency, tools, or other resources are consumed on failure before implementing the action.
-- Keep routine low-risk actions from becoming excessively frustrating.
+## Tests
 
-### 16.3 — Transactional validation
+Unit tests cover low/medium/high skill values, monotonically better chances at higher relevant levels, bounds, oversized skill levels, extreme modifiers, exact success threshold, invalid rolls and activity-specific difficulties/outcomes.
 
-- Validate prerequisites before rolling or mutating inventory/resources.
-- Apply the documented success or failure outcome as one coherent operation so a failed validation cannot partially consume resources.
-- Keep action policy separate from terminal rendering.
+## Remaining scope
 
-## Scope boundaries
-
-- Do not use one universal penalty for every failure.
-- Do not let equipment, mastery, or skill bonuses exceed configured probability bounds.
-- Avoid adding checks to existing activities until their current resource and reward semantics have been audited.
-
-## Acceptance criteria
-
-- Every implemented check has a documented difficulty, formula, bounds, and failure outcome.
-- Higher relevant skill generally improves success probability.
-- Resource consumption is explicitly defined and transactional.
-- Tests cover low, medium, and high skill values, probability bounds, and edge cases.
-- Controlled rolls make tests deterministic.
-- Bonuses cannot push success beyond the configured maximum or below the configured minimum.
+Crafting and exploration are intentionally not modified yet. Equipment and class abilities do not currently affect these checks because no audited, directly relevant modifiers exist for the selected actions. Mastery remains relevant only to its existing successful gathering yield behaviour; it does not alter check probability.
