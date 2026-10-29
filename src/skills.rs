@@ -3,23 +3,35 @@ use crate::data::{ItemType, MAX_GOLD, MAX_SKILL_LEVEL};
 use crate::event::GameEvent;
 use crate::state::{GameState, SkillData};
 use crate::ui::Tui;
-use rand::Rng;
 use crate::skill_checks::SkillCheck;
+use rand::Rng;
 use std::io;
 
 /// Resolve an optional gathering check. The penalty for failure is a wasted
 /// action: no items or skill XP are consumed/awarded. Existing recipe actions
 /// and resource-consuming fishing/cooking/smithing retain their prior rules.
-fn gathering_check(skill_level: u32, difficulty: i32, roll: u8) -> crate::skill_checks::SkillCheckResult {
-    SkillCheck { skill_level, difficulty, modifier: 0 }
-        .resolve(roll)
-        .expect("generated skill-check roll is within 0..=99")
+fn gathering_check(
+    skill_level: u32,
+    difficulty: i32,
+    roll: u8,
+) -> crate::skill_checks::SkillCheckResult {
+    SkillCheck {
+        skill_level,
+        difficulty,
+        modifier: 0,
+    }
+    .resolve(roll)
+    .expect("generated skill-check roll is within 0..=99")
 }
 
 fn thieving_check(skill_level: u32, roll: u8) -> crate::skill_checks::SkillCheckResult {
-    SkillCheck { skill_level, difficulty: 25, modifier: 0 }
-        .resolve(roll)
-        .expect("generated skill-check roll is within 0..=99")
+    SkillCheck {
+        skill_level,
+        difficulty: 25,
+        modifier: 0,
+    }
+    .resolve(roll)
+    .expect("generated skill-check roll is within 0..=99")
 }
 
 fn award_xp(skill: &mut SkillData) -> bool {
@@ -229,9 +241,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             SkillKind::Woodcutting => {
                 let level = skill.data(state).level;
                 let difficulty = 25;
-                let check = gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
+                let check =
+                    gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
                 if !check.succeeded {
-                    format!("You fail to find a good cut and gain no logs or XP ({}% chance).", check.success_chance)
+                    format!(
+                        "You fail to find a good cut and gain no logs or XP ({}% chance).",
+                        check.success_chance
+                    )
                 } else if level >= MAX_SKILL_LEVEL {
                     let count = crate::mastery::gathering_yield(state, 100);
                     state.player.add_item(ItemType::Logs, count);
@@ -354,9 +370,13 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
             SkillKind::Mining => {
                 let level = skill.data(state).level;
                 let difficulty = 30;
-                let check = gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
+                let check =
+                    gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
                 if !check.succeeded {
-                    format!("You fail to extract usable ore and gain no ore or XP ({}% chance).", check.success_chance)
+                    format!(
+                        "You fail to extract usable ore and gain no ore or XP ({}% chance).",
+                        check.success_chance
+                    )
                 } else if level >= MAX_SKILL_LEVEL {
                     let count = crate::mastery::gathering_yield(state, 100);
                     state.player.add_item(ItemType::Ore, count);
