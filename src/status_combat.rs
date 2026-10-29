@@ -202,17 +202,26 @@ pub enum PreferredRange {
     Far,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnemyStatusPayload {
+    pub kind: StatusEffectKind,
+    pub duration: u32,
+    pub potency: u32,
+    pub application_chance_pct: u8,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnemyProfile {
     pub archetype: EnemyArchetype,
     pub preferred_range: PreferredRange,
     pub abilities: Vec<AbilityId>,
-    pub status_payload: Option<(StatusEffectKind, u32, u32, u8)>,
+    pub status_payload: Option<EnemyStatusPayload>,
+    pub telegraph_chance_pct: u8,
     pub tendency: EnemyTendency,
 }
 
 impl EnemyProfile {
-    /// Maps the existing hostile/story roster onto a handful of explicit behaviours.
+    /// Maps only the existing hostile/story roster onto a handful of tactical behaviours.
     /// This does not change the random encounter allow-list in combat.rs.
     pub fn for_name(name: &str) -> Self {
         let base = name.strip_prefix("Elite ").unwrap_or(name);
@@ -221,44 +230,69 @@ impl EnemyProfile {
                 archetype: EnemyArchetype::StatusSpecialist,
                 preferred_range: PreferredRange::Far,
                 abilities: vec![AbilityId::LifeDrain],
-                status_payload: Some((
-                    if base == "Dragon" || base == "Elemental" {
+                status_payload: Some(EnemyStatusPayload {
+                    kind: if base == "Dragon" || base == "Elemental" {
                         StatusEffectKind::Burn
                     } else {
                         StatusEffectKind::Slow
                     },
-                    2,
-                    1,
-                    35,
-                )),
+                    duration: 2,
+                    potency: 1,
+                    application_chance_pct: 35,
+                }),
+                telegraph_chance_pct: 35,
                 tendency: EnemyTendency::PreferStatusFreeTargets,
             },
             "Stronghold Mage" => Self {
                 archetype: EnemyArchetype::StatusSpecialist,
                 preferred_range: PreferredRange::Far,
                 abilities: vec![AbilityId::LifeDrain],
-                status_payload: Some((StatusEffectKind::Slow, 2, 1, 35)),
+                status_payload: Some(EnemyStatusPayload {
+                    kind: StatusEffectKind::Slow,
+                    duration: 2,
+                    potency: 1,
+                    application_chance_pct: 35,
+                }),
+                telegraph_chance_pct: 35,
                 tendency: EnemyTendency::PreferStatusFreeTargets,
             },
             "Stronghold Ranger" => Self {
                 archetype: EnemyArchetype::RangedPressure,
                 preferred_range: PreferredRange::Far,
                 abilities: vec![AbilityId::HeavyStrike],
-                status_payload: Some((StatusEffectKind::Mark, 2, 1, 40)),
+                status_payload: Some(EnemyStatusPayload {
+                    kind: StatusEffectKind::Mark,
+                    duration: 2,
+                    potency: 1,
+                    application_chance_pct: 40,
+                }),
+                telegraph_chance_pct: 25,
                 tendency: EnemyTendency::PreferMarkedTargets,
             },
             "Stronghold Warrior" | "Giant" | "Rockbeast" | "Ent" => Self {
                 archetype: EnemyArchetype::AggressiveMelee,
                 preferred_range: PreferredRange::Melee,
                 abilities: vec![AbilityId::HeavyStrike, AbilityId::Cleave],
-                status_payload: Some((StatusEffectKind::WeakenedDefences, 2, 1, 25)),
+                status_payload: Some(EnemyStatusPayload {
+                    kind: StatusEffectKind::WeakenedDefences,
+                    duration: 2,
+                    potency: 1,
+                    application_chance_pct: 25,
+                }),
+                telegraph_chance_pct: 15,
                 tendency: EnemyTendency::PreferDamagedTargets,
             },
             _ => Self {
                 archetype: EnemyArchetype::DefensiveProtector,
                 preferred_range: PreferredRange::Melee,
                 abilities: vec![AbilityId::Cleave],
-                status_payload: Some((StatusEffectKind::Bleed, 2, 6, 25)),
+                status_payload: Some(EnemyStatusPayload {
+                    kind: StatusEffectKind::Bleed,
+                    duration: 2,
+                    potency: 6,
+                    application_chance_pct: 25,
+                }),
+                telegraph_chance_pct: 10,
                 tendency: EnemyTendency::PreferLowDefenceTargets,
             },
         }
@@ -662,6 +696,43 @@ mod tests {
             decision.intended.action,
             CombatAction::BasicAttack { .. }
         ));
+    }
+
+    #[test]
+    fn stronghold_guardians_keep_distinct_tactical_profiles() {
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Mage").archetype,
+            EnemyArchetype::StatusSpecialist
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Ranger").archetype,
+            EnemyArchetype::RangedPressure
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Warrior").archetype,
+            EnemyArchetype::AggressiveMelee
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Mage")
+                .status_payload
+                .unwrap()
+                .kind,
+            StatusEffectKind::Slow
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Ranger")
+                .status_payload
+                .unwrap()
+                .kind,
+            StatusEffectKind::Mark
+        );
+        assert_eq!(
+            EnemyProfile::for_name("Stronghold Warrior")
+                .status_payload
+                .unwrap()
+                .kind,
+            StatusEffectKind::WeakenedDefences
+        );
     }
 
     #[test]

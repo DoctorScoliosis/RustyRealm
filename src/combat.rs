@@ -100,74 +100,95 @@ pub fn run_engine_battle(
                 return Ok(BattleOutcome::Victory);
             }
 
-            sync_player(state, &player);
-            tui.show_message(
-                "DANGER · Incoming attack",
-                &format!(
-                    "{} is preparing {}!\n{}",
-                    enemy.name, attack.name, attack.description
-                ),
-                Some(state),
-            )?;
-
-            let has_brew = state.player.get_item_count(ItemType::Potions) > 0;
-            let defensive_options: Vec<&str> = if has_brew {
-                vec![
-                    "Block · mitigate 75%",
-                    "Dodge · 80% chance",
-                    "Use brew · heal and mitigate 50%",
-                ]
+            if CombatEngine::cancel_telegraph_if_stunned(&mut enemy) {
+                battle_log.push(format!(
+                    "{}'s telegraphed attack was interrupted by Stun.",
+                    enemy.name
+                ));
+                enemy_turn_consumed = true;
             } else {
-                vec!["Block · mitigate 75%", "Dodge · 80% chance"]
-            };
-            let defence_choice =
-                tui.select_menu("Defensive response", &defensive_options, Some(state))?;
-            let defence = match defence_choice {
-                0 => DefensiveChoice::Block,
-                1 => DefensiveChoice::Dodge,
-                _ if has_brew => {
-                    if state.player.remove_item(ItemType::Potions, 1) {
-                        let healing = (player.max_hp / 4).max(1);
-                        player.hp = player.hp.saturating_add(healing).min(player.max_hp);
-                        battle_log.push(format!("You consume a brew and restore {healing} HP."));
-                    }
-                    DefensiveChoice::Consumable
-                }
-                _ => DefensiveChoice::Block,
-            };
-
-            let (raw_damage, damage_type, _, logs) =
-                CombatEngine::generate_enemy_turn(&mut enemy, &player);
-            battle_log.extend(logs);
-            let (mitigated, logs) = CombatEngine::calculate_damage(
-                raw_damage,
-                damage_type,
-                &player.name,
-                player.shield_wall_duration > 0,
-                defence,
-            );
-            battle_log.extend(logs);
-            let armour_reduction = rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
-            let damage = mitigated.saturating_sub(armour_reduction);
-            player.hp = player.hp.saturating_sub(damage);
-            battle_log.push(format!(
-                "{} deals {damage} damage to you after mitigation.",
-                enemy.name
-            ));
-            enemy_turn_consumed = true;
-
-            if player.hp == 0 {
                 sync_player(state, &player);
                 tui.show_message(
-                    "Defeat",
+                    "DANGER · Incoming attack",
                     &format!(
-                        "{}'s {} defeated you. You were revived at full health.",
-                        enemy.name, attack.name
+                        "{} is preparing {}!\n{}",
+                        enemy.name, attack.name, attack.description
                     ),
                     Some(state),
                 )?;
-                state.player.hp = state.player.max_hp;
-                return Ok(BattleOutcome::Defeated);
+
+                let has_brew = state.player.get_item_count(ItemType::Potions) > 0;
+                let defensive_options: Vec<&str> = if has_brew {
+                    vec![
+                        "Block · mitigate 75%",
+                        "Dodge · 80% chance",
+                        "Use brew · heal and mitigate 50%",
+                    ]
+                } else {
+                    vec!["Block · mitigate 75%", "Dodge · 80% chance"]
+                };
+                let defence_choice =
+                    tui.select_menu("Defensive response", &defensive_options, Some(state))?;
+                let defence = match defence_choice {
+                    0 => DefensiveChoice::Block,
+                    1 => DefensiveChoice::Dodge,
+                    _ if has_brew => {
+                        if state.player.remove_item(ItemType::Potions, 1) {
+                            let healing = (player.max_hp / 4).max(1);
+                            player.hp = player.hp.saturating_add(healing).min(player.max_hp);
+                            battle_log
+                                .push(format!("You consume a brew and restore {healing} HP."));
+                        }
+                        DefensiveChoice::Consumable
+                    }
+                    _ => DefensiveChoice::Block,
+                };
+
+                let intent = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+                let raw_damage = intent.damage;
+                let damage_type = intent.damage_type;
+                let status_payload = intent.status_payload;
+                battle_log.extend(intent.logs);
+                let (mitigated, logs) = CombatEngine::calculate_damage(
+                    raw_damage,
+                    damage_type,
+                    &player.name,
+                    player.shield_wall_duration > 0,
+                    defence,
+                );
+                battle_log.extend(logs);
+                if mitigated > 0 {
+                    let status_logs = CombatEngine::apply_enemy_status_payload(
+                        &enemy.name,
+                        &mut player,
+                        status_payload,
+                        rand::thread_rng().gen_range(0..100),
+                    );
+                    battle_log.extend(status_logs);
+                }
+                let armour_reduction =
+                    rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
+                let damage = mitigated.saturating_sub(armour_reduction);
+                player.hp = player.hp.saturating_sub(damage);
+                battle_log.push(format!(
+                    "{} deals {damage} damage to you after mitigation.",
+                    enemy.name
+                ));
+                enemy_turn_consumed = true;
+
+                if player.hp == 0 {
+                    sync_player(state, &player);
+                    tui.show_message(
+                        "Defeat",
+                        &format!(
+                            "{}'s {} defeated you. You were revived at full health.",
+                            enemy.name, attack.name
+                        ),
+                        Some(state),
+                    )?;
+                    state.player.hp = state.player.max_hp;
+                    return Ok(BattleOutcome::Defeated);
+                }
             }
         }
 
@@ -368,9 +389,11 @@ pub fn run_engine_battle(
                 enemy.is_stunned = false;
                 battle_log.push(format!("{} is stunned and misses its turn.", enemy.name));
             } else {
-                let (raw_damage, damage_type, _, logs) =
-                    CombatEngine::generate_enemy_turn(&mut enemy, &player);
-                battle_log.extend(logs);
+                let intent = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+                let raw_damage = intent.damage;
+                let damage_type = intent.damage_type;
+                let status_payload = intent.status_payload;
+                battle_log.extend(intent.logs);
 
                 if raw_damage > 0 {
                     let (mitigated, logs) = CombatEngine::calculate_damage(
@@ -381,6 +404,15 @@ pub fn run_engine_battle(
                         DefensiveChoice::None,
                     );
                     battle_log.extend(logs);
+                    if mitigated > 0 {
+                        let status_logs = CombatEngine::apply_enemy_status_payload(
+                            &enemy.name,
+                            &mut player,
+                            status_payload,
+                            rand::thread_rng().gen_range(0..100),
+                        );
+                        battle_log.extend(status_logs);
+                    }
                     let armour_reduction =
                         rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
                     let damage = mitigated.saturating_sub(armour_reduction);
