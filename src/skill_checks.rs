@@ -4,7 +4,7 @@
 //! raw = 30 + skill_level / 2 - difficulty + modifier.
 //! The result is clamped to 10..=95 percent. Modifiers are percentage points
 //! and should only be supplied when relevant to the checked action. Rolls are
-//! integers in 0..100; a roll below the success chance succeeds.
+//! integers in 0..=99; a roll below the success chance succeeds.
 //!
 //! Skill checks are pure until a caller commits a separate validated outcome.
 
@@ -100,7 +100,7 @@ mod tests {
         let check = check(50, 35, 0);
         assert!(check.resolve(19).unwrap().succeeded);
         assert!(!check.resolve(20).unwrap().succeeded);
-        assert_eq!(check.resolve(99).unwrap().succeeded, false);
+        assert!(!check.resolve(99).unwrap().succeeded);
     }
 
     #[test]
