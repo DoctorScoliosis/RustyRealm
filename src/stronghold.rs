@@ -1,5 +1,5 @@
-use crate::combat::{run_engine_battle, BattleConfig, BattleOutcome};
 use crate::data::{ArmourTier, NpcType, WeaponTier, MAX_GOLD, MAX_PLAYER_LEVEL};
+use crate::party_battle::{run_party_battle, BattleConfig, BattleOutcome};
 use crate::event::GameEvent;
 use crate::state::GameState;
 use crate::ui::Tui;
@@ -124,7 +124,7 @@ fn run_endless(tui: &mut Tui, s: &mut GameState) -> io::Result<()> {
             ),
             Some(s),
         )?;
-        match run_engine_battle(
+        match run_party_battle(
             tui,
             s,
             BattleConfig {
@@ -209,7 +209,7 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
     let (npc_type, level) = stronghold_guardian_from_roll(rng.gen_range(1..=3));
     let health = npc_type.base_health();
 
-    match run_engine_battle(
+    match run_party_battle(
         tui,
         state,
         BattleConfig {
@@ -284,7 +284,7 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         Some(state),
     )?;
 
-    match run_engine_battle(
+    match run_party_battle(
         tui,
         state,
         BattleConfig {
