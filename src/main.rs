@@ -306,6 +306,104 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
+/// Rest trades resources and world time for stamina recovery.
+fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
+    let location = world.get_location(&state.current_location);
+    let in_settlement = location
+        .map(|place| place.category == LocationCategory::Settlement)
+        .unwrap_or(false);
+    let location_name = location
+        .map(|place| place.name.as_str())
+        .unwrap_or("Unknown location");
+    let food = state.player.get_item_count(ItemType::Food);
+    let needs_recovery =
+        state.player.stamina < state.player.max_stamina || state.player.hp < state.player.max_hp;
+
+    let mut options = Vec::<String>::new();
+    if in_settlement {
+        options.push(if state.player.gold >= 25 && needs_recovery {
+            "Inn rest — 25 gold; restore stamina and up to 25 HP (2 turns)".to_string()
+        } else if state.player.gold < 25 {
+            format!("[Disabled: requires 25 gold (have {}).] Inn rest — restore stamina and HP", state.player.gold)
+        } else {
+            "[Disabled: already fully recovered.] Inn rest — restore stamina and HP".to_string()
+        });
+    }
+    options.push(if food > 0 && needs_recovery {
+        "Camp with food — consume 1 Food; +50 stamina and up to 10 HP (2 turns)".to_string()
+    } else if food == 0 {
+        "[Disabled: requires 1 Food.] Camp with food — +50 stamina and up to 10 HP".to_string()
+    } else {
+        "[Disabled: already fully recovered.] Camp with food — recover stamina and HP".to_string()
+    });
+    options.push(if state.player.stamina < state.player.max_stamina {
+        "Sleep rough — +20 stamina; no HP recovery (4 turns)".to_string()
+    } else {
+        "[Disabled: stamina is already full.] Sleep rough — +20 stamina (4 turns)".to_string()
+    });
+    options.push("Back".to_string());
+
+    let refs: Vec<&str> = options.iter().map(String::as_str).collect();
+    let choice = tui.select_menu(
+        &format!("Rest at {location_name} · Stamina {}/{} · Turn {}", state.player.stamina, state.player.max_stamina, state.world_turn),
+        &refs,
+        Some(state),
+    )?;
+    if choice >= options.len() - 1 {
+        return Ok(());
+    }
+
+    let inn_offset = usize::from(in_settlement);
+    let (stamina_gain, hp_gain, turns, gold_cost, food_cost, full_restore) =
+        if in_settlement && choice == 0 {
+            (0, 25, 2, 25, 0, true)
+        } else if choice == inn_offset {
+            (50, 10, 2, 0, 1, false)
+        } else {
+            (20, 0, 4, 0, 0, false)
+        };
+
+    if state.player.gold < gold_cost || state.player.get_item_count(ItemType::Food) < food_cost {
+        tui.show_message("Rest unavailable", "Not enough gold or food for that rest option.", Some(state))?;
+        return Ok(());
+    }
+
+    state.player.gold -= gold_cost;
+    if food_cost > 0 {
+        let removed = state.player.remove_item(ItemType::Food, food_cost);
+        debug_assert!(removed, "validated rest food must exist");
+    }
+    if full_restore {
+        state.player.stamina = state.player.max_stamina;
+    } else {
+        state.player.stamina = state.player.stamina.saturating_add(stamina_gain).min(state.player.max_stamina);
+    }
+    state.player.hp = state.player.hp.saturating_add(hp_gain).min(state.player.max_hp);
+
+    let mut recovered = Vec::new();
+    for _ in 0..turns {
+        recovered.extend(state.advance_world_turn());
+    }
+    let names = recovered
+        .iter()
+        .map(|id| crate::party::get_definition(*id).name)
+        .collect::<Vec<_>>();
+    let note = if names.is_empty() {
+        String::new()
+    } else {
+        format!("\nCompanion recovery completed: {}.", names.join(", "))
+    };
+    tui.show_message(
+        "Rest complete",
+        &format!(
+            "Rested at {location_name}. Stamina: {}/{} · HP: {}/{}. World time advanced by {turns} turns.{note}",
+            state.player.stamina, state.player.max_stamina, state.player.hp, state.player.max_hp
+        ),
+        Some(state),
+    )?;
+    Ok(())
+}
+
 /// Applies a single directly connected journey after validating the route,
 /// destination, and positive travel cost. An error leaves the saved location
 /// unchanged.
