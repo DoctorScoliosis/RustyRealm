@@ -686,69 +686,69 @@ mod tests {
     use crate::state::Player;
 
     fn test_state_with_party() -> GameState {
-       let mut state = GameState::new(Player::new("party-test".into(), String::new()));
-       state.player.combat_level = 99;
-       state.player.gold = 10_000;
-       let id = CompanionId::BranTheShield;
-       let cost = PartyManager::recruit(&mut state.companions, id, 99, state.player.gold)
-           .expect("companion should be recruitable");
-       state.player.gold -= cost;
-       PartyManager::add_to_party(&mut state.party, &state.companions, id)
-           .expect("recruited companion should join");
-       state
+        let mut state = GameState::new(Player::new("party-test".into(), String::new()));
+        state.player.combat_level = 99;
+        state.player.gold = 10_000;
+        let id = CompanionId::BranTheShield;
+        let cost = PartyManager::recruit(&mut state.companions, id, 99, state.player.gold)
+            .expect("companion should be recruitable");
+        state.player.gold -= cost;
+        PartyManager::add_to_party(&mut state.party, &state.companions, id)
+            .expect("recruited companion should join");
+        state
     }
 
     #[test]
     fn build_encounter_preserves_current_and_maximum_resources_for_party() {
-       let mut state = test_state_with_party();
-       state.player.hp = state.player.max_hp / 2;
-       state.player.stamina = state.player.max_stamina / 2;
-       state.player.mana = state.player.max_mana / 2;
+        let mut state = test_state_with_party();
+        state.player.hp = state.player.max_hp / 2;
+        state.player.stamina = state.player.max_stamina / 2;
+        state.player.mana = state.player.max_mana / 2;
 
-       let config = BattleConfig {
-           enemy_name: "Goblin",
-           level: 5,
-           enemy_hp: 120,
-           enemy_attack_power: 18,
-           allow_inventory: true,
-           allow_flee: true,
-           resource_drain_per_turn: 0,
-       };
-       let encounter = build_encounter(&state, &config).expect("valid party encounter");
+        let config = BattleConfig {
+            enemy_name: "Goblin",
+            level: 5,
+            enemy_hp: 120,
+            enemy_attack_power: 18,
+            allow_inventory: true,
+            allow_flee: true,
+            resource_drain_per_turn: 0,
+        };
+        let encounter = build_encounter(&state, &config).expect("valid party encounter");
 
-       let hero = encounter
-           .combatants()
-           .iter()
-           .find(|c| c.source == CombatantSource::Player)
-           .expect("player combatant");
-       assert_eq!(hero.hp, state.player.hp);
-       assert_eq!(hero.max_hp, state.player.max_hp);
-       assert_eq!(hero.stamina, state.player.stamina);
-       assert_eq!(hero.max_stamina, state.player.max_stamina);
-       assert_eq!(hero.mana, state.player.mana);
-       assert_eq!(hero.max_mana, state.player.max_mana);
+        let hero = encounter
+            .combatants()
+            .iter()
+            .find(|c| c.source == CombatantSource::Player)
+            .expect("player combatant");
+        assert_eq!(hero.hp, state.player.hp);
+        assert_eq!(hero.max_hp, state.player.max_hp);
+        assert_eq!(hero.stamina, state.player.stamina);
+        assert_eq!(hero.max_stamina, state.player.max_stamina);
+        assert_eq!(hero.mana, state.player.mana);
+        assert_eq!(hero.max_mana, state.player.max_mana);
 
-       let id = CompanionId::BranTheShield;
-       let saved = state.companions.iter().find(|c| c.id == id).unwrap();
-       let companion = encounter
-           .combatants()
-           .iter()
-           .find(|c| c.source == CombatantSource::Companion(id))
-           .expect("party companion combatant");
-       assert_eq!(companion.hp, saved.current_hp);
-       assert_eq!(companion.max_hp, saved.max_hp);
-       assert_eq!(companion.stamina, saved.current_stamina);
-       assert_eq!(companion.max_stamina, saved.max_stamina);
-       assert_eq!(companion.mana, saved.current_mana);
-       assert_eq!(companion.max_mana, saved.max_mana);
+        let id = CompanionId::BranTheShield;
+        let saved = state.companions.iter().find(|c| c.id == id).unwrap();
+        let companion = encounter
+            .combatants()
+            .iter()
+            .find(|c| c.source == CombatantSource::Companion(id))
+            .expect("party companion combatant");
+        assert_eq!(companion.hp, saved.current_hp);
+        assert_eq!(companion.max_hp, saved.max_hp);
+        assert_eq!(companion.stamina, saved.current_stamina);
+        assert_eq!(companion.max_stamina, saved.max_stamina);
+        assert_eq!(companion.mana, saved.current_mana);
+        assert_eq!(companion.max_mana, saved.max_mana);
 
-       let enemy = encounter
-           .combatants()
-           .iter()
-           .find(|c| c.allegiance == Allegiance::Enemies)
-           .expect("enemy combatant");
-       assert_eq!(enemy.name, "Goblin");
-       assert_eq!(enemy.max_hp, 120);
-       assert_eq!(enemy.attack, 18);
+        let enemy = encounter
+            .combatants()
+            .iter()
+            .find(|c| c.allegiance == Allegiance::Enemies)
+            .expect("enemy combatant");
+        assert_eq!(enemy.name, "Goblin");
+        assert_eq!(enemy.max_hp, 120);
+        assert_eq!(enemy.attack, 18);
     }
 }
