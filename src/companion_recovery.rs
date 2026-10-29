@@ -132,97 +132,119 @@ impl RecoveryState {
 
     /// Transactional core used by the UI when borrowing GameState fields separately.
     pub fn apply_treatment_parts(
-    &mut self,
-    gold: &mut u32,
-    party: &mut Party,
-    companion: &mut CompanionState,
-    id: CompanionId,
-    at: &LocationId,
-    world: &World,
+        &mut self,
+        gold: &mut u32,
+        party: &mut Party,
+        companion: &mut CompanionState,
+        id: CompanionId,
+        at: &LocationId,
+        world: &World,
     ) -> Result<u32, RecoveryError> {
-    let record_index = self.records.iter().position(|record| record.companion_id == id)
-    .ok_or(RecoveryError::CompanionNotRecoverable(id))?;
-    let destination = self.records[record_index].destination.clone()
-    .ok_or(RecoveryError::NoTreatmentSettlement)?;
-    if destination != *at {
-    return Err(RecoveryError::NotAtTreatmentSettlement);
-    }
-    let location = world.get_location(&destination)
-    .ok_or_else(|| RecoveryError::InvalidSettlement(destination.clone()))?;
-    if location.category != LocationCategory::Settlement {
-    return Err(RecoveryError::InvalidSettlement(destination));
-    }
-    if companion.id != id {
-    return Err(RecoveryError::CompanionNotRecoverable(id));
-    }
-    if !matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering) {
-    return Err(RecoveryError::CompanionNotRecoverable(id));
-    }
-    if *gold < TREATMENT_COST {
-    return Err(RecoveryError::InsufficientGold { required: TREATMENT_COST, available: *gold });
-    }
+        let record_index = self
+            .records
+            .iter()
+            .position(|record| record.companion_id == id)
+            .ok_or(RecoveryError::CompanionNotRecoverable(id))?;
+        let destination = self.records[record_index]
+            .destination
+            .clone()
+            .ok_or(RecoveryError::NoTreatmentSettlement)?;
+        if destination != *at {
+            return Err(RecoveryError::NotAtTreatmentSettlement);
+        }
+        let location = world
+            .get_location(&destination)
+            .ok_or_else(|| RecoveryError::InvalidSettlement(destination.clone()))?;
+        if location.category != LocationCategory::Settlement {
+            return Err(RecoveryError::InvalidSettlement(destination));
+        }
+        if companion.id != id {
+            return Err(RecoveryError::CompanionNotRecoverable(id));
+        }
+        if !matches!(
+            companion.condition,
+            CompanionCondition::KnockedOut | CompanionCondition::Recovering
+        ) {
+            return Err(RecoveryError::CompanionNotRecoverable(id));
+        }
+        if *gold < TREATMENT_COST {
+            return Err(RecoveryError::InsufficientGold {
+                required: TREATMENT_COST,
+                available: *gold,
+            });
+        }
 
-    *gold -= TREATMENT_COST;
-    companion.fully_restore();
-    companion.condition = CompanionCondition::Available;
-    self.records.remove(record_index);
-    let _ = party.remove_member(id);
-    Ok(TREATMENT_COST)
+        *gold -= TREATMENT_COST;
+        companion.fully_restore();
+        companion.condition = CompanionCondition::Available;
+        self.records.remove(record_index);
+        let _ = party.remove_member(id);
+        Ok(TREATMENT_COST)
     }
 
     pub fn apply_treatment(
-    &mut self,
-    state: &mut GameState,
-    id: CompanionId,
-    at: &LocationId,
-    world: &World,
+        &mut self,
+        state: &mut GameState,
+        id: CompanionId,
+        at: &LocationId,
+        world: &World,
     ) -> Result<u32, RecoveryError> {
-    if at != &state.current_location {
-    return Err(RecoveryError::NotAtTreatmentSettlement);
-    }
-    let destination = self.record(id).and_then(|record| record.destination.as_ref())
-    .ok_or(RecoveryError::NoTreatmentSettlement)?;
-    if destination != at {
-    return Err(RecoveryError::NotAtTreatmentSettlement);
-    }
-    let companion_index = state.companions.iter().position(|c| c.id == id)
-    .ok_or(RecoveryError::CompanionNotRecruited(id))?;
-    self.apply_treatment_parts(
-    &mut state.player.gold,
-    &mut state.party,
-    &mut state.companions[companion_index],
-    id,
-    at,
-    world,
-    )
+        if at != &state.current_location {
+            return Err(RecoveryError::NotAtTreatmentSettlement);
+        }
+        let destination = self
+            .record(id)
+            .and_then(|record| record.destination.as_ref())
+            .ok_or(RecoveryError::NoTreatmentSettlement)?;
+        if destination != at {
+            return Err(RecoveryError::NotAtTreatmentSettlement);
+        }
+        let companion_index = state
+            .companions
+            .iter()
+            .position(|c| c.id == id)
+            .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+        self.apply_treatment_parts(
+            &mut state.player.gold,
+            &mut state.party,
+            &mut state.companions[companion_index],
+            id,
+            at,
+            world,
+        )
     }
 
     /// Advance once for a committed main-menu action, never for nested menus or reloads.
     pub fn advance_committed_turn(&mut self, companions: &mut [CompanionState]) -> Vec<CompanionId> {
-    let mut recovered = Vec::new();
-    for record in &mut self.records {
-        // Without a reachable treatment settlement, neither time nor payment
-        // may silently complete rescue. A future world graph can be re-evaluated
-        // explicitly without losing the original safe recovery record.
-        if record.destination.is_some() && record.turns_remaining > 0 {
-            record.turns_remaining -= 1;
-        }
-    }
-    let completed: Vec<CompanionId> = self.records.iter()
-        .filter(|record| record.destination.is_some() && record.turns_remaining == 0)
-        .map(|record| record.companion_id)
-        .collect();
-    for id in &completed {
-        if let Some(companion) = companions.iter_mut().find(|c| c.id == *id) {
-            if matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering) {
-              companion.fully_restore();
-              companion.condition = CompanionCondition::Available;
-              recovered.push(*id);
+        let mut recovered = Vec::new();
+        for record in &mut self.records {
+            // Without a reachable treatment settlement, neither time nor payment
+            // may silently complete rescue. A future world graph can be re-evaluated
+            // explicitly without losing the original safe recovery record.
+            if record.destination.is_some() && record.turns_remaining > 0 {
+                record.turns_remaining -= 1;
             }
         }
-    }
-    self.records.retain(|record| record.turns_remaining > 0);
-    recovered
+        let completed: Vec<CompanionId> = self
+            .records
+            .iter()
+            .filter(|record| record.destination.is_some() && record.turns_remaining == 0)
+            .map(|record| record.companion_id)
+            .collect();
+        for id in &completed {
+            if let Some(companion) = companions.iter_mut().find(|c| c.id == *id) {
+                if matches!(
+                    companion.condition,
+                    CompanionCondition::KnockedOut | CompanionCondition::Recovering
+                ) {
+                    companion.fully_restore();
+                    companion.condition = CompanionCondition::Available;
+                    recovered.push(*id);
+                }
+            }
+        }
+        self.records.retain(|record| record.turns_remaining > 0);
+        recovered
     }
 
     /// Synchronise a completed party-combat encounter back into persistent player
