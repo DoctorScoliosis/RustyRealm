@@ -473,12 +473,7 @@ mod tests {
             },
         );
         notify_landmark_interaction(&mut state, "village_supply_board");
-        assert!(state
-            .active_quests
-            .iter()
-            .find(|q| q.id == REGION_QUEST_ID)
-            .unwrap()
-            .is_completed);
+        assert!(state.active_quests.iter().find(|q| q.id == REGION_QUEST_ID).unwrap().is_completed);
         assert_eq!(
             claim_region_quest(&mut state),
             Ok(QuestReward::Gold(REGION_QUEST_REWARD_GOLD))
@@ -540,7 +535,9 @@ mod tests {
             .unwrap()
             .current_hp = 0;
         let mut recovery = std::mem::take(&mut state.companion_recovery);
-        recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
+        recovery
+            .record_knockout_by_id(&mut state, id, &world)
+            .unwrap();
         state.companion_recovery = recovery;
         assert_eq!(state.companion_recovery.records.len(), 1);
         let json = serde_json::to_string(&state).unwrap();
