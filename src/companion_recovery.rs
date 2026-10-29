@@ -10,7 +10,7 @@ use std::fmt;
 
 use crate::party::{CompanionCondition, CompanionId, CompanionState, Party};
 use crate::state::GameState;
-use crate::world::{LocationId, LocationCategory, World};
+use crate::world::{LocationCategory, LocationId, World};
 
 pub const RECOVERY_TURNS: u32 = 3;
 pub const TREATMENT_COST: u32 = 50;
@@ -45,7 +45,7 @@ pub enum RecoveryError {
 
 impl fmt::Display for RecoveryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
+        match self {
         Self::CompanionNotRecruited(id) => write!(f, "Companion {id} has not been recruited."),
         Self::CompanionNotRecoverable(id) => write!(f, "Companion {id} is not awaiting recovery."),
         Self::NoTreatmentSettlement => f.write_str("No reachable settlement can provide treatment. The companion remains safe but unavailable until a route or settlement becomes available."),
@@ -62,19 +62,19 @@ impl std::error::Error for RecoveryError {}
 
 impl RecoveryState {
     pub fn record(&self, id: CompanionId) -> Option<&CompanionRecoveryRecord> {
-    self.records.iter().find(|record| record.companion_id == id)
+        self.records.iter().find(|record| record.companion_id == id)
     }
 
     pub fn record_knockout(
-    &mut self,
-    companion: &mut CompanionState,
-    world: &World,
-    origin: &LocationId,
+        &mut self,
+        companion: &mut CompanionState,
+        world: &World,
+        origin: &LocationId,
     ) -> Result<bool, RecoveryError> {
-    if companion.current_hp > 0 {
+        if companion.current_hp > 0 {
         return Ok(false);
     }
-    if self.record(companion.id).is_some() {
+        if self.record(companion.id).is_some() {
         // Idempotent processing: retain the original destination and timer.
         companion.condition = CompanionCondition::KnockedOut;
         return Ok(false);
