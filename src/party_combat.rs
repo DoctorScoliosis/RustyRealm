@@ -224,6 +224,9 @@ pub struct EncounterCombatant {
     pub status_effects: Vec<StatusEffect>,
     /// Status resistance is separate from damage defence.
     pub status_resistance: StatusResistance,
+    /// Incoming-damage reduction armed by Defend, Shield Wall, or a telegraph reaction.
+    pub guard_reduction_pct: u8,
+    pub guard_charges: u32,
 }
 impl EncounterCombatant {
     pub fn new(
@@ -263,6 +266,8 @@ impl EncounterCombatant {
             attack_range: RangeProfile::MELEE,
             status_effects: Vec::new(),
             status_resistance: StatusResistance { resistance_pct: 0 },
+            guard_reduction_pct: 0,
+            guard_charges: 0,
         };
         if allegiance == Allegiance::Enemies {
             let profile = crate::status_combat::EnemyProfile::for_name(&c.name);
@@ -384,6 +389,10 @@ pub enum CombatAction {
     Retreat {
         actor: CombatantId,
     },
+    /// Spend an activation committing a previously proposed telegraph, without resolving it yet.
+    Telegraph {
+        actor: CombatantId,
+    },
 }
 impl CombatAction {
     fn actor(&self) -> CombatantId {
@@ -392,7 +401,8 @@ impl CombatAction {
             | Self::UseAbility { actor, .. }
             | Self::Defend { actor }
             | Self::Move { actor }
-            | Self::Retreat { actor } => actor,
+            | Self::Retreat { actor }
+            | Self::Telegraph { actor } => actor,
         }
     }
 }
@@ -495,6 +505,9 @@ impl Encounter {
         );
         hero.equipment_attributes.resistance = (player.armour.max_dr().min(50) / 5) as i16;
         hero.recalculate_attributes();
+        hero.max_hp = player.max_hp.max(player.hp);
+        hero.max_stamina = player.max_stamina.max(player.stamina);
+        hero.max_mana = player.max_mana.max(player.mana);
         combatants.push(hero);
         let mut next_id = 2;
         for id in party.members() {
@@ -516,6 +529,9 @@ impl Encounter {
                         c.attack,
                         c.defence,
                     );
+                    companion.max_hp = c.max_hp.max(c.current_hp);
+                    companion.max_stamina = c.max_stamina.max(c.current_stamina);
+                    companion.max_mana = c.max_mana.max(c.current_mana);
                     companion.set_class(class);
                     combatants.push(companion);
                     next_id += 1;
@@ -543,6 +559,66 @@ impl Encounter {
     pub fn combatant(&self, id: CombatantId) -> Option<&EncounterCombatant> {
         self.combatants.iter().find(|c| c.id == id)
     }
+
+    /// Refresh player resources and equipment after an inventory action or level-up.
+    /// Transient status and guard state remain encounter-owned.
+    pub fn sync_player_from(&mut self, player: &Player) -> Result<(), EncounterError> {
+        let hero = self
+            .combatants
+            .iter_mut()
+            .find(|c| c.source == CombatantSource::Player)
+            .ok_or(EncounterError::MissingActor(CombatantId(1)))?;
+        hero.hp = player.hp.min(player.max_hp);
+        hero.max_hp = player.max_hp.max(player.hp);
+        hero.stamina = player.stamina.min(player.max_stamina);
+        hero.max_stamina = player.max_stamina.max(player.stamina);
+        hero.mana = player.mana.min(player.max_mana);
+        hero.max_mana = player.max_mana.max(player.mana);
+        hero.attack = player.weapon.max_damage().max(1);
+        hero.defence = player.armour.max_dr();
+        hero.equipment_attributes.resistance = (player.armour.max_dr().min(50) / 5) as i16;
+        hero.recalculate_attributes();
+        hero.sync_condition();
+        self.refresh_outcome();
+        Ok(())
+    }
+
+    /// Arm one or more defensive reactions without consuming an actor activation.
+    pub fn guard_combatant(
+        &mut self,
+        id: CombatantId,
+        reduction_pct: u8,
+        charges: u32,
+    ) -> Result<(), EncounterError> {
+        let actor = self
+            .combatant_mut(id)
+            .ok_or(EncounterError::MissingActor(id))?;
+        actor.guard_reduction_pct = actor.guard_reduction_pct.max(reduction_pct.min(90));
+        actor.guard_charges = actor.guard_charges.saturating_add(charges);
+        Ok(())
+    }
+
+    /// Pay a resource cost for a defensive reaction outside the normal activation.
+    pub fn spend_stamina(&mut self, id: CombatantId, cost: u32) -> Result<(), EncounterError> {
+        let actor = self
+            .combatant_mut(id)
+            .ok_or(EncounterError::MissingActor(id))?;
+        if actor.stamina < cost {
+            return Err(EncounterError::InsufficientStamina);
+        }
+        actor.stamina -= cost;
+        Ok(())
+    }
+
+    /// Change the attack magnitude for phase-based enemies without bypassing action resolution.
+    pub fn set_attack(&mut self, id: CombatantId, attack: u32) -> Result<(), EncounterError> {
+        let actor = self
+            .combatant_mut(id)
+            .ok_or(EncounterError::MissingActor(id))?;
+        actor.attack = attack.max(1);
+        Ok(())
+    }
+
     fn combatant_mut(&mut self, id: CombatantId) -> Option<&mut EncounterCombatant> {
         self.combatants.iter_mut().find(|c| c.id == id)
     }
@@ -807,6 +883,21 @@ impl Encounter {
                 message: "stunned; activation skipped",
             });
         }
+        if matches!(&action, CombatAction::Telegraph { .. }) {
+            self.consume_turn(actor_id);
+            return Ok(ActionResult {
+                actor: actor_id,
+                target: None,
+                target_source: None,
+                target_knocked_out: false,
+                damage: 0,
+                healing: 0,
+                outcome: self.outcome,
+                hit: None,
+                hit_chance: None,
+                message: "telegraph committed",
+            });
+        }
         if matches!(&action, CombatAction::Retreat { .. }) {
             self.consume_turn(actor_id);
             self.outcome = EncounterOutcome::Retreated;
@@ -822,6 +913,40 @@ impl Encounter {
                 hit: None,
                 hit_chance: None,
                 message: "retreated",
+            });
+        }
+        if let CombatAction::UseAbility {
+            target,
+            ability: AbilityId::ShieldWall,
+            ..
+        } = &action
+        {
+            if *target != actor_id {
+                return Err(EncounterError::WrongAllegiance);
+            }
+            let ability = get_ability(AbilityId::ShieldWall);
+            let actor = self.combatant(actor_id).ok_or(EncounterError::MissingActor(actor_id))?;
+            if actor.stamina < ability.stamina_cost {
+                return Err(EncounterError::InsufficientStamina);
+            }
+            {
+                let actor = self.combatant_mut(actor_id).expect("actor validated");
+                actor.stamina -= ability.stamina_cost;
+                actor.guard_reduction_pct = actor.guard_reduction_pct.max(50);
+                actor.guard_charges = actor.guard_charges.saturating_add(2);
+            }
+            self.consume_turn(actor_id);
+            return Ok(ActionResult {
+                actor: actor_id,
+                target: Some(actor_id),
+                target_source: self.combatant(actor_id).map(|target| target.source),
+                target_knocked_out: false,
+                damage: 0,
+                healing: 0,
+                outcome: self.outcome,
+                hit: None,
+                hit_chance: None,
+                message: "shield wall raised",
             });
         }
         if matches!(&action, CombatAction::Move { .. }) {
@@ -849,6 +974,11 @@ impl Encounter {
             });
         }
         if matches!(&action, CombatAction::Defend { .. }) {
+            {
+                let actor = self.combatant_mut(actor_id).expect("actor validated");
+                actor.guard_reduction_pct = actor.guard_reduction_pct.max(50);
+                actor.guard_charges = actor.guard_charges.saturating_add(1);
+            }
             self.consume_turn(actor_id);
             return Ok(ActionResult {
                 actor: actor_id,
@@ -926,7 +1056,7 @@ impl Encounter {
         let vulnerability = u64::from(target.defence_vulnerability_pct());
         let vulnerable_scaled =
             (u64::from(scaled) * (100 + vulnerability) / 100).min(u64::from(u32::MAX)) as u32;
-        let damage = if !hit || scaled == 0 {
+        let mut damage = if !hit || scaled == 0 {
             0
         } else {
             vulnerable_scaled
@@ -934,6 +1064,11 @@ impl Encounter {
                 .max(1)
                 .min(target.hp)
         };
+        if hit && target.guard_charges > 0 && damage > 0 {
+            damage = damage
+                .saturating_mul(100 - u32::from(target.guard_reduction_pct.min(90)))
+                / 100;
+        }
         if let Some(def) = &ability {
             let source = self
                 .combatants
@@ -943,14 +1078,19 @@ impl Encounter {
             source.stamina -= def.stamina_cost;
             source.mana -= def.mana_cost;
         }
-        if damage > 0 {
-            let target = self
-                .combatants
-                .iter_mut()
-                .find(|c| c.id == target_id)
-                .expect("target validated");
-            target.hp -= damage;
-            target.sync_condition();
+        if hit {
+            if let Some(target) = self.combatants.iter_mut().find(|c| c.id == target_id) {
+                if target.guard_charges > 0 {
+                    target.guard_charges -= 1;
+                    if target.guard_charges == 0 {
+                        target.guard_reduction_pct = 0;
+                    }
+                }
+                if damage > 0 {
+                    target.hp -= damage;
+                    target.sync_condition();
+                }
+            }
         }
         if hit
             && self
@@ -992,6 +1132,19 @@ impl Encounter {
                 )?;
             }
         }
+        let healing = if hit && ability_id == Some(AbilityId::LifeDrain) {
+            damage.saturating_add(1) / 2
+        } else {
+            0
+        };
+        if healing > 0 {
+            let actor = self
+                .combatants
+                .iter_mut()
+                .find(|c| c.id == actor_id)
+                .expect("actor validated");
+            actor.hp = actor.hp.saturating_add(healing).min(actor.max_hp);
+        }
         let target_source = self.combatant(target_id).map(|target| target.source);
         let target_knocked_out = self
             .combatant(target_id)
@@ -1004,7 +1157,7 @@ impl Encounter {
             target_source,
             target_knocked_out,
             damage,
-            healing: 0,
+            healing,
             outcome: self.outcome,
             hit: Some(hit),
             hit_chance: Some(chance),
