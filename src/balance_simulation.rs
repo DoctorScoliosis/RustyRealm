@@ -790,4 +790,167 @@ mod tests {
         assert!(elite_names.iter().all(|name| !name.is_empty()));
         assert_eq!(BASELINE_SCHEMA_VERSION, 1);
     }
+
+    #[test]
+    fn warmup_profiles_lower_enemy_stats_and_rewards_in_both_opening_encounters() {
+        let spec = BASELINE_ENCOUNTERS[0];
+        let mut state = AdaptivePressureState::default();
+        let first_profile = state.profile();
+        let first = simulate_encounter_with_profile(
+            spec,
+            ProgressionBand::Low,
+            11,
+            first_profile,
+        );
+        let baseline = simulate_encounter(spec, ProgressionBand::Low, 11);
+        assert_eq!(first_profile.warmup_stage, Some(1));
+        assert_eq!(first_profile.enemy_stat_multiplier_bps, WARMUP_ONE_ENEMY_BPS);
+        assert_eq!(first_profile.reward_multiplier_bps, WARMUP_ONE_REWARD_BPS);
+        assert!(first.effective_enemy_health < baseline.effective_enemy_health);
+        assert!(first.effective_enemy_attack < baseline.effective_enemy_attack);
+        assert!(first.gold_reward < baseline.gold_reward);
+        assert!(first.xp_reward < baseline.xp_reward);
+
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        let second_profile = state.profile();
+        assert_eq!(second_profile.warmup_stage, Some(2));
+        assert_eq!(second_profile.enemy_stat_multiplier_bps, WARMUP_TWO_ENEMY_BPS);
+        assert_eq!(second_profile.reward_multiplier_bps, WARMUP_TWO_REWARD_BPS);
+        let second = simulate_encounter_with_profile(
+            spec,
+            ProgressionBand::Low,
+            11,
+            second_profile,
+        );
+        assert!(second.gold_reward < baseline.gold_reward);
+        assert!(second.xp_reward < baseline.xp_reward);
+
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        let third_profile = state.profile();
+        assert_eq!(third_profile.warmup_stage, None);
+        assert_eq!(third_profile.enemy_stat_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+        assert_eq!(third_profile.reward_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+    }
+
+    #[test]
+    fn clean_victories_raise_pressure_gradually_to_a_hard_cap() {
+        let mut state = AdaptivePressureState::default();
+        for _ in 0..2 {
+            state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        }
+        assert_eq!(state.profile().enemy_stat_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        assert_eq!(state.pressure_steps, 1);
+        assert_eq!(
+            state.profile().enemy_stat_multiplier_bps,
+            NORMAL_MULTIPLIER_BPS + PRESSURE_STEP_BPS
+        );
+        for _ in 0..20 {
+            state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        }
+        let max_profile = state.profile();
+        assert_eq!(state.pressure_steps, MAX_PRESSURE_STEPS);
+        assert_eq!(max_profile.enemy_stat_multiplier_bps, MAX_PRESSURE_MULTIPLIER_BPS);
+        assert_eq!(max_profile.reward_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+    }
+
+    #[test]
+    fn a_party_knockout_reduces_pressure_and_pauses_ramping_for_two_encounters() {
+        let mut state = AdaptivePressureState::default();
+        for _ in 0..5 {
+            state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        }
+        assert_eq!(state.pressure_steps, 3);
+
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 1 });
+        assert_eq!(state.pressure_steps, 2);
+        assert_eq!(state.casualty_relief_encounters_remaining, 2);
+        assert_eq!(state.encounters_since_last_party_knockout(), Some(0));
+        assert!(state.profile().casualty_relief_active);
+        assert_eq!(state.profile().enemy_stat_multiplier_bps, 11_000);
+
+        for remaining in [1, 0] {
+            state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+            assert_eq!(state.casualty_relief_encounters_remaining, remaining);
+            assert_eq!(state.pressure_steps, 2);
+        }
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        assert_eq!(state.pressure_steps, 3);
+    }
+
+    #[test]
+    fn multiple_party_knockouts_apply_a_larger_temporary_pressure_drop() {
+        let mut state = AdaptivePressureState::default();
+        for _ in 0..5 {
+            state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        }
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 2 });
+        assert_eq!(state.pressure_steps, 1);
+        assert_eq!(state.total_party_knockouts, 2);
+        assert_eq!(state.encounters_since_last_party_knockout(), Some(0));
+        assert_eq!(
+            state.casualty_relief_encounters_remaining,
+            CASUALTY_RELIEF_ENCOUNTERS
+        );
+    }
+
+    #[test]
+    fn a_total_party_kill_grants_finite_reduced_reward_recovery_grace() {
+        let mut state = AdaptivePressureState::default();
+        for _ in 0..5 {
+            state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        }
+        assert!(state.pressure_steps > 0);
+
+        state.record_outcome(AdaptiveEncounterOutcome::TotalPartyKill);
+        assert_eq!(state.pressure_steps, 0);
+        assert_eq!(state.total_party_kills, 1);
+        assert_eq!(state.encounters_since_last_total_party_kill(), Some(0));
+        let spec = BASELINE_ENCOUNTERS[0];
+        let grace_profile = state.profile();
+        assert!(grace_profile.recovery_grace_active);
+        assert_eq!(grace_profile.enemy_stat_multiplier_bps, TPK_RECOVERY_ENEMY_CAP_BPS);
+        assert_eq!(grace_profile.reward_multiplier_bps, TPK_RECOVERY_REWARD_CAP_BPS);
+        let grace_row = simulate_encounter_with_profile(
+            spec,
+            ProgressionBand::Low,
+            11,
+            grace_profile,
+        );
+        let baseline = simulate_encounter(spec, ProgressionBand::Low, 11);
+        assert!(grace_row.gold_reward < baseline.gold_reward);
+        assert!(grace_row.xp_reward < baseline.xp_reward);
+
+        // A further TPK during grace must consume, not refresh, the existing timer.
+        state.record_outcome(AdaptiveEncounterOutcome::TotalPartyKill);
+        assert_eq!(state.recovery_grace_encounters_remaining, 2);
+        assert_eq!(state.total_party_kills, 2);
+
+        // Only three encounters after the initial TPK receive recovery protection.
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        assert_eq!(state.recovery_grace_encounters_remaining, 1);
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        assert_eq!(state.recovery_grace_encounters_remaining, 0);
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        assert_eq!(state.profile().enemy_stat_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+    }
+
+    #[test]
+    fn fleeing_and_serde_round_trip_cannot_restart_warmup() {
+        let mut state = AdaptivePressureState::default();
+        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
+        let encoded = serde_json::to_string(&state).expect("adaptive state should serialize");
+        let mut loaded: AdaptivePressureState =
+            serde_json::from_str(&encoded).expect("adaptive state should deserialize");
+        assert_eq!(loaded, state);
+        assert_eq!(loaded.profile().warmup_stage, Some(2));
+
+        loaded.record_outcome(AdaptiveEncounterOutcome::Fled { party_knockouts: 0 });
+        assert_eq!(loaded.completed_encounters, 2);
+        assert_eq!(loaded.profile().warmup_stage, None);
+        loaded.record_outcome(AdaptiveEncounterOutcome::TotalPartyKill);
+        assert_eq!(loaded.profile().warmup_stage, None);
+        assert!(loaded.profile().recovery_grace_active);
+    }
 }
