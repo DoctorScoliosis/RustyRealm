@@ -178,6 +178,50 @@
          recovered
      }
 
+     /// Synchronise a completed party-combat encounter back into persistent player
+     /// state. Calling this repeatedly is safe: previously recorded knockouts keep
+     /// their original destination and timer.
+     pub fn sync_party_encounter(
+         &mut self,
+         state: &mut GameState,
+         encounter: &crate::party_combat::Encounter,
+         world: &World,
+     ) -> Result<Vec<CompanionId>, RecoveryError> {
+         let updates: Vec<_> = encounter.combatants().iter().filter_map(|combatant| {
+             match combatant.source {
+                 crate::party_combat::CombatantSource::Companion(id) => Some((
+                     id,
+                     combatant.hp,
+                     combatant.stamina,
+                     combatant.mana,
+                     !combatant.can_act(),
+                 )),
+                 _ => None,
+             }
+         }).collect();
+         let mut newly_knocked_out = Vec::new();
+         for (id, hp, stamina, mana, knocked_out) in updates {
+             let companion = state.companions.iter_mut().find(|c| c.id == id)
+                 .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+             companion.current_hp = hp.min(companion.max_hp);
+             companion.current_stamina = stamina.min(companion.max_stamina);
+             companion.current_mana = mana.min(companion.max_mana);
+             if knocked_out {
+                 companion.current_hp = 0;
+                 companion.condition = CompanionCondition::KnockedOut;
+                 if self.record(id).is_none() {
+                     // Use the normal transition to set destination, stable ordering,
+                     // and active-party removal in one shared pathway.
+                     self.record_knockout_by_id(state, id, world)?;
+                     newly_knocked_out.push(id);
+                 } else {
+                     let _ = state.party.remove_member(id);
+                 }
+             }
+         }
+         Ok(newly_knocked_out)
+     }
+
      pub fn resolve_player_defeat(&mut self, state: &mut GameState, world: &World) -> Result<(), RecoveryError> {
          if state.player.hp > 0 {
              return Err(RecoveryError::PlayerAlreadyDefeated);
