@@ -439,6 +439,7 @@ pub fn attempt_recipe(
     recipe_id: &str,
     roll: u8,
     stamina_cost: u32,
+    modifier: i32,
 ) -> Result<RecipeAttemptResult, CraftingError> {
     let mut successful_state = state.clone();
     let success_result = execute_recipe(&mut successful_state, recipe_id)?;
@@ -457,7 +458,7 @@ pub fn attempt_recipe(
     let check = SkillCheck {
         skill_level,
         difficulty: recipe_difficulty(recipe_id),
-        modifier: 0,
+        modifier,
     }
     .resolve(roll)
     .map_err(|_| CraftingError::InvalidRoll(roll))?;
