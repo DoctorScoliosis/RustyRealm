@@ -400,6 +400,9 @@ impl CombatAction {
 pub struct ActionResult {
     pub actor: CombatantId,
     pub target: Option<CombatantId>,
+    /// Source of the target after resolution, even when the hit knocked it out.
+    pub target_source: Option<CombatantSource>,
+    pub target_knocked_out: bool,
     pub damage: u32,
     pub healing: u32,
     pub outcome: EncounterOutcome,
@@ -794,6 +797,8 @@ impl Encounter {
             return Ok(ActionResult {
                 actor: actor_id,
                 target: None,
+                target_source: None,
+                target_knocked_out: false,
                 damage: 0,
                 healing: 0,
                 outcome: self.outcome,
@@ -809,6 +814,8 @@ impl Encounter {
             return Ok(ActionResult {
                 actor: actor_id,
                 target: None,
+                target_source: None,
+                target_knocked_out: false,
                 damage: 0,
                 healing: 0,
                 outcome: self.outcome,
@@ -831,6 +838,8 @@ impl Encounter {
             return Ok(ActionResult {
                 actor: actor_id,
                 target: None,
+                target_source: None,
+                target_knocked_out: false,
                 damage: 0,
                 healing: 0,
                 outcome: self.outcome,
@@ -844,6 +853,8 @@ impl Encounter {
             return Ok(ActionResult {
                 actor: actor_id,
                 target: None,
+                target_source: None,
+                target_knocked_out: false,
                 damage: 0,
                 healing: 0,
                 outcome: self.outcome,
@@ -981,11 +992,15 @@ impl Encounter {
                 )?;
             }
         }
+        let target_source = self.combatant(target_id).map(|target| target.source);
+        let target_knocked_out = self.combatant(target_id).is_some_and(|target| !target.can_act());
         self.consume_turn(actor_id);
         self.refresh_outcome();
         Ok(ActionResult {
             actor: actor_id,
             target: Some(target_id),
+            target_source,
+            target_knocked_out,
             damage,
             healing: 0,
             outcome: self.outcome,
