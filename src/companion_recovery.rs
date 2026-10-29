@@ -327,7 +327,8 @@ mod tests {
          let mut recovery = RecoveryState::default();
          recovery.record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world).unwrap();
          assert_eq!(recovery.record(CompanionId::BranTheShield).unwrap().destination, None);
-         assert!(matches!(recovery.apply_treatment(&mut state, CompanionId::BranTheShield, &state.current_location.clone(), &world), Err(RecoveryError::NoTreatmentSettlement)));
+         let location = state.current_location.clone();
+         assert!(matches!(recovery.apply_treatment(&mut state, CompanionId::BranTheShield, &location, &world), Err(RecoveryError::NoTreatmentSettlement)));
          assert_eq!(state.player.gold, 1000 - all_companion_definitions()[0].recruitment_cost);
      }
 
@@ -342,7 +343,8 @@ mod tests {
          state.party.remove_member(id).unwrap();
          state.player.gold = TREATMENT_COST - 1;
          let before = state.clone();
-         assert!(matches!(recovery.apply_treatment(&mut state, id, &state.current_location.clone(), &world), Err(RecoveryError::InsufficientGold { .. })));
+         let location = state.current_location.clone();
+         assert!(matches!(recovery.apply_treatment(&mut state, id, &location, &world), Err(RecoveryError::InsufficientGold { .. })));
          assert_eq!(state.player.gold, before.player.gold);
          assert_eq!(state.companions[0].current_hp, 0);
          assert_eq!(recovery.record(id).unwrap().turns_remaining, RECOVERY_TURNS);
@@ -358,12 +360,14 @@ mod tests {
          recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
          state.party.remove_member(id).unwrap();
          state.current_location = LocationId::from("village_start");
-         assert_eq!(recovery.apply_treatment(&mut state, id, &state.current_location.clone(), &world), Ok(TREATMENT_COST));
+         let location = state.current_location.clone();
+         assert_eq!(recovery.apply_treatment(&mut state, id, &location, &world), Ok(TREATMENT_COST));
          assert_eq!(state.companions[0].condition, CompanionCondition::Available);
          assert_eq!(state.companions[0].current_hp, state.companions[0].max_hp);
          assert_eq!(state.player.gold, 1000 - TREATMENT_COST - all_companion_definitions()[0].recruitment_cost);
          assert!(recovery.record(id).is_none());
-         assert!(recovery.apply_treatment(&mut state, id, &state.current_location.clone(), &world).is_err());
+         let location = state.current_location.clone();
+         assert!(recovery.apply_treatment(&mut state, id, &location, &world).is_err());
          PartyManager::add_to_party(&mut state.party, &state.companions, id).unwrap();
      }
 
