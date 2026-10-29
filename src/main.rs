@@ -338,7 +338,11 @@ fn interact_with_current_location(
     );
     if location.id.as_str() == "village_start" {
         crate::adventure::notify_landmark_interaction(state, "village_supply_board");
-        if state.active_quests.iter().any(|q| q.id == crate::adventure::REGION_QUEST_ID && q.is_completed && !q.is_claimed) {
+        if state
+            .active_quests
+            .iter()
+            .any(|q| q.id == crate::adventure::REGION_QUEST_ID && q.is_completed && !q.is_claimed)
+        {
             match crate::adventure::claim_region_quest(state) {
                 Ok(reward) => tui.show_message(
                     "Oakhaven supplies recovered",
@@ -358,7 +362,6 @@ fn interact_with_current_location(
     )
 }
 
-
 /// Run the reusable encounter table attached to the current region location.
 /// Each victory uses the party-aware combat engine and the shared domain events.
 fn region_expedition_menu(
@@ -377,46 +380,86 @@ fn region_expedition_menu(
         return Ok(());
     };
     let encounter = *encounter;
-    let reward_flag = format!("region_encounter:{}", encounter.id);
-    let already_cleared = state.player.quests_completed.iter().any(|id| id == &reward_flag);
-    let roster = encounter.enemies.iter().map(|enemy| {
-        format!("{} · level {} · {} gold · {}", enemy.name,
-            state.player.combat_level.saturating_add(enemy.level_offset),
-            enemy.gold_reward,
-            enemy.item_reward.map(|(item,count)| format!("{} x{count}", item.name())).unwrap_or_else(|| "no item drop".to_string()))
-    }).collect::<Vec<_>>().join("\n");
+    let already_cleared = state
+        .region_progress
+        .cleared_encounters
+        .iter()
+        .any(|id| id == encounter.id);
+    let roster = encounter
+        .enemies
+        .iter()
+        .map(|enemy| {
+            format!(
+                "{} · level {} · {} gold · {}",
+                enemy.name,
+                state.player.combat_level.saturating_add(enemy.level_offset),
+                enemy.gold_reward,
+                enemy
+                    .item_reward
+                    .map(|(item, count)| format!("{} x{count}", item.name()))
+                    .unwrap_or_else(|| "no item drop".to_string())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     let danger = match encounter.danger {
         5.. => "Extreme danger: prepare equipment, healing, and your active party before committing.",
         4 => "High danger: enemy health and damage are increased.",
         _ => "Moderate danger: check supplies and equipment before travelling deeper.",
     };
-    tui.show_message("Expedition briefing",
-        &format!("{}\nDanger: {}/5\n{}\n\nEncounter roster:\n{}\n\nClear reward: {} gold and {} XP.{}",
-            encounter.title, encounter.danger, danger, roster, encounter.reward_gold, encounter.reward_xp,
-            if already_cleared { "\nThe one-time clear reward was already claimed." } else { "" }),
-        Some(state))?;
+    tui.show_message(
+        "Expedition briefing",
+        &format!(
+            "{}\nDanger: {}/5\n{}\n\nEncounter roster:\n{}\n\nClear reward: {} gold and {} XP.{}",
+            encounter.title,
+            encounter.danger,
+            danger,
+            roster,
+            encounter.reward_gold,
+            encounter.reward_xp,
+            if already_cleared {
+                "\nThe one-time clear reward was already claimed."
+            } else {
+                ""
+            }
+        ),
+        Some(state),
+    )?;
 
     for enemy in encounter.enemies {
         let level = state.player.combat_level.saturating_add(enemy.level_offset).max(1);
         let enemy_hp = (80_u32.saturating_add(level.saturating_mul(22)))
             .saturating_mul(enemy.health_multiplier_pct) / 100;
         let attack = enemy.kind.max_damage().saturating_mul(enemy.attack_multiplier_pct) / 100;
-        match run_party_battle(tui, state, BattleConfig {
-            enemy_name: enemy.name,
-            level,
-            enemy_hp: enemy_hp.max(1),
-            enemy_attack_power: attack.max(1),
-            allow_inventory: true,
-            allow_flee: true,
-            resource_drain_per_turn: 0,
-        })? {
+        match run_party_battle(
+            tui,
+            state,
+            BattleConfig {
+                enemy_name: enemy.name,
+                level,
+                enemy_hp: enemy_hp.max(1),
+                enemy_attack_power: attack.max(1),
+                allow_inventory: true,
+                allow_flee: true,
+                resource_drain_per_turn: 0,
+            },
+        )? {
             BattleOutcome::Victory => {
-                tui.show_message("Expedition progress",
-                    &format!("Defeated {}. Its loot and quest progress have been recorded.", enemy.name),
-                    Some(state))?;
+                tui.show_message(
+                    "Expedition progress",
+                    &format!(
+                        "Defeated {}. Its loot and quest progress have been recorded.",
+                        enemy.name
+                    ),
+                    Some(state),
+                )?;
             }
             BattleOutcome::Fled => {
-                tui.show_message("Expedition withdrawn", "You retreat from the encounter. No clear reward is granted for an unfinished expedition.", Some(state))?;
+                tui.show_message(
+                    "Expedition withdrawn",
+                    "You retreat from the encounter. No clear reward is granted for an unfinished expedition.",
+                    Some(state),
+                )?;
                 return Ok(());
             }
             BattleOutcome::Defeated => return Ok(()),
@@ -424,11 +467,21 @@ fn region_expedition_menu(
     }
     if !already_cleared {
         match crate::adventure::claim_encounter_clear_reward(state, encounter.id) {
-            Ok((gold, xp)) => tui.show_message("Expedition complete", &format!("The area is secure. Clear reward: {gold} gold and {xp} XP."), Some(state))?,
-            Err(error) => tui.show_message("Reward unavailable", &error.to_string(), Some(state))?,
+            Ok((gold, xp)) => tui.show_message(
+                "Expedition complete",
+                &format!("The area is secure. Clear reward: {gold} gold and {xp} XP."),
+                Some(state),
+            )?,
+            Err(error) => {
+                tui.show_message("Reward unavailable", &error.to_string(), Some(state))?
+            }
         }
     } else {
-        tui.show_message("Expedition complete", "The area has been cleared again, but its one-time clear reward will not be paid twice.", Some(state))?;
+        tui.show_message(
+            "Expedition complete",
+            "The area has been cleared again, but its one-time clear reward will not be paid twice.",
+            Some(state),
+        )?;
     }
     Ok(())
 }
