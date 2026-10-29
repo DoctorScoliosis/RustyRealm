@@ -731,9 +731,13 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                                     .objectives
                                     .iter()
                                     .map(|objective| {
-                                        let mark = if objective.is_completed { "✓" } else { "·" };
-                                let optional =
-                                    if objective.optional { " (optional)" } else { "" };
+                                        let mark =
+                                            if objective.is_completed { "✓" } else { "·" };
+                                        let optional = if objective.optional {
+                                            " (optional)"
+                                        } else {
+                                            ""
+                                        };
                                         format!(
                                             "    {mark} {}/{} {:?}{optional}",
                                             objective.progress,
@@ -756,7 +760,12 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     };
                     format!(
                         "{} — {}\n  Progress: {}/{} · {}{}\n",
-                        quest.title, quest.description, quest.progress, quest.target, status, stage_detail
+                        quest.title,
+                        quest.description,
+                        quest.progress,
+                        quest.target,
+                        status,
+                        stage_detail
                     )
                 })
                 .collect::<Vec<_>>()
@@ -864,8 +873,18 @@ mod tests {
         GameState::new(Player::new("Hero".into(), String::new()))
     }
 
-    fn objective(objective: QuestObjective, optional: bool, bonus_reward: Option<QuestReward>) -> QuestObjectiveState {
-        QuestObjectiveState { objective, progress: 0, is_completed: false, optional, bonus_reward }
+    fn objective(
+        objective: QuestObjective,
+        optional: bool,
+        bonus_reward: Option<QuestReward>,
+    ) -> QuestObjectiveState {
+        QuestObjectiveState {
+            objective,
+            progress: 0,
+            is_completed: false,
+            optional,
+            bonus_reward,
+        }
     }
 
     #[test]
