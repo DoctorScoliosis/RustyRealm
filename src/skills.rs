@@ -7,31 +7,105 @@ use crate::ui::Tui;
 use rand::Rng;
 use std::io;
 
-/// Resolve an optional gathering check. The penalty for failure is a wasted
-/// action: no items or skill XP are consumed/awarded. Existing recipe actions
-/// and resource-consuming fishing/cooking/smithing retain their prior rules.
-fn gathering_check(
+/// A depleted stamina bar makes skill checks less reliable, even when the
+/// player has the skill level for the job. The penalty is calculated after
+/// paying the action's stamina cost, so long sessions progressively get riskier.
+fn stamina_fatigue_modifier(stamina: u32, max_stamina: u32) -> i32 {
+    let maximum = max_stamina.max(1);
+    let percent = u64::from(stamina) * 100 / u64::from(maximum);
+    match percent {
+        75..=u64::MAX => 0,
+        50..=74 => -5,
+        25..=49 => -15,
+        _ => -25,
+    }
+}
+
+fn resolve_skill_check(
     skill_level: u32,
     difficulty: i32,
+    modifier: i32,
     roll: u8,
 ) -> crate::skill_checks::SkillCheckResult {
     SkillCheck {
         skill_level,
         difficulty,
-        modifier: 0,
+        modifier,
     }
     .resolve(roll)
     .expect("generated skill-check roll is within 0..=99")
 }
 
-fn thieving_check(skill_level: u32, roll: u8) -> crate::skill_checks::SkillCheckResult {
-    SkillCheck {
+fn roll_skill_check(
+    skill_level: u32,
+    difficulty: i32,
+    modifier: i32,
+) -> crate::skill_checks::SkillCheckResult {
+    resolve_skill_check(
         skill_level,
-        difficulty: 25,
-        modifier: 0,
+        difficulty,
+        modifier,
+        rand::thread_rng().gen_range(0..100),
+    )
+}
+
+/// Commit stamina and world time for an attempted action. Prerequisites must be
+/// validated before this is called; a failed roll still pays this budget.
+fn begin_skill_action(
+    tui: &mut Tui,
+    state: &mut GameState,
+    stamina_cost: u32,
+    turns: u32,
+) -> io::Result<Option<i32>> {
+    if state.player.stamina < stamina_cost {
+        tui.show_message(
+            "Too exhausted to continue",
+            &format!(
+                "This action needs {stamina_cost} stamina, but you have {}. Return to the world and rest before attempting it again.",
+                state.player.stamina
+            ),
+            Some(state),
+        )?;
+        return Ok(None);
     }
-    .resolve(roll)
-    .expect("generated skill-check roll is within 0..=99")
+
+    state.player.stamina -= stamina_cost;
+    let modifier = stamina_fatigue_modifier(state.player.stamina, state.player.max_stamina);
+    advance_skill_time(tui, state, turns)?;
+    Ok(Some(modifier))
+}
+
+fn advance_skill_time(tui: &mut Tui, state: &mut GameState, turns: u32) -> io::Result<()> {
+    let mut recovered = Vec::new();
+    for _ in 0..turns {
+        recovered.extend(state.advance_world_turn());
+    }
+    recovered.sort();
+    recovered.dedup();
+    if !recovered.is_empty() {
+        let names = recovered
+            .iter()
+            .map(|id| crate::party::get_definition(*id).name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        tui.show_message(
+            "Companion recovered",
+            &format!("{names} recovered as world time advanced. They are available for explicit party selection."),
+            Some(state),
+        )?;
+    }
+    Ok(())
+}
+
+fn batch_count(available: u32) -> u32 {
+    // Mastery can process a useful batch, but never an unbounded inventory in
+    // one action. Each batch still has a stamina and world-time cost.
+    available.min(50)
+}
+
+fn batch_budget(base_stamina: u32, amount: u32) -> (u32, u32) {
+    let turns = amount.saturating_add(4) / 5;
+    (base_stamina.saturating_add(turns), turns.max(1))
 }
 
 fn award_xp(skill: &mut SkillData) -> bool {
@@ -144,8 +218,11 @@ pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         options.push("Back");
         let choice = tui.select_menu(
             &format!(
-                "Skill Plot · total skill level {}",
-                state.player.skills.total_level()
+                "Skill Plot · total level {} · Stamina {}/{} · Turn {}",
+                state.player.skills.total_level(),
+                state.player.stamina,
+                state.player.max_stamina,
+                state.world_turn
             ),
             &options,
             Some(state),
@@ -157,25 +234,63 @@ pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
-/// Execute a recipe and report the actual transaction result to the player.
+/// Attempt a recipe with a skill roll. Valid recipes spend stamina and one or
+/// more world turns whether they succeed or fail. Failure consumes ingredients;
+/// Smithing failures produce salvage scraps, while scrap recovery can consume
+/// a scrap without returning one.
 fn run_recipe(tui: &mut Tui, state: &mut GameState, recipe_id: &str) -> io::Result<String> {
-    match execute_recipe(state, recipe_id) {
+    let (stamina_cost, turns) = match recipe_id {
+        "cook_food" => (5, 1),
+        "cook_gourmet_feast" => (12, 2),
+        "fletch_bow" => (9, 2),
+        "smith_ingot" => (8, 1),
+        "smith_iron_sword" => (15, 3),
+        "smith_scrap_ingot" => (7, 1),
+        _ => (8, 1),
+    };
+    let modifier = stamina_fatigue_modifier(
+        state.player.stamina.saturating_sub(stamina_cost),
+        state.player.max_stamina,
+    );
+    let roll = rand::thread_rng().gen_range(0..100);
+    match crate::crafting::attempt_recipe(state, recipe_id, roll, stamina_cost, modifier) {
         Ok(result) => {
-            let mut message = format!(
-                "{} crafted successfully.\n\nInputs: {}\nOutputs: {}\nSkill XP gained: {}.",
-                result.recipe.name,
-                result.recipe.input_description(),
-                result.recipe.output_description(),
-                result.xp_awarded
-            );
-            if let Some(new_level) = result.level_up {
-                message.push_str(&format!(
-                    "\n\nYour {} level is now {}.",
-                    result.recipe.skill_name, new_level
-                ));
+            advance_skill_time(tui, state, turns)?;
+            if result.succeeded {
+                let mut message = format!(
+                    "{} succeeded ({}% chance).\n\nInputs: {}\nOutputs: {}\nSkill XP gained: {}.\nStamina spent: {} · World turns spent: {}",
+                    result.recipe.name,
+                    result.success_chance,
+                    result.recipe.input_description(),
+                    result.recipe.output_description(),
+                    result.xp_awarded,
+                    stamina_cost,
+                    turns
+                );
+                if let Some(new_level) = result.level_up {
+                    message.push_str(&format!(
+                        "\n\nYour {} level is now {}.",
+                        result.recipe.skill_name, new_level
+                    ));
+                }
+                tui.show_message("Crafting complete", &message, Some(state))?;
+                Ok(format!("Crafted {}.", result.recipe.name))
+            } else {
+                let outcome = if result.scraps_awarded > 0 {
+                    format!(
+                        "You recovered {} Metal Scraps. Try 'Recover Ingot from Metal Scraps' for a lower success chance.",
+                        result.scraps_awarded
+                    )
+                } else {
+                    "The ingredients were consumed and nothing usable was produced.".to_string()
+                };
+                let message = format!(
+                    "{} failed ({}% chance).\n\n{}\nStamina spent: {} · World turns spent: {}",
+                    result.recipe.name, result.success_chance, outcome, stamina_cost, turns
+                );
+                tui.show_message("Crafting failed", &message, Some(state))?;
+                Ok(format!("{} failed.", result.recipe.name))
             }
-            tui.show_message("Crafting complete", &message, Some(state))?;
-            Ok(format!("Crafted {}.", result.recipe.name))
         }
         Err(error) => {
             let message = error.to_string();
@@ -190,11 +305,14 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
     loop {
         let data = skill.data(state);
         let detail = format!(
-            "{} · level {} · XP {} · remaining {}",
+            "{} · level {} · XP {} · remaining {} · Stamina {}/{} · Turn {}",
             skill.name(),
             data.level,
             data.current_xp,
-            data.xp_remaining
+            data.xp_remaining,
+            state.player.stamina,
+            state.player.max_stamina,
+            state.world_turn
         );
         let action_label = format!(
             "{}{}",
