@@ -571,7 +571,6 @@ mod tests {
         assert!(loaded.record(CompanionId::BranTheShield).is_none());
     }
 
-
     #[test]
     fn party_combat_knockout_persists_once_and_keeps_other_allies_active() {
         use crate::party_combat::{
