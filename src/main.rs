@@ -1,4 +1,5 @@
 mod achievements;
+mod adventure;
 mod balance_simulation;
 mod bank;
 mod combat;
@@ -167,6 +168,7 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
 
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
+    crate::adventure::ensure_region_quest(state);
     // The location graph and recovery records are persisted separately; a
     // companion with zero HP is normalised here so stale party IDs cannot let
     // an older save field reintroduce them into combat.
@@ -211,6 +213,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let options = [
         "Travel / Explore Region",
         "Interact with Current Location",
+        "Expedition at Current Location",
         "Wander Gielinor",
         "Weapon Shop",
         "Armour Shop",
@@ -267,29 +270,30 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         match choice {
             0 => travel_menu(tui, state, &world)?,
             1 => interact_with_current_location(tui, state, &world)?,
-            2 => combat::wander_gielinor(tui, state)?,
-            3 => shops::weapon_shop(tui, state)?,
-            4 => shops::armour_shop(tui, state)?,
-            5 => shops::legends_store(tui, state)?,
-            6 => general_store(tui, state)?,
-            7 => shops::max_shop(tui, state)?,
-            8 => shops::smuggler(tui, state)?,
-            9 => stronghold::enter_stronghold(tui, state)?,
-            10 => {
+            2 => region_expedition_menu(tui, state, &world)?,
+            3 => combat::wander_gielinor(tui, state)?,
+            4 => shops::weapon_shop(tui, state)?,
+            5 => shops::armour_shop(tui, state)?,
+            6 => shops::legends_store(tui, state)?,
+            7 => general_store(tui, state)?,
+            8 => shops::max_shop(tui, state)?,
+            9 => shops::smuggler(tui, state)?,
+            10 => stronghold::enter_stronghold(tui, state)?,
+            11 => {
                 skills::skill_plot(tui, state)?;
                 continue;
             }
-            11 => bank::bank_menu(tui, state)?,
-            12 => quests::quest_hall(tui, state)?,
-            13 => inventory::view_inventory(tui, state, false)?,
-            14 => crate::achievements::progression_menu(tui, state)?,
-            15 => companion_menu(tui, state)?,
-            16 => companion_recovery_menu(tui, state, &world)?,
-            17 => {
+            12 => bank::bank_menu(tui, state)?,
+            13 => quests::quest_hall(tui, state)?,
+            14 => inventory::view_inventory(tui, state, false)?,
+            15 => crate::achievements::progression_menu(tui, state)?,
+            16 => companion_menu(tui, state)?,
+            17 => companion_recovery_menu(tui, state, &world)?,
+            18 => {
                 rest_menu(tui, state, &world)?;
                 continue;
             }
-            18 => settings_menu(tui, state)?,
+            19 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
@@ -332,11 +336,108 @@ fn interact_with_current_location(
         state,
         &crate::event::GameEvent::TargetInteracted { target_id },
     );
+    if location.id.as_str() == "village_start" {
+        crate::adventure::notify_landmark_interaction(state, "village_supply_board");
+        if state.active_quests.iter().any(|q| q.id == crate::adventure::REGION_QUEST_ID && q.is_completed && !q.is_claimed) {
+            match crate::adventure::claim_region_quest(state) {
+                Ok(reward) => tui.show_message(
+                    "Oakhaven supplies recovered",
+                    &format!("The village receives its supplies. Quest reward: {reward:?}; bonus: {} Logs and {} XP.", crate::adventure::REGION_QUEST_REWARD_LOGS, crate::adventure::REGION_QUEST_REWARD_XP),
+                    Some(state),
+                )?,
+                Err(error) => tui.show_message("Quest not ready", &error.to_string(), Some(state))?,
+            }
+        }
+    } else if let Some(landmark) = crate::adventure::landmark_for_location(&location.id) {
+        crate::adventure::notify_landmark_interaction(state, landmark.interaction_target);
+    }
     tui.show_message(
         "Explore",
         &format!("You inspect {location_name}."),
         Some(state),
     )
+}
+
+
+/// Run the reusable encounter table attached to the current region location.
+/// Each victory uses the party-aware combat engine and the shared domain events.
+fn region_expedition_menu(
+    tui: &mut Tui,
+    state: &mut GameState,
+    world: &World,
+) -> io::Result<()> {
+    use crate::party_battle::{run_party_battle, BattleConfig, BattleOutcome};
+
+    let location_id = state.current_location.clone();
+    let Some(encounter) = crate::adventure::encounter_for_location(&location_id) else {
+        let detail = world.get_location(&location_id)
+            .map(|place| format!("{} has no hostile encounter on its table. You can still inspect landmarks, gather resources, trade, or travel onwards.", place.name))
+            .unwrap_or_else(|| "This location is not part of the current region.".to_string());
+        tui.show_message("No expedition encounter", &detail, Some(state))?;
+        return Ok(());
+    };
+    let encounter = *encounter;
+    let reward_flag = format!("region_encounter:{}", encounter.id);
+    let already_cleared = state.player.quests_completed.iter().any(|id| id == &reward_flag);
+    let roster = encounter.enemies.iter().map(|enemy| {
+        format!("{} · level {} · {} gold · {}", enemy.name,
+            state.player.combat_level.saturating_add(enemy.level_offset),
+            enemy.gold_reward,
+            enemy.item_reward.map(|(item,count)| format!("{} x{count}", item.name())).unwrap_or_else(|| "no item drop".to_string()))
+    }).collect::<Vec<_>>().join("\n");
+    let danger = match encounter.danger {
+        5.. => "Extreme danger: prepare equipment, healing, and your active party before committing.",
+        4 => "High danger: enemy health and damage are increased.",
+        _ => "Moderate danger: check supplies and equipment before travelling deeper.",
+    };
+    tui.show_message("Expedition briefing",
+        &format!("{}\nDanger: {}/5\n{}\n\nEncounter roster:\n{}\n\nClear reward: {} gold and {} XP.{}",
+            encounter.title, encounter.danger, danger, roster, encounter.reward_gold, encounter.reward_xp,
+            if already_cleared { "\nThe one-time clear reward was already claimed." } else { "" }),
+        Some(state))?;
+
+    for enemy in encounter.enemies {
+        let level = state.player.combat_level.saturating_add(enemy.level_offset).max(1);
+        let enemy_hp = (80_u32.saturating_add(level.saturating_mul(22)))
+            .saturating_mul(enemy.health_multiplier_pct) / 100;
+        let attack = enemy.kind.max_damage().saturating_mul(enemy.attack_multiplier_pct) / 100;
+        match run_party_battle(tui, state, BattleConfig {
+            enemy_name: enemy.name,
+            level,
+            enemy_hp: enemy_hp.max(1),
+            enemy_attack_power: attack.max(1),
+            allow_inventory: true,
+            allow_flee: true,
+            resource_drain_per_turn: 0,
+        })? {
+            BattleOutcome::Victory => {
+                state.player.gold = state.player.gold.saturating_add(enemy.gold_reward).min(crate::data::MAX_GOLD);
+                if let Some((item, count)) = enemy.item_reward {
+                    state.player.add_item(item, count);
+                    crate::quests::notify_event(state, &crate::event::GameEvent::ItemCollected { item_type: item, count });
+                }
+                crate::quests::notify_event(state, &crate::event::GameEvent::MonsterDefeated { name: enemy.name.to_string(), is_stronghold: false });
+                tui.show_message("Expedition progress",
+                    &format!("Defeated {}. Received {} gold{}.", enemy.name, enemy.gold_reward,
+                        enemy.item_reward.map(|(item,count)| format!(" and {count} {}", item.name())).unwrap_or_default()),
+                    Some(state))?;
+            }
+            BattleOutcome::Fled => {
+                tui.show_message("Expedition withdrawn", "You retreat from the encounter. No clear reward is granted for an unfinished expedition.", Some(state))?;
+                return Ok(());
+            }
+            BattleOutcome::Defeated => return Ok(()),
+        }
+    }
+    if !already_cleared {
+        match crate::adventure::claim_encounter_clear_reward(state, encounter.id) {
+            Ok((gold, xp)) => tui.show_message("Expedition complete", &format!("The area is secure. Clear reward: {gold} gold and {xp} XP."), Some(state))?,
+            Err(error) => tui.show_message("Reward unavailable", &error.to_string(), Some(state))?,
+        }
+    } else {
+        tui.show_message("Expedition complete", "The area has been cleared again, but its one-time clear reward will not be paid twice.", Some(state))?;
+    }
+    Ok(())
 }
 
 /// Rest trades resources and world time for stamina recovery.
