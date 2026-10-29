@@ -227,26 +227,27 @@ impl RecoveryState {
          }).collect();
          let mut newly_knocked_out = Vec::new();
          for (id, hp, stamina, mana, knocked_out) in updates {
+             let already_recorded = self.record(id).is_some();
+             if !state.companions.iter().any(|companion| companion.id == id) {
+                 return Err(RecoveryError::CompanionNotRecruited(id));
+             }
              {
-                 let companion = state.companions.iter_mut().find(|c| c.id == id)
-                     .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+                 let companion = state.companions.iter_mut().find(|c| c.id == id).expect("validated companion");
                  companion.current_hp = hp.min(companion.max_hp);
                  companion.current_stamina = stamina.min(companion.max_stamina);
                  companion.current_mana = mana.min(companion.max_mana);
                  if knocked_out {
                      companion.current_hp = 0;
                      companion.condition = CompanionCondition::KnockedOut;
+                     if !already_recorded {
+                         let origin = state.current_location.clone();
+                         self.record_knockout(companion, world, &origin)?;
+                         newly_knocked_out.push(id);
+                     }
                  }
              }
              if knocked_out {
-                 if self.record(id).is_none() {
-                     // Use the normal transition to set destination, stable ordering,
-                     // and active-party removal in one shared pathway.
-                     self.record_knockout_by_id(state, id, world)?;
-                     newly_knocked_out.push(id);
-                 } else {
-                     let _ = state.party.remove_member(id);
-                 }
+                 let _ = state.party.remove_member(id);
              }
          }
          Ok(newly_knocked_out)
