@@ -98,6 +98,28 @@ fn actor_source(encounter: &Encounter, actor: CombatantId) -> Option<CombatantSo
     encounter.combatant(actor).map(|combatant| combatant.source)
 }
 
+fn resolve_party_defeat(
+    tui: &mut Tui,
+    state: &mut GameState,
+    encounter: &Encounter,
+    world: &World,
+) -> Result<bool, io::Error> {
+    if encounter.outcome != EncounterOutcome::PartyDefeated {
+        return Ok(false);
+    }
+    let mut recovery = std::mem::take(&mut state.companion_recovery);
+    let result = recovery.resolve_player_defeat(state, world);
+    state.companion_recovery = recovery;
+    result.map_err(|error| io::Error::other(error.to_string()))?;
+    tui.show_message(
+        "Expedition defeated",
+        "Your party has been incapacitated. You have been rescued at the nearest reachable settlement; knocked-out companions remain unavailable until recovered.",
+        Some(state),
+    )?;
+    Ok(true)
+}
+
+
 fn target_label(encounter: &Encounter, id: CombatantId) -> String {
     encounter
         .combatant(id)
@@ -464,6 +486,9 @@ pub fn run_party_battle(
                 last_log = format!("{} is interrupted by Stun.", telegraph.name);
             }
             sync_persistent_state(state, &encounter, &world)?;
+            if resolve_party_defeat(tui, state, &encounter, &world)? {
+                return Ok(BattleOutcome::Defeated);
+            }
             if encounter.current_actor() != Some(actor) {
                 continue;
             }
@@ -542,6 +567,9 @@ pub fn run_party_battle(
                     // The resolver consumed the enemy activation, so this loop
                     // must not attempt a second action for it.
                     sync_persistent_state(state, &encounter, &world)?;
+                    if resolve_party_defeat(tui, state, &encounter, &world)? {
+                        return Ok(BattleOutcome::Defeated);
+                    }
                     if is_lacoyx {
                         update_lacoyx_phase(
                             &mut encounter,
@@ -631,6 +659,9 @@ pub fn run_party_battle(
             ),
         };
         sync_persistent_state(state, &encounter, &world)?;
+        if resolve_party_defeat(tui, state, &encounter, &world)? {
+            return Ok(BattleOutcome::Defeated);
+        }
 
         if is_lacoyx {
             update_lacoyx_phase(
@@ -641,18 +672,6 @@ pub fn run_party_battle(
                 tui,
                 state,
             )?;
-        }
-        if encounter.outcome == EncounterOutcome::PartyDefeated {
-            let mut recovery = std::mem::take(&mut state.companion_recovery);
-            let result = recovery.resolve_player_defeat(state, &world);
-            state.companion_recovery = recovery;
-            result.map_err(|error| io::Error::other(error.to_string()))?;
-            tui.show_message(
-                "Expedition defeated",
-                "Your party has been incapacitated. You have been rescued at the nearest reachable settlement; knocked-out companions remain unavailable until recovered.",
-                Some(state),
-            )?;
-            return Ok(BattleOutcome::Defeated);
         }
     }
 
