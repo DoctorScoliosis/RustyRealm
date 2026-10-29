@@ -423,7 +423,7 @@ mod tests {
         )
         .unwrap();
         state
-}
+    }
 
     #[test]
     fn knockout_is_idempotent_and_uses_nearest_reachable_settlement() {
@@ -453,7 +453,7 @@ mod tests {
         // This operation records the state only; the caller's main combat adapter removes
         // the companion from the active party as soon as it processes the knockout.
         assert!(validate_recovery_invariants(&state, &recovery));
-}
+    }
 
     #[test]
     fn no_reachable_settlement_is_safe_and_explicit() {
@@ -487,7 +487,7 @@ mod tests {
             Err(RecoveryError::NoTreatmentSettlement)
         ));
         assert_eq!(state.player.gold, gold_before);
-}
+    }
 
     #[test]
     fn failed_treatment_never_charges_gold_or_partially_restores() {
@@ -509,7 +509,7 @@ mod tests {
         assert_eq!(state.player.gold, before.player.gold);
         assert_eq!(state.companions[0].current_hp, 0);
         assert_eq!(recovery.record(id).unwrap().turns_remaining, RECOVERY_TURNS);
-}
+    }
 
     #[test]
     fn paid_treatment_restores_once_and_requires_explicit_reselection() {
@@ -541,7 +541,7 @@ mod tests {
             .apply_treatment(&mut state, id, &location, &world)
             .is_err());
         PartyManager::add_to_party(&mut state.party, &state.companions, id).unwrap();
-}
+    }
 
     #[test]
     fn committed_turns_advance_recovery_but_menus_and_reload_do_not() {
@@ -573,7 +573,7 @@ mod tests {
         );
         assert_eq!(state.companions[0].condition, CompanionCondition::Available);
         assert!(loaded.record(CompanionId::BranTheShield).is_none());
-}
+    }
 
 
     #[test]
@@ -681,10 +681,10 @@ mod tests {
         let before = recovery.record(id).unwrap().clone();
         for _ in 0..(RECOVERY_TURNS + 2) {
         assert!(recovery.advance_committed_turn(&mut state.companions).is_empty());
-}
+    }
         assert_eq!(recovery.record(id), Some(&before));
         assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
-}
+    }
 
     #[test]
     fn defeat_resolution_is_atomic_and_recoverable() {
@@ -700,5 +700,5 @@ mod tests {
         assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
         assert_eq!(recovery.expedition_defeat_count, 1);
         assert!(recovery.record(CompanionId::BranTheShield).is_some());
-}
+    }
 }
