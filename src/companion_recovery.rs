@@ -371,20 +371,29 @@ pub fn nearest_treatment_settlement(world: &World, origin: &LocationId) -> Optio
 /// a compatible state. Knockout is never permanent deletion/death.
 pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState) -> bool {
     for record in &recovery.records {
-    let Some(companion) = state.companions.iter().find(|c| c.id == record.companion_id) else {
-        return false;
-    };
-    if companion.current_hp != 0
-        || !matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering)
-        || state.party.contains(companion.id)
-    {
-        return false;
-    }
+        let Some(companion) = state
+            .companions
+            .iter()
+            .find(|c| c.id == record.companion_id)
+        else {
+            return false;
+        };
+        if companion.current_hp != 0
+            || !matches!(
+                companion.condition,
+                CompanionCondition::KnockedOut | CompanionCondition::Recovering
+            )
+            || state.party.contains(companion.id)
+        {
+            return false;
+        }
     }
     state.companions.iter().all(|companion| {
-    (companion.current_hp > 0 || !companion.condition.can_join_party())
-        && (!matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering)
-            || recovery.record(companion.id).is_some())
+        (companion.current_hp > 0 || !companion.condition.can_join_party())
+            && (!matches!(
+                companion.condition,
+                CompanionCondition::KnockedOut | CompanionCondition::Recovering
+            ) || recovery.record(companion.id).is_some())
     })
 }
 
