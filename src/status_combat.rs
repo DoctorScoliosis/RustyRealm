@@ -716,7 +716,7 @@ mod tests {
             EnemyProfile::for_name("Stronghold Mage")
                 .status_payload
                 .unwrap()
-                .0,
+                .kind,
             StatusEffectKind::Slow
         );
         assert_eq!(
