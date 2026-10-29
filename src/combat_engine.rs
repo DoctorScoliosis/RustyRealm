@@ -2,7 +2,7 @@ use crate::data::{get_ability, get_npc_resistance, AbilityId, DamageType, Lacoyx
 use crate::state::Player;
 use crate::status_combat::{
     EnemyArchetype, EnemyProfile, EnemyStatusPayload, StatusApplication, StatusEffect,
-    StatusEffectKind, StatusTick, StatusResistance,
+    StatusEffectKind, StatusTick,
 };
 use rand::Rng;
 
@@ -93,6 +93,7 @@ impl Combatant {
             attack_power: 30,
             critical_chance_pct: 0,
             status_effects: Vec::new(),
+            status_resistance_pct: 0,
             shield_wall_duration: 0,
             is_stunned: false,
             telegraphed_attack: None,
@@ -631,6 +632,33 @@ mod tests {
             lacoyx.lacoyx_phase,
             Some(LacoyxPhase::Phase3DesperateOverlord)
         );
+    }
+
+    #[test]
+    fn lacoyx_keeps_phase_specific_telegraph_identity_and_damage_type() {
+        let (phase_one_chance, phase_one) =
+            lacoyx_telegraph_for_phase(LacoyxPhase::Phase1Commander);
+        assert_eq!(phase_one_chance, 0.4);
+        assert_eq!(phase_one.name, "Grand Cleave");
+        assert_eq!(phase_one.damage, 80);
+        assert_eq!(phase_one.damage_type, DamageType::Physical);
+
+        let (phase_two_chance, phase_two) =
+            lacoyx_telegraph_for_phase(LacoyxPhase::Phase2InfernalWarlord);
+        assert_eq!(phase_two_chance, 0.5);
+        assert_eq!(phase_two.name, "Infernal Nova");
+        assert_eq!(phase_two.damage, 100);
+        assert_eq!(phase_two.damage_type, DamageType::Fire);
+
+        let (phase_three_chance, phase_three) =
+            lacoyx_telegraph_for_phase(LacoyxPhase::Phase3DesperateOverlord);
+        assert_eq!(phase_three_chance, 0.6);
+        assert_eq!(phase_three.name, "Apocalyptic Strike");
+        assert_eq!(phase_three.damage, 140);
+        assert_eq!(phase_three.damage_type, DamageType::Arcane);
+        assert!(phase_one.status_payload.is_none());
+        assert!(phase_two.status_payload.is_none());
+        assert!(phase_three.status_payload.is_none());
     }
 
     #[test]
