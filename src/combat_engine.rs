@@ -652,6 +652,44 @@ mod tests {
     }
 
     #[test]
+    fn shared_enemy_profiles_drive_legacy_status_intents_deterministically() {
+        let mage = CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 40, 7, 0);
+        assert_eq!(mage.damage, 0);
+        let mage_telegraph = mage.telegraph.expect("telegraph roll 0 is below the Mage profile threshold");
+        assert_eq!(mage_telegraph.damage, 8);
+        assert_eq!(mage_telegraph.status_payload.unwrap().kind, StatusEffectKind::Slow);
+        assert!(mage_telegraph.description.contains("Slow"));
+
+        let ranger = CombatEngine::propose_legacy_enemy_intent("Stronghold Ranger", 40, 6, 99);
+        assert_eq!(ranger.damage, 7);
+        assert!(ranger.telegraph.is_none());
+        assert_eq!(ranger.status_payload.unwrap().kind, StatusEffectKind::Mark);
+
+        let warrior = CombatEngine::propose_legacy_enemy_intent("Stronghold Warrior", 40, 3, 99);
+        assert_eq!(warrior.damage, 4);
+        assert_eq!(
+            warrior.status_payload.unwrap().kind,
+            StatusEffectKind::WeakenedDefences
+        );
+    }
+
+    #[test]
+    fn legacy_enemy_status_payload_uses_shared_resistance_and_application_chance() {
+        let mut target = Combatant::new_monster("TestHero", 1, 100);
+        target.status_resistance_pct = 90;
+        let payload = EnemyProfile::for_name("Stronghold Mage").status_payload.unwrap();
+
+        let logs = CombatEngine::apply_enemy_status_payload(
+            "Stronghold Mage",
+            &mut target,
+            Some(payload),
+            4,
+        );
+        assert!(target.status_effects.is_empty());
+        assert!(logs.iter().any(|line| line.contains("resisted")));
+    }
+
+    #[test]
     fn legacy_battle_status_tick_uses_shared_effect_rules_for_every_dot_kind() {
         for kind in [
             StatusEffectKind::Poison,
