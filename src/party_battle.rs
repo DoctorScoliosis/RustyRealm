@@ -142,8 +142,6 @@ fn cancel_invalid_pending_telegraph(
     }
 }
 
-
-
 fn target_label(encounter: &Encounter, id: CombatantId) -> String {
     encounter
         .combatant(id)
@@ -722,7 +720,6 @@ pub fn run_party_battle(
         )),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
