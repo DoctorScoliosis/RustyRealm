@@ -790,10 +790,13 @@ pub fn run_party_battle(
                         },
                     );
                 }
-                crate::quests::notify_event(state, &GameEvent::MonsterDefeated {
-                    name: enemy.name.to_string(),
-                    is_stronghold: false,
-                });
+                crate::quests::notify_event(
+                    state,
+                    &GameEvent::MonsterDefeated {
+                        name: enemy.name.to_string(),
+                        is_stronghold: false,
+                    },
+                );
             }
             Ok(BattleOutcome::Victory)
         },
