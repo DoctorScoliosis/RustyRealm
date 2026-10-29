@@ -97,9 +97,16 @@
          id: CompanionId,
          world: &World,
      ) -> Result<bool, RecoveryError> {
-         let companion = state.companions.iter_mut().find(|c| c.id == id)
-             .ok_or(RecoveryError::CompanionNotRecruited(id))?;
-         self.record_knockout(companion, world, &state.current_location)
+         let origin = state.current_location.clone();
+         let newly_recorded = {
+             let companion = state.companions.iter_mut().find(|c| c.id == id)
+                 .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+             self.record_knockout(companion, world, &origin)?
+         };
+         // A knocked-out companion is removed from the active roster so party
+         // capacity and subsequent encounter construction stay consistent.
+         let _ = state.party.remove_member(id);
+         Ok(newly_recorded)
      }
 
      pub fn apply_treatment(
