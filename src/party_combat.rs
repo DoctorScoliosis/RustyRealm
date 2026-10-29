@@ -10,8 +10,8 @@ use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
 use crate::status_combat::{
     defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects,
-    StatusApplication, StatusEffect, StatusEffectKind, StatusResistance, StatusTick,
-    MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
+    EnemyStatusPayload, StatusApplication, StatusEffect, StatusEffectKind, StatusResistance,
+    StatusTick, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
 };
 use std::collections::HashSet;
 
@@ -954,19 +954,29 @@ impl Encounter {
                 crate::status_combat::EnemyProfile::for_name(source_name).status_payload
             } else {
                 match ability_id {
-                    Some(AbilityId::HeavyStrike) => Some((StatusEffectKind::Bleed, 2, 6, 100)),
-                    Some(AbilityId::Cleave) => Some((StatusEffectKind::Stun, 1, 1, 100)),
+                    Some(AbilityId::HeavyStrike) => Some(EnemyStatusPayload {
+                        kind: StatusEffectKind::Bleed,
+                        duration: 2,
+                        potency: 6,
+                        application_chance_pct: 100,
+                    }),
+                    Some(AbilityId::Cleave) => Some(EnemyStatusPayload {
+                        kind: StatusEffectKind::Stun,
+                        duration: 1,
+                        potency: 1,
+                        application_chance_pct: 100,
+                    }),
                     _ => None,
                 }
             };
-            if let Some((kind, duration, potency, chance_pct)) = payload {
+            if let Some(payload) = payload {
                 let _ = self.apply_status_effect(
                     target_id,
-                    kind,
+                    payload.kind,
                     Some(actor_id),
-                    potency,
-                    duration,
-                    chance_pct,
+                    payload.potency,
+                    payload.duration,
+                    payload.application_chance_pct,
                     critical_roll,
                 )?;
             }

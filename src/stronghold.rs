@@ -190,6 +190,14 @@ pub fn stronghold_warning(tui: &mut Tui, state: &GameState) -> io::Result<bool> 
     Ok(choice == 0)
 }
 
+fn stronghold_guardian_from_roll(roll: u8) -> (NpcType, u32) {
+    match roll {
+        1 => (NpcType::StrongholdMage, 110),
+        2 => (NpcType::StrongholdRanger, 111),
+        _ => (NpcType::StrongholdWarrior, 108),
+    }
+}
+
 /// Preserve the ten-victory Stronghold run while using the shared combat engine
 /// for its warrior encounters and the Lacoyx boss.
 pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
@@ -198,11 +206,7 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
     }
 
     let mut rng = rand::thread_rng();
-    let (npc_type, level) = match rng.gen_range(1..=3) {
-        1 => (NpcType::StrongholdMage, 110),
-        2 => (NpcType::StrongholdRanger, 111),
-        _ => (NpcType::StrongholdWarrior, 108),
-    };
+    let (npc_type, level) = stronghold_guardian_from_roll(rng.gen_range(1..=3));
     let health = npc_type.base_health();
 
     match run_engine_battle(
@@ -338,6 +342,22 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 #[cfg(test)]
 mod gauntlet_tests {
     use super::*;
+    #[test]
+    fn classic_stronghold_keeps_its_three_guardian_choices_and_levels() {
+        assert_eq!(
+            stronghold_guardian_from_roll(1),
+            (NpcType::StrongholdMage, 110)
+        );
+        assert_eq!(
+            stronghold_guardian_from_roll(2),
+            (NpcType::StrongholdRanger, 111)
+        );
+        assert_eq!(
+            stronghold_guardian_from_roll(3),
+            (NpcType::StrongholdWarrior, 108)
+        );
+    }
+
     #[test]
     fn modifiers_change_only_their_stat() {
         let (h, d) = calculate_gauntlet_enemy_stats(3, GauntletModifier::None);

@@ -1,6 +1,9 @@
 use crate::data::{get_ability, get_npc_resistance, AbilityId, DamageType, LacoyxPhase};
 use crate::state::Player;
-use crate::status_combat::{StatusEffect, StatusEffectKind, StatusTick};
+use crate::status_combat::{
+    EnemyArchetype, EnemyProfile, EnemyStatusPayload, StatusApplication, StatusEffect,
+    StatusEffectKind, StatusTick,
+};
 use rand::Rng;
 
 /// Defensive response to an incoming attack. Consumable represents using one
@@ -19,6 +22,19 @@ pub struct TelegraphedAttack {
     pub description: String,
     pub damage: u32,
     pub damage_type: DamageType,
+    /// Status payload is committed with the attack so its warning and resolution cannot diverge.
+    pub status_payload: Option<EnemyStatusPayload>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnemyTurnIntent {
+    pub damage: u32,
+    pub damage_type: DamageType,
+    /// A new attack commitment, if the enemy is telegraphing instead of striking now.
+    pub telegraph: Option<TelegraphedAttack>,
+    /// Applied only if the immediate attack connects; telegraphed attacks carry it on the commitment.
+    pub status_payload: Option<EnemyStatusPayload>,
+    pub logs: Vec<String>,
 }
 
 /// Per-encounter state. The persistent player only stores HP and resource
@@ -35,6 +51,8 @@ pub struct Combatant {
     pub attack_power: u32,
     pub critical_chance_pct: u32,
     pub status_effects: Vec<StatusEffect>,
+    /// Percentage chance to resist status application; capped by the shared lifecycle at 90%.
+    pub status_resistance_pct: u8,
     pub shield_wall_duration: u32,
     pub is_stunned: bool,
     pub telegraphed_attack: Option<TelegraphedAttack>,
@@ -54,6 +72,7 @@ impl Combatant {
             attack_power: player.weapon.max_damage().max(1),
             critical_chance_pct: 5,
             status_effects: Vec::new(),
+            status_resistance_pct: 0,
             shield_wall_duration: 0,
             is_stunned: false,
             telegraphed_attack: None,
@@ -74,6 +93,7 @@ impl Combatant {
             attack_power: 30,
             critical_chance_pct: 0,
             status_effects: Vec::new(),
+            status_resistance_pct: 0,
             shield_wall_duration: 0,
             is_stunned: false,
             telegraphed_attack: None,
@@ -85,20 +105,34 @@ impl Combatant {
         }
     }
 
-    /// Apply through the shared Section 13 lifecycle. Legacy abilities use
-    /// guaranteed, non-resisted application to preserve their existing rules.
-    pub fn apply_status(&mut self, kind: StatusEffectKind, duration: u32, potency: u32) {
-        if duration == 0 {
-            return;
-        }
+    /// Apply through the shared Section 13 lifecycle using this combatant's status resistance.
+    pub fn apply_status_with_chance(
+        &mut self,
+        kind: StatusEffectKind,
+        duration: u32,
+        potency: u32,
+        application_chance_pct: u8,
+        roll: u32,
+    ) -> StatusApplication {
         let effect = StatusEffect {
             kind,
             source: None,
             potency,
             remaining_activations: duration,
-            application_chance_pct: 100,
+            application_chance_pct,
         };
-        let _ = crate::status_combat::apply_status(&mut self.status_effects, effect, 0, 0);
+        crate::status_combat::apply_status(
+            &mut self.status_effects,
+            effect,
+            self.status_resistance_pct,
+            roll,
+        )
+    }
+
+    /// Existing player abilities retain guaranteed base application chance while
+    /// still passing through the shared duration, refresh and resistance policy.
+    pub fn apply_status(&mut self, kind: StatusEffectKind, duration: u32, potency: u32) {
+        let _ = self.apply_status_with_chance(kind, duration, potency, 100, 0);
     }
 
     /// The legacy battle and party encounter now share the same effect clock.
@@ -133,6 +167,41 @@ impl Combatant {
     pub fn regen_resources(&mut self) {
         self.stamina = self.stamina.saturating_add(10).min(self.max_stamina);
         self.mana = self.mana.saturating_add(5).min(self.max_mana);
+    }
+}
+
+fn lacoyx_telegraph_for_phase(phase: LacoyxPhase) -> (f64, TelegraphedAttack) {
+    match phase {
+        LacoyxPhase::Phase1Commander => (
+            0.4,
+            TelegraphedAttack {
+                name: "Grand Cleave".into(),
+                description: "Lacoyx winds up a massive sword slash!".into(),
+                damage: 80,
+                damage_type: DamageType::Physical,
+                status_payload: None,
+            },
+        ),
+        LacoyxPhase::Phase2InfernalWarlord => (
+            0.5,
+            TelegraphedAttack {
+                name: "Infernal Nova".into(),
+                description: "Lacoyx channels infernal flames!".into(),
+                damage: 100,
+                damage_type: DamageType::Fire,
+                status_payload: None,
+            },
+        ),
+        LacoyxPhase::Phase3DesperateOverlord => (
+            0.6,
+            TelegraphedAttack {
+                name: "Apocalyptic Strike".into(),
+                description: "Lacoyx gathers apocalyptic energy!".into(),
+                damage: 140,
+                damage_type: DamageType::Arcane,
+                status_payload: None,
+            },
+        ),
     }
 }
 
@@ -324,66 +393,174 @@ impl CombatEngine {
         logs
     }
 
-    /// Returns damage dealt this turn, attack type, a newly telegraphed move
-    /// (if any), and explanatory logs.
-    pub fn generate_enemy_turn(
-        enemy: &mut Combatant,
-        _player: &Combatant,
-    ) -> (u32, DamageType, Option<TelegraphedAttack>, Vec<String>) {
-        let mut logs = Vec::new();
+    /// Deterministic policy for ordinary enemies. Tests provide the rolls; gameplay
+    /// supplies random rolls. The typed profile is also used by party-combat AI.
+    pub fn propose_legacy_enemy_intent(
+        enemy_name: &str,
+        attack_power: u32,
+        damage_roll: u32,
+        telegraph_roll: u32,
+    ) -> EnemyTurnIntent {
+        let profile = EnemyProfile::for_name(enemy_name);
+        let damage = damage_roll % attack_power.max(1) + 1;
+        let telegraph = telegraph_roll % 100 < u32::from(profile.telegraph_chance_pct);
+        if telegraph {
+            let (name, posture) = match profile.archetype {
+                EnemyArchetype::AggressiveMelee => (
+                    "Overwhelming Strike",
+                    "draws back for a forceful melee attack",
+                ),
+                EnemyArchetype::RangedPressure => {
+                    ("Ranged Volley", "takes aim for a ranged attack")
+                }
+                EnemyArchetype::DefensiveProtector => {
+                    ("Guarded Counter", "sets up a guarded counterattack")
+                }
+                EnemyArchetype::StatusSpecialist => (
+                    "Status Assault",
+                    "channels an attack carrying a status effect",
+                ),
+            };
+            let status_description = profile
+                .status_payload
+                .map(|payload| {
+                    format!(
+                        " It may apply {:?} for {} activation(s) at {}% base chance.",
+                        payload.kind, payload.duration, payload.application_chance_pct
+                    )
+                })
+                .unwrap_or_default();
+            let attack = TelegraphedAttack {
+                name: name.into(),
+                description: format!(
+                    "{} {} ({} base physical damage).{}",
+                    enemy_name, posture, damage, status_description
+                ),
+                damage,
+                damage_type: DamageType::Physical,
+                status_payload: profile.status_payload,
+            };
+            EnemyTurnIntent {
+                damage: 0,
+                damage_type: DamageType::Physical,
+                telegraph: Some(attack.clone()),
+                status_payload: None,
+                logs: vec![format!(
+                    "TELEGRAPH: {} — {}",
+                    attack.name, attack.description
+                )],
+            }
+        } else {
+            EnemyTurnIntent {
+                damage,
+                damage_type: DamageType::Physical,
+                telegraph: None,
+                status_payload: profile.status_payload,
+                logs: Vec::new(),
+            }
+        }
+    }
+
+    /// Interrupt an already committed attack when the enemy's activation begins stunned.
+    /// Returns true only when the stored telegraph was cancelled.
+    pub fn cancel_telegraph_if_stunned(enemy: &mut Combatant) -> bool {
+        if !enemy.is_stunned {
+            return false;
+        }
+        enemy.is_stunned = false;
+        enemy.telegraphed_attack = None;
+        true
+    }
+
+    /// Resolve an existing telegraph or propose a new intent. Lacoyx keeps his
+    /// phase-specific attack identities and probabilities; ordinary hostiles use
+    /// the shared Section 13 tactical profile and status payload.
+    pub fn generate_enemy_turn(enemy: &mut Combatant, _player: &Combatant) -> EnemyTurnIntent {
         let mut rng = rand::thread_rng();
 
         if let Some(telegraphed) = enemy.telegraphed_attack.take() {
-            logs.push(format!(
-                "{} strikes with telegraphed move {}!",
-                enemy.name, telegraphed.name
-            ));
-            return (telegraphed.damage, telegraphed.damage_type, None, logs);
+            return EnemyTurnIntent {
+                damage: telegraphed.damage,
+                damage_type: telegraphed.damage_type,
+                telegraph: None,
+                status_payload: telegraphed.status_payload,
+                logs: vec![format!(
+                    "{} strikes with telegraphed move {}!",
+                    enemy.name, telegraphed.name
+                )],
+            };
         }
 
         if enemy.name == "Lacoyx" {
             let phase = enemy.lacoyx_phase.unwrap_or(LacoyxPhase::Phase1Commander);
-            let (chance, attack) = match phase {
-                LacoyxPhase::Phase1Commander => (
-                    0.4,
-                    TelegraphedAttack {
-                        name: "Grand Cleave".into(),
-                        description: "Lacoyx winds up a massive sword slash!".into(),
-                        damage: 80,
-                        damage_type: DamageType::Physical,
-                    },
-                ),
-                LacoyxPhase::Phase2InfernalWarlord => (
-                    0.5,
-                    TelegraphedAttack {
-                        name: "Infernal Nova".into(),
-                        description: "Lacoyx channels infernal flames!".into(),
-                        damage: 100,
-                        damage_type: DamageType::Fire,
-                    },
-                ),
-                LacoyxPhase::Phase3DesperateOverlord => (
-                    0.6,
-                    TelegraphedAttack {
-                        name: "Apocalyptic Strike".into(),
-                        description: "Lacoyx gathers apocalyptic energy!".into(),
-                        damage: 140,
-                        damage_type: DamageType::Arcane,
-                    },
-                ),
-            };
+            let (chance, attack) = lacoyx_telegraph_for_phase(phase);
             if rng.gen_bool(chance) {
-                logs.push(format!(
+                let logs = vec![format!(
                     "TELEGRAPH: {} — {}",
                     attack.name, attack.description
-                ));
+                )];
                 enemy.telegraphed_attack = Some(attack.clone());
-                return (0, attack.damage_type, Some(attack), logs);
+                return EnemyTurnIntent {
+                    damage: 0,
+                    damage_type: attack.damage_type,
+                    telegraph: Some(attack.clone()),
+                    status_payload: None,
+                    logs,
+                };
             }
+            return EnemyTurnIntent {
+                damage: rng.gen_range(1..=enemy.attack_power.max(1)),
+                damage_type: DamageType::Physical,
+                telegraph: None,
+                status_payload: None,
+                logs: Vec::new(),
+            };
         }
 
-        let base_damage = rng.gen_range(1..=enemy.attack_power.max(1));
-        (base_damage, DamageType::Physical, None, logs)
+        let intent = Self::propose_legacy_enemy_intent(
+            &enemy.name,
+            enemy.attack_power,
+            rng.gen_range(0..u32::MAX),
+            rng.gen_range(0..100),
+        );
+        if let Some(attack) = intent.telegraph.clone() {
+            enemy.telegraphed_attack = Some(attack);
+        }
+        intent
+    }
+
+    /// Apply a profile payload only after an attack connects. A successful dodge
+    /// is represented by zero mitigated damage in the legacy resolver.
+    pub fn apply_enemy_status_payload(
+        source_name: &str,
+        target: &mut Combatant,
+        payload: Option<EnemyStatusPayload>,
+        roll: u32,
+    ) -> Vec<String> {
+        let Some(payload) = payload else {
+            return Vec::new();
+        };
+        match target.apply_status_with_chance(
+            payload.kind,
+            payload.duration,
+            payload.potency,
+            payload.application_chance_pct,
+            roll,
+        ) {
+            StatusApplication::Applied => vec![format!(
+                "{}'s attack inflicted {:?} on {}.",
+                source_name, payload.kind, target.name
+            )],
+            StatusApplication::Refreshed => vec![format!(
+                "{}'s attack refreshed {:?} on {}.",
+                source_name, payload.kind, target.name
+            )],
+            StatusApplication::Resisted => vec![format!(
+                "{} resisted the {:?} effect.",
+                target.name, payload.kind
+            )],
+            StatusApplication::FailedChance | StatusApplication::InvalidDuration => Vec::new(),
+        }
     }
 }
 
@@ -479,6 +656,160 @@ mod tests {
             lacoyx.lacoyx_phase,
             Some(LacoyxPhase::Phase3DesperateOverlord)
         );
+    }
+
+    #[test]
+    fn lacoyx_keeps_phase_specific_telegraph_identity_and_damage_type() {
+        let (phase_one_chance, phase_one) =
+            lacoyx_telegraph_for_phase(LacoyxPhase::Phase1Commander);
+        assert_eq!(phase_one_chance, 0.4);
+        assert_eq!(phase_one.name, "Grand Cleave");
+        assert_eq!(phase_one.damage, 80);
+        assert_eq!(phase_one.damage_type, DamageType::Physical);
+
+        let (phase_two_chance, phase_two) =
+            lacoyx_telegraph_for_phase(LacoyxPhase::Phase2InfernalWarlord);
+        assert_eq!(phase_two_chance, 0.5);
+        assert_eq!(phase_two.name, "Infernal Nova");
+        assert_eq!(phase_two.damage, 100);
+        assert_eq!(phase_two.damage_type, DamageType::Fire);
+
+        let (phase_three_chance, phase_three) =
+            lacoyx_telegraph_for_phase(LacoyxPhase::Phase3DesperateOverlord);
+        assert_eq!(phase_three_chance, 0.6);
+        assert_eq!(phase_three.name, "Apocalyptic Strike");
+        assert_eq!(phase_three.damage, 140);
+        assert_eq!(phase_three.damage_type, DamageType::Arcane);
+        assert!(phase_one.status_payload.is_none());
+        assert!(phase_two.status_payload.is_none());
+        assert!(phase_three.status_payload.is_none());
+    }
+
+    #[test]
+    fn committed_telegraph_resolves_its_exact_attack_once_then_clears() {
+        let mut enemy = Combatant::new_monster("Lacoyx", 741, 1000);
+        let player = player();
+        let attack = TelegraphedAttack {
+            name: "Infernal Nova".into(),
+            description: "Lacoyx channels infernal flames!".into(),
+            damage: 100,
+            damage_type: DamageType::Fire,
+            status_payload: None,
+        };
+        enemy.telegraphed_attack = Some(attack.clone());
+
+        let intent = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+        assert_eq!(intent.damage, attack.damage);
+        assert_eq!(intent.damage_type, attack.damage_type);
+        assert_eq!(intent.telegraph, None);
+        assert_eq!(intent.status_payload, None);
+        assert!(intent
+            .logs
+            .iter()
+            .any(|line| line.contains("Infernal Nova")));
+        assert_eq!(enemy.telegraphed_attack, None);
+    }
+
+    #[test]
+    fn stun_interrupts_a_committed_legacy_telegraph() {
+        let mut enemy = Combatant::new_monster("Stronghold Mage", 110, 100);
+        let intent = CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
+        let attack = intent
+            .telegraph
+            .expect("Mage profile telegraphs on a zero roll");
+        enemy.telegraphed_attack = Some(attack);
+        enemy.apply_status(StatusEffectKind::Stun, 1, 1);
+        enemy.tick_status_effects();
+
+        assert!(enemy.is_stunned);
+        assert!(CombatEngine::cancel_telegraph_if_stunned(&mut enemy));
+        assert!(!enemy.is_stunned);
+        assert!(enemy.telegraphed_attack.is_none());
+        assert!(!CombatEngine::cancel_telegraph_if_stunned(&mut enemy));
+    }
+
+    #[test]
+    fn shared_enemy_profiles_drive_legacy_status_intents_deterministically() {
+        let mage = CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 40, 7, 0);
+        assert_eq!(mage.damage, 0);
+        let mage_telegraph = mage
+            .telegraph
+            .expect("telegraph roll 0 is below the Mage profile threshold");
+        assert_eq!(mage_telegraph.damage, 8);
+        assert_eq!(
+            mage_telegraph.status_payload.unwrap().kind,
+            StatusEffectKind::Slow
+        );
+        assert!(mage_telegraph.description.contains("Slow"));
+
+        let ranger = CombatEngine::propose_legacy_enemy_intent("Stronghold Ranger", 40, 6, 99);
+        assert_eq!(ranger.damage, 7);
+        assert!(ranger.telegraph.is_none());
+        assert_eq!(ranger.status_payload.unwrap().kind, StatusEffectKind::Mark);
+
+        let warrior = CombatEngine::propose_legacy_enemy_intent("Stronghold Warrior", 40, 3, 99);
+        assert_eq!(warrior.damage, 4);
+        assert_eq!(
+            warrior.status_payload.unwrap().kind,
+            StatusEffectKind::WeakenedDefences
+        );
+    }
+
+    #[test]
+    fn ordinary_telegraph_carries_its_profile_payload_into_resolution() {
+        let mut enemy = Combatant::new_monster("Stronghold Mage", 110, 100);
+        let player = player();
+        let proposal = CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
+        let telegraph = proposal
+            .telegraph
+            .expect("zero roll commits a Mage telegraph");
+        let payload = telegraph.status_payload;
+
+        enemy.telegraphed_attack = Some(telegraph.clone());
+        let resolved = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+
+        assert_eq!(resolved.damage, telegraph.damage);
+        assert_eq!(resolved.damage_type, telegraph.damage_type);
+        assert_eq!(resolved.status_payload, payload);
+        assert!(resolved.telegraph.is_none());
+        assert!(enemy.telegraphed_attack.is_none());
+    }
+
+    #[test]
+    fn legacy_enemy_status_payload_uses_shared_resistance_and_application_chance() {
+        let mut target = Combatant::new_monster("TestHero", 1, 100);
+        target.status_resistance_pct = 90;
+        let payload = EnemyProfile::for_name("Stronghold Mage")
+            .status_payload
+            .unwrap();
+
+        let logs = CombatEngine::apply_enemy_status_payload(
+            "Stronghold Mage",
+            &mut target,
+            Some(payload),
+            4,
+        );
+        assert!(target.status_effects.is_empty());
+        assert!(logs.iter().any(|line| line.contains("resisted")));
+    }
+
+    #[test]
+    fn legacy_battle_status_tick_uses_shared_effect_rules_for_every_dot_kind() {
+        for kind in [
+            StatusEffectKind::Poison,
+            StatusEffectKind::Bleed,
+            StatusEffectKind::Burn,
+        ] {
+            let mut target = Combatant::new_monster("Goblin", 10, 100);
+            target.apply_status(kind, 2, 7);
+            let logs = target.tick_status_effects();
+            assert_eq!(
+                target.hp, 93,
+                "{kind:?} should tick through shared lifecycle"
+            );
+            assert_eq!(target.status_effects[0].remaining_activations, 1);
+            assert!(logs.iter().any(|line| line.contains("7")));
+        }
     }
 
     #[test]
