@@ -364,11 +364,7 @@ fn interact_with_current_location(
 
 /// Run the reusable encounter table attached to the current region location.
 /// Each victory uses the party-aware combat engine and the shared domain events.
-fn region_expedition_menu(
-    tui: &mut Tui,
-    state: &mut GameState,
-    world: &World,
-) -> io::Result<()> {
+fn region_expedition_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
     use crate::party_battle::{run_party_battle, BattleConfig, BattleOutcome};
 
     let location_id = state.current_location.clone();
@@ -403,7 +399,9 @@ fn region_expedition_menu(
         .collect::<Vec<_>>()
         .join("\n");
     let danger = match encounter.danger {
-        5.. => "Extreme danger: prepare equipment, healing, and your active party before committing.",
+        5.. => {
+            "Extreme danger: prepare equipment, healing, and your active party before committing."
+        }
         4 => "High danger: enemy health and damage are increased.",
         _ => "Moderate danger: check supplies and equipment before travelling deeper.",
     };
@@ -427,7 +425,11 @@ fn region_expedition_menu(
     )?;
 
     for enemy in encounter.enemies {
-        let level = state.player.combat_level.saturating_add(enemy.level_offset).max(1);
+        let level = state
+            .player
+            .combat_level
+            .saturating_add(enemy.level_offset)
+            .max(1);
         let enemy_hp = (80_u32.saturating_add(level.saturating_mul(22)))
             .saturating_mul(enemy.health_multiplier_pct) / 100;
         let attack = enemy.kind.max_damage().saturating_mul(enemy.attack_multiplier_pct) / 100;
