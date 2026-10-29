@@ -406,17 +406,30 @@ impl CombatEngine {
         let telegraph = telegraph_roll % 100 < u32::from(profile.telegraph_chance_pct);
         if telegraph {
             let (name, posture) = match profile.archetype {
-                EnemyArchetype::AggressiveMelee => ("Overwhelming Strike", "draws back for a forceful melee attack"),
-                EnemyArchetype::RangedPressure => ("Ranged Volley", "takes aim for a ranged attack"),
-                EnemyArchetype::DefensiveProtector => ("Guarded Counter", "sets up a guarded counterattack"),
-                EnemyArchetype::StatusSpecialist => ("Status Assault", "channels an attack carrying a status effect"),
+                EnemyArchetype::AggressiveMelee => (
+                    "Overwhelming Strike",
+                    "draws back for a forceful melee attack",
+                ),
+                EnemyArchetype::RangedPressure => {
+                    ("Ranged Volley", "takes aim for a ranged attack")
+                }
+                EnemyArchetype::DefensiveProtector => {
+                    ("Guarded Counter", "sets up a guarded counterattack")
+                }
+                EnemyArchetype::StatusSpecialist => (
+                    "Status Assault",
+                    "channels an attack carrying a status effect",
+                ),
             };
-            let status_description = profile.status_payload.map(|payload| {
-                format!(
-                    " It may apply {:?} for {} activation(s) at {}% base chance.",
-                    payload.kind, payload.duration, payload.application_chance_pct
-                )
-            }).unwrap_or_default();
+            let status_description = profile
+                .status_payload
+                .map(|payload| {
+                    format!(
+                        " It may apply {:?} for {} activation(s) at {}% base chance.",
+                        payload.kind, payload.duration, payload.application_chance_pct
+                    )
+                })
+                .unwrap_or_default();
             let attack = TelegraphedAttack {
                 name: name.into(),
                 description: format!(
@@ -432,7 +445,10 @@ impl CombatEngine {
                 damage_type: DamageType::Physical,
                 telegraph: Some(attack.clone()),
                 status_payload: None,
-                logs: vec![format!("TELEGRAPH: {} — {}", attack.name, attack.description)],
+                logs: vec![format!(
+                    "TELEGRAPH: {} — {}",
+                    attack.name, attack.description
+                )],
             }
         } else {
             EnemyTurnIntent {
@@ -459,10 +475,7 @@ impl CombatEngine {
     /// Resolve an existing telegraph or propose a new intent. Lacoyx keeps his
     /// phase-specific attack identities and probabilities; ordinary hostiles use
     /// the shared Section 13 tactical profile and status payload.
-    pub fn generate_enemy_turn(
-        enemy: &mut Combatant,
-        _player: &Combatant,
-    ) -> EnemyTurnIntent {
+    pub fn generate_enemy_turn(enemy: &mut Combatant, _player: &Combatant) -> EnemyTurnIntent {
         let mut rng = rand::thread_rng();
 
         if let Some(telegraphed) = enemy.telegraphed_attack.take() {
@@ -690,16 +703,20 @@ mod tests {
         assert_eq!(intent.damage_type, attack.damage_type);
         assert_eq!(intent.telegraph, None);
         assert_eq!(intent.status_payload, None);
-        assert!(intent.logs.iter().any(|line| line.contains("Infernal Nova")));
+        assert!(intent
+            .logs
+            .iter()
+            .any(|line| line.contains("Infernal Nova")));
         assert_eq!(enemy.telegraphed_attack, None);
     }
 
     #[test]
     fn stun_interrupts_a_committed_legacy_telegraph() {
         let mut enemy = Combatant::new_monster("Stronghold Mage", 110, 100);
-        let intent =
-            CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
-        let attack = intent.telegraph.expect("Mage profile telegraphs on a zero roll");
+        let intent = CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
+        let attack = intent
+            .telegraph
+            .expect("Mage profile telegraphs on a zero roll");
         enemy.telegraphed_attack = Some(attack);
         enemy.apply_status(StatusEffectKind::Stun, 1, 1);
         enemy.tick_status_effects();
@@ -715,9 +732,14 @@ mod tests {
     fn shared_enemy_profiles_drive_legacy_status_intents_deterministically() {
         let mage = CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 40, 7, 0);
         assert_eq!(mage.damage, 0);
-        let mage_telegraph = mage.telegraph.expect("telegraph roll 0 is below the Mage profile threshold");
+        let mage_telegraph = mage
+            .telegraph
+            .expect("telegraph roll 0 is below the Mage profile threshold");
         assert_eq!(mage_telegraph.damage, 8);
-        assert_eq!(mage_telegraph.status_payload.unwrap().kind, StatusEffectKind::Slow);
+        assert_eq!(
+            mage_telegraph.status_payload.unwrap().kind,
+            StatusEffectKind::Slow
+        );
         assert!(mage_telegraph.description.contains("Slow"));
 
         let ranger = CombatEngine::propose_legacy_enemy_intent("Stronghold Ranger", 40, 6, 99);
@@ -737,9 +759,10 @@ mod tests {
     fn ordinary_telegraph_carries_its_profile_payload_into_resolution() {
         let mut enemy = Combatant::new_monster("Stronghold Mage", 110, 100);
         let player = player();
-        let proposal =
-            CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
-        let telegraph = proposal.telegraph.expect("zero roll commits a Mage telegraph");
+        let proposal = CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
+        let telegraph = proposal
+            .telegraph
+            .expect("zero roll commits a Mage telegraph");
         let payload = telegraph.status_payload;
 
         enemy.telegraphed_attack = Some(telegraph.clone());
@@ -756,7 +779,9 @@ mod tests {
     fn legacy_enemy_status_payload_uses_shared_resistance_and_application_chance() {
         let mut target = Combatant::new_monster("TestHero", 1, 100);
         target.status_resistance_pct = 90;
-        let payload = EnemyProfile::for_name("Stronghold Mage").status_payload.unwrap();
+        let payload = EnemyProfile::for_name("Stronghold Mage")
+            .status_payload
+            .unwrap();
 
         let logs = CombatEngine::apply_enemy_status_payload(
             "Stronghold Mage",
