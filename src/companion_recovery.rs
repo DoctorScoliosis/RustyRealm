@@ -403,7 +403,7 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
     })
 }
 
-    #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::party::{CompanionId, PartyManager};
