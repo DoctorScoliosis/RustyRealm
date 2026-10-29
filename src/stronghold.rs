@@ -343,6 +343,22 @@ fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 mod gauntlet_tests {
     use super::*;
     #[test]
+    fn classic_stronghold_keeps_its_three_guardian_choices_and_levels() {
+        assert_eq!(
+            stronghold_guardian_from_roll(1),
+            (NpcType::StrongholdMage, 110)
+        );
+        assert_eq!(
+            stronghold_guardian_from_roll(2),
+            (NpcType::StrongholdRanger, 111)
+        );
+        assert_eq!(
+            stronghold_guardian_from_roll(3),
+            (NpcType::StrongholdWarrior, 108)
+        );
+    }
+
+    #[test]
     fn modifiers_change_only_their_stat() {
         let (h, d) = calculate_gauntlet_enemy_stats(3, GauntletModifier::None);
         let (hf, df) = calculate_gauntlet_enemy_stats(3, GauntletModifier::Fortified);
