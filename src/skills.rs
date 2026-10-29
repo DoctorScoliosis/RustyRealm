@@ -1,8 +1,8 @@
 use crate::crafting::{execute_recipe, get_recipes_for_skill};
 use crate::data::{ItemType, MAX_GOLD, MAX_SKILL_LEVEL};
 use crate::event::GameEvent;
-use crate::state::{GameState, SkillData};
 use crate::skill_checks::SkillCheck;
+use crate::state::{GameState, SkillData};
 use crate::ui::Tui;
 use rand::Rng;
 use std::io;
