@@ -424,7 +424,6 @@ mod tests {
         .unwrap();
         state
     }
-
     #[test]
     fn knockout_is_idempotent_and_uses_nearest_reachable_settlement() {
         let world = build_initial_world().unwrap();
@@ -518,7 +517,9 @@ mod tests {
         let id = CompanionId::BranTheShield;
         state.companions[0].current_hp = 0;
         let mut recovery = RecoveryState::default();
-        recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
+        recovery
+            .record_knockout_by_id(&mut state, id, &world)
+            .unwrap();
         state.current_location = LocationId::from("village_start");
         let location = state.current_location.clone();
         assert_eq!(
@@ -531,9 +532,9 @@ mod tests {
         );
         assert_eq!(state.companions[0].current_hp, state.companions[0].max_hp);
         assert_eq!(
-        state.player.gold,
-        1000 - TREATMENT_COST
-        - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost
+            state.player.gold,
+            1000 - TREATMENT_COST
+                - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost
         );
         assert!(recovery.record(id).is_none());
         let location = state.current_location.clone();
@@ -549,7 +550,9 @@ mod tests {
         state.companions[0].current_hp = 0;
         let mut recovery = RecoveryState::default();
         let world = build_initial_world().unwrap();
-        recovery.record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world).unwrap();
+        recovery
+            .record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world)
+            .unwrap();
         assert!(recovery
             .advance_committed_turn(&mut state.companions)
             .is_empty());
@@ -677,13 +680,20 @@ mod tests {
         state.companions[0].current_hp = 0;
         let mut recovery = RecoveryState::default();
         let id = CompanionId::BranTheShield;
-        recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
+        recovery
+            .record_knockout_by_id(&mut state, id, &world)
+            .unwrap();
         let before = recovery.record(id).unwrap().clone();
         for _ in 0..(RECOVERY_TURNS + 2) {
-        assert!(recovery.advance_committed_turn(&mut state.companions).is_empty());
-    }
+            assert!(recovery
+                .advance_committed_turn(&mut state.companions)
+                .is_empty());
+        }
         assert_eq!(recovery.record(id), Some(&before));
-        assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
+        assert_eq!(
+            state.companions[0].condition,
+            CompanionCondition::KnockedOut
+        );
     }
 
     #[test]
