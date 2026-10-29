@@ -115,7 +115,10 @@ impl RecoveryState {
         let origin = state.current_location.clone();
         let already_recorded = self.record(id).is_some();
         {
-            let companion = state.companions.iter_mut().find(|c| c.id == id)
+            let companion = state
+                .companions
+                .iter_mut()
+                .find(|c| c.id == id)
                 .ok_or(RecoveryError::CompanionNotRecruited(id))?;
             if already_recorded {
                 companion.current_hp = 0;
