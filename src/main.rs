@@ -555,7 +555,25 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
             continue;
         }
         let treatment_location = state.current_location.clone();
-        match state.companion_recovery.apply_treatment(state, id, &treatment_location, world) {
+        let treatment_result = {
+            let recovery = &mut state.companion_recovery;
+            let companion = state.companions.iter_mut().find(|companion| companion.id == id);
+            let Some(companion) = companion else {
+                tui.show_message("Treatment unavailable", "That companion is no longer in the roster.", Some(state))?;
+                continue;
+            };
+            // Validate and mutate the record, companion and gold using split state
+            // borrows rather than re-borrowing the entire GameState.
+            recovery.apply_treatment_parts(
+                &mut state.player.gold,
+                &mut state.party,
+                companion,
+                id,
+                &treatment_location,
+                world,
+            )
+        };
+        match treatment_result {
             Ok(cost) => tui.show_message(
                 "Treatment complete",
                 &format!("{} has recovered. {cost} gold paid; companion is available but has not been automatically added to the party.", crate::party::get_definition(id).name),
