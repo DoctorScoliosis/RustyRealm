@@ -522,12 +522,14 @@ mod tests {
         let path = dir.join("player.json");
         let mut state = test_state("player", "secret");
         state.player.gold = 4321;
+        state.world_turn = 17;
         state.player.add_item(crate::data::ItemType::Logs, 7);
         state.current_location = crate::world::LocationId::from("whispering_woods");
 
         save_to_path(&state, &path).unwrap();
         let loaded = load_game_at(&path, "player", "secret").unwrap();
         assert_eq!(loaded.player.gold, 4321);
+        assert_eq!(loaded.world_turn, 17);
         assert_eq!(loaded.current_location.as_str(), "whispering_woods");
         assert_eq!(loaded.player.get_item_count(crate::data::ItemType::Logs), 7);
         assert!(!loaded.player.password_hash.is_empty());
@@ -730,6 +732,7 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("active_world_event");
+        document["data"].as_object_mut().unwrap().remove("world_turn");
         document["data"]["player"]
             .as_object_mut()
             .unwrap()
@@ -759,6 +762,7 @@ mod tests {
         assert_eq!(loaded.player.lifetime_kills, 0);
         assert_eq!(loaded.player.stamina, 100);
         assert_eq!(loaded.player.max_stamina, 100);
+        assert_eq!(loaded.world_turn, 0);
         assert_eq!(loaded.player.mana, 50);
         assert_eq!(loaded.player.max_mana, 50);
         assert_eq!(loaded.current_location.as_str(), "village_start");
