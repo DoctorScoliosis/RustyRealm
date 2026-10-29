@@ -335,7 +335,7 @@ fn objective_target(objective: &QuestObjective) -> u32 {
 fn progress_objective(objective: &QuestObjective, event: &GameEvent, progress: &mut u32) -> bool {
     let target = objective_target(objective);
     let increment = match (objective, event) {
-        (QuestObjective::MonsterKills { required }, GameEvent::MonsterDefeated { .. }) => *required,
+        (QuestObjective::MonsterKills { .. }, GameEvent::MonsterDefeated { .. }) => 1,
         (QuestObjective::SpecificMonsterKills { monster_name, .. }, GameEvent::MonsterDefeated { name, .. })
             if canonical_monster_name(name).eq_ignore_ascii_case(monster_name) => target,
         (QuestObjective::PlayerLevel { required_level }, GameEvent::PlayerLeveledUp { new_level }) => {
@@ -366,35 +366,8 @@ pub fn make_composite_quest(id: impl Into<String>, title: impl Into<String>, des
     Quest { id: id.into(), title: title.into(), description: description.into(), objective: QuestObjective::MonsterKills { required: 0 }, progress: 0, target: 0, is_completed: false, is_claimed: false, reward, is_daily, stages }
 }
 
-pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), QuestError> {
-    let quest_index = state.active_quests.iter().position(|quest| quest.id == quest_id).ok_or(QuestError::NotFound)?;
-    let (item_type, required_count, is_completed, is_claimed) = {
-        let quest = &state.active_quests[quest_index];
-        if quest.stages.is_empty() {
-            match &quest.objective {
-                QuestObjective::ItemHandIn { item_type, required_count } => (*item_type, *required_count, quest.is_completed, quest.is_claimed),
-                _ => return Err(QuestError::InvalidOperation),
-            }
-        } else {
-            let stage = quest.stages.iter().find(|stage| !stage.is_completed).ok_or(QuestError::AlreadyCompleted)?;
-            let objective = stage.objectives.iter().find(|objective| !objective.is_completed && matches!(&objective.objective, QuestObjective::ItemHandIn { .. })).ok_or(QuestError::InvalidOperation)?;
-            let (item_type, count) = match &objective.objective {
-                QuestObjective::ItemHandIn { item_type, required_count } => (*item_type, *required_count),
-                _ => unreachable!("filtered above"),
-            };
-            (item_type, count.saturating_sub(objective.progress), quest.is_completed, quest.is_claimed)
-        }
-    };
-    if is_claimed { return Err(QuestError::AlreadyClaimed); }
-    if is_completed { return Err(QuestError::AlreadyCompleted); }
-    if state.player.get_item_count(item_type) < required_count { return Err(QuestError::InsufficientItems); }
-    if !state.player.remove_item(item_type, required_count) { return Err(QuestError::InsufficientItems); }
-    notify_event(state, &GameEvent::ItemHandedIn { item_type, count: required_count });
-    Ok(())
-}
-
-/// Deduct items only after verifying that the requested hand-in can be completed.
-/// The quest is marked complete, but its reward remains a separate claim action.
+/// Deduct items only after validating the active hand-in objective. Rewards
+/// remain a separate, idempotent claim action.
 pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), QuestError> {
     let quest_index = state
         .active_quests
@@ -404,17 +377,36 @@ pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), Q
 
     let (item_type, required_count, is_completed, is_claimed) = {
         let quest = &state.active_quests[quest_index];
-        match &quest.objective {
-            QuestObjective::ItemHandIn {
-                item_type,
-                required_count,
-            } => (
-                *item_type,
-                *required_count,
-                quest.is_completed,
-                quest.is_claimed,
-            ),
-            _ => return Err(QuestError::InvalidOperation),
+        if quest.stages.is_empty() {
+            match &quest.objective {
+                QuestObjective::ItemHandIn {
+                    item_type,
+                    required_count,
+                } => (*item_type, *required_count, quest.is_completed, quest.is_claimed),
+                _ => return Err(QuestError::InvalidOperation),
+            }
+        } else {
+            let stage = quest
+                .stages
+                .iter()
+                .find(|stage| !stage.is_completed)
+                .ok_or(QuestError::AlreadyCompleted)?;
+            let objective = stage
+                .objectives
+                .iter()
+                .find(|objective| {
+                    !objective.is_completed
+                        && matches!(&objective.objective, QuestObjective::ItemHandIn { .. })
+                })
+                .ok_or(QuestError::InvalidOperation)?;
+            let (item_type, count) = match &objective.objective {
+                QuestObjective::ItemHandIn {
+                    item_type,
+                    required_count,
+                } => (*item_type, required_count.saturating_sub(objective.progress)),
+                _ => unreachable!("filtered above"),
+            };
+            (item_type, count, quest.is_completed, quest.is_claimed)
         }
     };
 
@@ -428,8 +420,6 @@ pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), Q
         return Err(QuestError::InsufficientItems);
     }
     if !state.player.remove_item(item_type, required_count) {
-        // Defensive: inventory is unchanged if the count check unexpectedly
-        // fails before deduction.
         return Err(QuestError::InsufficientItems);
     }
 
@@ -860,14 +850,15 @@ mod tests {
             id: "stage".into(), title: "Main objective".into(), is_completed: false,
             objectives: vec![
                 objective(QuestObjective::SpecificMonsterKills { monster_name: "Goblin".into(), required: 1 }, false, None),
-                objective(QuestObjective::CollectItem { item_type: ItemType::Gemstones, required_count: 1 }, true, Some(QuestReward::Gold(7))),
+                objective(QuestObjective::CollectItem { item_type: ItemType::Thread, required_count: 1 }, true, Some(QuestReward::Gold(7))),
             ],
         }], QuestReward::Gold(1), false));
+        let starting_gold = state.player.gold;
         notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Goblin".into(), is_stronghold: false });
         assert!(state.active_quests[0].is_completed);
-        assert_eq!(state.player.gold, 107);
-        notify_event(&mut state, &GameEvent::ItemCollected { item_type: ItemType::Gemstones, count: 1 });
-        assert_eq!(state.player.gold, 107);
+        assert_eq!(state.player.gold, starting_gold + 7);
+        notify_event(&mut state, &GameEvent::ItemCollected { item_type: ItemType::Thread, count: 1 });
+        assert_eq!(state.player.gold, starting_gold + 7);
     }
 
     #[test]
