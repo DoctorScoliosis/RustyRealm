@@ -517,50 +517,87 @@ mod tests {
 
     #[test]
     fn party_combat_knockout_persists_once_and_keeps_other_allies_active() {
-    use crate::party_combat::{
-        Allegiance, CombatAction, CombatantId, CombatantSource, Encounter, EncounterCombatant,
-        EncounterOutcome,
-        }
+        use crate::party_combat::{
+            Allegiance, CombatAction, CombatantId, CombatantSource, Encounter, EncounterCombatant,
+            EncounterOutcome,
+        };
         let world = build_initial_world().unwrap();
         let mut state = state_with_companion();
         let id = CompanionId::BranTheShield;
         state.companions[0].current_hp = 1;
         let companion = &state.companions[0];
         let encounter = Encounter::new(vec![
-        EncounterCombatant::new(
-        CombatantId(1), CombatantSource::Player, "tester", Allegiance::Allies,
-        state.player.hp, 100, 50, 20, 5
-        ),
-        EncounterCombatant::new(
-        CombatantId(2), CombatantSource::Companion(id), companion.display_name(),
-        Allegiance::Allies, 1, companion.current_stamina, companion.current_mana,
-        companion.attack, companion.defence
-        ),
-        EncounterCombatant::new(
-        CombatantId(3), CombatantSource::Enemy, "Goblin", Allegiance::Enemies,
-        500, 0, 0, 500, 0
-        ),
-        ]).unwrap();
+            EncounterCombatant::new(
+                CombatantId(1),
+                CombatantSource::Player,
+                "tester",
+                Allegiance::Allies,
+                state.player.hp,
+                100,
+                50,
+                20,
+                5,
+            ),
+            EncounterCombatant::new(
+                CombatantId(2),
+                CombatantSource::Companion(id),
+                companion.display_name(),
+                Allegiance::Allies,
+                1,
+                companion.current_stamina,
+                companion.current_mana,
+                companion.attack,
+                companion.defence,
+            ),
+            EncounterCombatant::new(
+                CombatantId(3),
+                CombatantSource::Enemy,
+                "Goblin",
+                Allegiance::Enemies,
+                500,
+                0,
+                0,
+                500,
+                0,
+            ),
+        ])
+        .unwrap();
         let mut encounter = encounter;
-        encounter.set_position(CombatantId(3), crate::party_combat::RangeBand::Melee).unwrap();
-        let result = encounter.apply_action(
-        CombatAction::BasicAttack { actor: CombatantId(3), target: CombatantId(2) },
-        0, 99
-        ).unwrap();
+        encounter
+            .set_position(CombatantId(3), crate::party_combat::RangeBand::Melee)
+            .unwrap();
+        let result = encounter
+            .apply_action(
+                CombatAction::BasicAttack {
+                    actor: CombatantId(3),
+                    target: CombatantId(2),
+                },
+                0,
+                99,
+            )
+            .unwrap();
         assert_eq!(result.target_source, Some(CombatantSource::Companion(id)));
         assert!(result.target_knocked_out);
         assert_eq!(result.outcome, EncounterOutcome::Ongoing);
 
         let mut recovery = RecoveryState::default();
-        let first = recovery.sync_party_encounter(&mut state, &encounter, &world).unwrap();
+        let first = recovery
+            .sync_party_encounter(&mut state, &encounter, &world)
+            .unwrap();
         assert_eq!(first, vec![id]);
         let original = recovery.record(id).unwrap().clone();
-        assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
+        assert_eq!(
+            state.companions[0].condition,
+            CompanionCondition::KnockedOut
+        );
         assert!(!state.party.contains(id));
-        assert!(recovery.sync_party_encounter(&mut state, &encounter, &world).unwrap().is_empty());
+        assert!(recovery
+            .sync_party_encounter(&mut state, &encounter, &world)
+            .unwrap()
+            .is_empty());
         assert_eq!(recovery.record(id), Some(&original));
         assert!(validate_recovery_invariants(&state, &recovery));
-}
+    }
 
     #[test]
     fn companion_without_treatment_destination_does_not_recover_from_elapsed_turns() {
