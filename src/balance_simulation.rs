@@ -13,7 +13,7 @@ use crate::party_combat::{
 };
 use crate::status_combat::{EnemyArchetype, EnemyProfile};
 
-pub const BASELINE_SCHEMA_VERSION: u32 = 1;
+pub const BASELINE_SCHEMA_VERSION: u32 = 2;
 pub const DEFAULT_SEEDS: [u64; 8] = [3, 11, 29, 47, 83, 131, 197, 257];
 pub const MAX_SIMULATION_ACTIONS: u32 = 250;
 pub const DEFAULT_RECOVERY_GOLD_ASSUMPTION: u32 = 50;
@@ -788,7 +788,7 @@ mod tests {
     fn elite_encounters_are_covered_without_changing_production_roster() {
         let elite_names = ["Elite Goblin", "Elite Dragon", "Elite Giant"];
         assert!(elite_names.iter().all(|name| !name.is_empty()));
-        assert_eq!(BASELINE_SCHEMA_VERSION, 1);
+        assert_eq!(BASELINE_SCHEMA_VERSION, 2);
     }
 
     #[test]
@@ -932,7 +932,6 @@ mod tests {
         assert_eq!(state.recovery_grace_encounters_remaining, 1);
         state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
         assert_eq!(state.recovery_grace_encounters_remaining, 0);
-        state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
         assert_eq!(state.profile().enemy_stat_multiplier_bps, NORMAL_MULTIPLIER_BPS);
     }
 
