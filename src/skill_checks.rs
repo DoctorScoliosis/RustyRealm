@@ -85,7 +85,10 @@ mod tests {
 
     #[test]
     fn skill_level_is_capped_before_probability_calculation() {
-        assert_eq!(check(u32::MAX, 0, 0).success_chance(), MAX_SUCCESS_CHANCE);
+        assert_eq!(
+            check(u32::MAX, 0, 0).success_chance(),
+            check(100, 0, 0).success_chance()
+        );
         assert_eq!(
             check(100, 20, 0).success_chance(),
             check(1000, 20, 0).success_chance()
