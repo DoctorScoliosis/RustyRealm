@@ -50,14 +50,36 @@ pub enum QuestObjective {
         item_type: ItemType,
         required_count: u32,
     },
-    SpecificMonsterKills { monster_name: String, required: u32 },
-    CollectItem { item_type: ItemType, required_count: u32 },
-    GatherResource { item_type: ItemType, required_count: u32 },
-    CraftItem { recipe_id: String, required_count: u32 },
-    ReachLocation { location_id: LocationId },
-    TraverseLocation { from_location_id: Option<LocationId>, to_location_id: LocationId },
-    InteractWith { target_id: String, required_count: u32 },
-    CompleteQuest { quest_id: String },
+    SpecificMonsterKills {
+        monster_name: String,
+        required: u32,
+    },
+    CollectItem {
+        item_type: ItemType,
+        required_count: u32,
+    },
+    GatherResource {
+        item_type: ItemType,
+        required_count: u32,
+    },
+    CraftItem {
+        recipe_id: String,
+        required_count: u32,
+    },
+    ReachLocation {
+        location_id: LocationId,
+    },
+    TraverseLocation {
+        from_location_id: Option<LocationId>,
+        to_location_id: LocationId,
+    },
+    InteractWith {
+        target_id: String,
+        required_count: u32,
+    },
+    CompleteQuest {
+        quest_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -248,43 +270,85 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
     if matches!(event, GameEvent::MonsterDefeated { .. }) {
         state.player.lifetime_kills = state.player.lifetime_kills.saturating_add(1);
     }
+
     let mut pending = vec![event.clone()];
     while let Some(current_event) = pending.pop() {
         let mut newly_completed = Vec::new();
         let mut bonus_rewards = Vec::new();
+
         for quest in &mut state.active_quests {
-            if quest.is_completed || quest.is_claimed { continue; }
+            if quest.is_completed || quest.is_claimed {
+                continue;
+            }
             if quest.stages.is_empty() {
                 let was_completed = quest.is_completed;
                 progress_legacy_quest(quest, &current_event);
-                if !was_completed && quest.is_completed { newly_completed.push(quest.id.clone()); }
+                if !was_completed && quest.is_completed {
+                    newly_completed.push(quest.id.clone());
+                }
                 continue;
             }
-            let Some(stage_index) = quest.stages.iter().position(|stage| !stage.is_completed) else {
-                if !quest.is_completed { quest.is_completed = true; newly_completed.push(quest.id.clone()); }
+
+            let Some(stage_index) = quest.stages.iter().position(|stage| !stage.is_completed)
+            else {
+                if !quest.is_completed {
+                    quest.is_completed = true;
+                    newly_completed.push(quest.id.clone());
+                }
                 continue;
             };
             let stage = &mut quest.stages[stage_index];
+
             for objective_state in &mut stage.objectives {
-                if objective_state.is_completed { continue; }
-                if progress_objective(&objective_state.objective, &current_event, &mut objective_state.progress) {
+                if objective_state.is_completed {
+                    continue;
+                }
+                if progress_objective(
+                    &objective_state.objective,
+                    &current_event,
+                    &mut objective_state.progress,
+                ) {
                     objective_state.is_completed = true;
                     if objective_state.optional {
-                        if let Some(reward) = objective_state.bonus_reward.clone() { bonus_rewards.push(reward); }
+                        if let Some(reward) = objective_state.bonus_reward.clone() {
+                            bonus_rewards.push(reward);
+                        }
                     }
                 }
             }
-            if stage.objectives.iter().all(|objective| objective.optional || objective.is_completed) { stage.is_completed = true; }
-            let mandatory_total = stage.objectives.iter().filter(|objective| !objective.optional).count();
-            let mandatory_done = stage.objectives.iter().filter(|objective| !objective.optional && objective.is_completed).count();
+
+            if stage
+                .objectives
+                .iter()
+                .all(|objective| objective.optional || objective.is_completed)
+            {
+                stage.is_completed = true;
+            }
+            let mandatory_total = stage
+                .objectives
+                .iter()
+                .filter(|objective| !objective.optional)
+                .count();
+            let mandatory_done = stage
+                .objectives
+                .iter()
+                .filter(|objective| !objective.optional && objective.is_completed)
+                .count();
             quest.progress = u32::try_from(mandatory_done).unwrap_or(u32::MAX);
             quest.target = u32::try_from(mandatory_total).unwrap_or(u32::MAX);
             let was_completed = quest.is_completed;
             quest.is_completed = quest.stages.iter().all(|candidate| candidate.is_completed);
-            if !was_completed && quest.is_completed { newly_completed.push(quest.id.clone()); }
+            if !was_completed && quest.is_completed {
+                newly_completed.push(quest.id.clone());
+            }
         }
-        for reward in bonus_rewards { grant_reward(state, &reward); }
-        for quest_id in newly_completed { pending.push(GameEvent::PrerequisiteQuestCompleted { quest_id }); }
+
+        for reward in bonus_rewards {
+            grant_reward(state, &reward);
+        }
+        for quest_id in newly_completed {
+            pending.push(GameEvent::PrerequisiteQuestCompleted { quest_id });
+        }
     }
 }
 
@@ -294,41 +358,71 @@ fn progress_legacy_quest(quest: &mut Quest, event: &GameEvent) {
             quest.progress = quest.progress.saturating_add(1).min(*required);
             quest.is_completed = quest.progress >= *required;
         }
-        (QuestObjective::SpecificMonsterKills { monster_name, required }, GameEvent::MonsterDefeated { name, .. })
-            if canonical_monster_name(name).eq_ignore_ascii_case(monster_name) => {
-                quest.progress = quest.progress.saturating_add(1).min(*required);
-                quest.is_completed = quest.progress >= *required;
-            }
-        (QuestObjective::PlayerLevel { required_level }, GameEvent::PlayerLeveledUp { new_level }) => {
+        (
+            QuestObjective::SpecificMonsterKills {
+                monster_name,
+                required,
+            },
+            GameEvent::MonsterDefeated { name, .. },
+        ) if canonical_monster_name(name).eq_ignore_ascii_case(monster_name) => {
+            quest.progress = quest.progress.saturating_add(1).min(*required);
+            quest.is_completed = quest.progress >= *required;
+        }
+        (
+            QuestObjective::PlayerLevel { required_level },
+            GameEvent::PlayerLeveledUp { new_level },
+        ) => {
             quest.progress = (*new_level).min(*required_level);
             quest.is_completed = *new_level >= *required_level;
         }
-        (QuestObjective::SkillLevel { skill_name, required_level }, GameEvent::SkillLeveledUp { skill_name: event_skill, new_level })
-            if skill_name.eq_ignore_ascii_case(event_skill) => {
-                quest.progress = (*new_level).min(*required_level);
-                quest.is_completed = *new_level >= *required_level;
-            }
-        (QuestObjective::ItemHandIn { item_type, required_count }, GameEvent::ItemHandedIn { item_type: event_item, count })
-            if item_type == event_item => {
-                quest.progress = quest.progress.saturating_add(*count).min(*required_count);
-                quest.is_completed = quest.progress >= *required_count;
-            }
+        (
+            QuestObjective::SkillLevel {
+                skill_name,
+                required_level,
+            },
+            GameEvent::SkillLeveledUp {
+                skill_name: event_skill,
+                new_level,
+            },
+        ) if skill_name.eq_ignore_ascii_case(event_skill) => {
+            quest.progress = (*new_level).min(*required_level);
+            quest.is_completed = *new_level >= *required_level;
+        }
+        (
+            QuestObjective::ItemHandIn {
+                item_type,
+                required_count,
+            },
+            GameEvent::ItemHandedIn {
+                item_type: event_item,
+                count,
+            },
+        ) if item_type == event_item => {
+            quest.progress = quest.progress.saturating_add(*count).min(*required_count);
+            quest.is_completed = quest.progress >= *required_count;
+        }
         _ => {}
     }
 }
 
-fn canonical_monster_name(name: &str) -> &str { name.strip_prefix("Elite ").unwrap_or(name).trim() }
+fn canonical_monster_name(name: &str) -> &str {
+    name.strip_prefix("Elite ").unwrap_or(name).trim()
+}
 
 fn objective_target(objective: &QuestObjective) -> u32 {
     match objective {
-        QuestObjective::MonsterKills { required } | QuestObjective::SpecificMonsterKills { required, .. } => *required,
-        QuestObjective::PlayerLevel { required_level } | QuestObjective::SkillLevel { required_level, .. } => *required_level,
+        QuestObjective::MonsterKills { required }
+        | QuestObjective::SpecificMonsterKills { required, .. } => *required,
+        QuestObjective::PlayerLevel { required_level }
+        | QuestObjective::SkillLevel { required_level, .. } => *required_level,
         QuestObjective::ItemHandIn { required_count, .. }
         | QuestObjective::CollectItem { required_count, .. }
         | QuestObjective::GatherResource { required_count, .. }
         | QuestObjective::CraftItem { required_count, .. }
         | QuestObjective::InteractWith { required_count, .. } => *required_count,
-        QuestObjective::ReachLocation { .. } | QuestObjective::TraverseLocation { .. } | QuestObjective::CompleteQuest { .. } => 1,
+        QuestObjective::ReachLocation { .. }
+        | QuestObjective::TraverseLocation { .. }
+        | QuestObjective::CompleteQuest { .. } => 1,
     }
 }
 
@@ -336,34 +430,137 @@ fn progress_objective(objective: &QuestObjective, event: &GameEvent, progress: &
     let target = objective_target(objective);
     let increment = match (objective, event) {
         (QuestObjective::MonsterKills { .. }, GameEvent::MonsterDefeated { .. }) => 1,
-        (QuestObjective::SpecificMonsterKills { monster_name, .. }, GameEvent::MonsterDefeated { name, .. })
-            if canonical_monster_name(name).eq_ignore_ascii_case(monster_name) => target,
-        (QuestObjective::PlayerLevel { required_level }, GameEvent::PlayerLeveledUp { new_level }) => {
-            *progress = (*new_level).min(*required_level); return *new_level >= *required_level;
+        (
+            QuestObjective::SpecificMonsterKills { monster_name, .. },
+            GameEvent::MonsterDefeated { name, .. },
+        ) if canonical_monster_name(name).eq_ignore_ascii_case(monster_name) => target,
+        (
+            QuestObjective::PlayerLevel { required_level },
+            GameEvent::PlayerLeveledUp { new_level },
+        ) => {
+            *progress = (*new_level).min(*required_level);
+            return *new_level >= *required_level;
         }
-        (QuestObjective::SkillLevel { skill_name, required_level }, GameEvent::SkillLeveledUp { skill_name: event_skill, new_level })
-            if skill_name.eq_ignore_ascii_case(event_skill) => {
-                *progress = (*new_level).min(*required_level); return *new_level >= *required_level;
-            }
-        (QuestObjective::ItemHandIn { item_type, .. }, GameEvent::ItemHandedIn { item_type: event_item, count }) if item_type == event_item => *count,
-        (QuestObjective::CollectItem { item_type, .. }, GameEvent::ItemCollected { item_type: event_item, count }) if item_type == event_item => *count,
-        (QuestObjective::CollectItem { item_type, .. }, GameEvent::ResourceGathered { item_type: event_item, count, .. }) if item_type == event_item => *count,
-        (QuestObjective::CollectItem { item_type, .. }, GameEvent::ItemCrafted { item_type: Some(event_item), count, .. }) if item_type == event_item => *count,
-        (QuestObjective::GatherResource { item_type, .. }, GameEvent::ResourceGathered { item_type: event_item, count, .. }) if item_type == event_item => *count,
-        (QuestObjective::CraftItem { recipe_id, .. }, GameEvent::ItemCrafted { recipe_id: event_recipe, count, .. }) if recipe_id == event_recipe => *count,
-        (QuestObjective::ReachLocation { location_id }, GameEvent::LocationReached { location_id: event_location }) if location_id == event_location => target,
-        (QuestObjective::TraverseLocation { from_location_id, to_location_id }, GameEvent::LocationTraversed { from_location_id: event_from, to_location_id: event_to })
-            if to_location_id == event_to && from_location_id.as_ref().map_or(true, |from| from == event_from) => target,
-        (QuestObjective::InteractWith { target_id, .. }, GameEvent::TargetInteracted { target_id: event_target }) if target_id == event_target => 1,
-        (QuestObjective::CompleteQuest { quest_id }, GameEvent::PrerequisiteQuestCompleted { quest_id: completed_id }) if quest_id == completed_id => target,
+        (
+            QuestObjective::SkillLevel {
+                skill_name,
+                required_level,
+            },
+            GameEvent::SkillLeveledUp {
+                skill_name: event_skill,
+                new_level,
+            },
+        ) if skill_name.eq_ignore_ascii_case(event_skill) => {
+            *progress = (*new_level).min(*required_level);
+            return *new_level >= *required_level;
+        }
+        (
+            QuestObjective::ItemHandIn { item_type, .. },
+            GameEvent::ItemHandedIn {
+                item_type: event_item,
+                count,
+            },
+        ) if item_type == event_item => *count,
+        (
+            QuestObjective::CollectItem { item_type, .. },
+            GameEvent::ItemCollected {
+                item_type: event_item,
+                count,
+            },
+        ) if item_type == event_item => *count,
+        (
+            QuestObjective::CollectItem { item_type, .. },
+            GameEvent::ResourceGathered {
+                item_type: event_item,
+                count,
+                ..
+            },
+        ) if item_type == event_item => *count,
+        (
+            QuestObjective::CollectItem { item_type, .. },
+            GameEvent::ItemCrafted {
+                item_type: Some(event_item),
+                count,
+                ..
+            },
+        ) if item_type == event_item => *count,
+        (
+            QuestObjective::GatherResource { item_type, .. },
+            GameEvent::ResourceGathered {
+                item_type: event_item,
+                count,
+                ..
+            },
+        ) if item_type == event_item => *count,
+        (
+            QuestObjective::CraftItem { recipe_id, .. },
+            GameEvent::ItemCrafted {
+                recipe_id: event_recipe,
+                count,
+                ..
+            },
+        ) if recipe_id == event_recipe => *count,
+        (
+            QuestObjective::ReachLocation { location_id },
+            GameEvent::LocationReached {
+                location_id: event_location,
+            },
+        ) if location_id == event_location => target,
+        (
+            QuestObjective::TraverseLocation {
+                from_location_id,
+                to_location_id,
+            },
+            GameEvent::LocationTraversed {
+                from_location_id: event_from,
+                to_location_id: event_to,
+            },
+        ) if to_location_id == event_to
+            && from_location_id
+                .as_ref()
+                .map_or(true, |from| from == event_from) =>
+        {
+            target
+        }
+        (
+            QuestObjective::InteractWith { target_id, .. },
+            GameEvent::TargetInteracted {
+                target_id: event_target,
+            },
+        ) if target_id == event_target => 1,
+        (
+            QuestObjective::CompleteQuest { quest_id },
+            GameEvent::PrerequisiteQuestCompleted {
+                quest_id: completed_id,
+            },
+        ) if quest_id == completed_id => target,
         _ => return false,
     };
     *progress = progress.saturating_add(increment).min(target);
     *progress >= target
 }
 
-pub fn make_composite_quest(id: impl Into<String>, title: impl Into<String>, description: impl Into<String>, stages: Vec<QuestStage>, reward: QuestReward, is_daily: bool) -> Quest {
-    Quest { id: id.into(), title: title.into(), description: description.into(), objective: QuestObjective::MonsterKills { required: 0 }, progress: 0, target: 0, is_completed: false, is_claimed: false, reward, is_daily, stages }
+pub fn make_composite_quest(
+    id: impl Into<String>,
+    title: impl Into<String>,
+    description: impl Into<String>,
+    stages: Vec<QuestStage>,
+    reward: QuestReward,
+    is_daily: bool,
+) -> Quest {
+    Quest {
+        id: id.into(),
+        title: title.into(),
+        description: description.into(),
+        objective: QuestObjective::MonsterKills { required: 0 },
+        progress: 0,
+        target: 0,
+        is_completed: false,
+        is_claimed: false,
+        reward,
+        is_daily,
+        stages,
+    }
 }
 
 /// Deduct items only after validating the active hand-in objective. Rewards
@@ -506,20 +703,36 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     } else {
                         "In progress"
                     };
-                    let stage_detail = if quest.stages.is_empty() { String::new() } else {
+                    let stage_detail = if quest.stages.is_empty() {
+                        String::new()
+                    } else {
                         let current = quest.stages.iter().position(|stage| !stage.is_completed);
                         let stages = quest.stages.iter().enumerate().map(|(index, stage)| {
-                            let stage_status = if stage.is_completed { "complete" } else if current == Some(index) { "current" } else { "locked" };
+                            let stage_status = if stage.is_completed {
+                                "complete"
+                            } else if current == Some(index) {
+                                "current"
+                            } else {
+                                "locked"
+                            };
                             let goals = stage.objectives.iter().map(|objective| {
                                 let mark = if objective.is_completed { "✓" } else { "·" };
                                 let optional = if objective.optional { " (optional)" } else { "" };
-                                format!("    {mark} {}/{} {:?}{optional}", objective.progress, objective_target(&objective.objective), objective.objective)
+                                format!(
+                                    "    {mark} {}/{} {:?}{optional}",
+                                    objective.progress,
+                                    objective_target(&objective.objective),
+                                    objective.objective
+                                )
                             }).collect::<Vec<_>>().join("\n");
                             format!("  Stage {} — {} [{stage_status}]\n{}", index + 1, stage.title, goals)
                         }).collect::<Vec<_>>().join("\n");
                         format!("\n{stages}")
                     };
-                    format!("{} — {}\n  Progress: {}/{} · {}{}\n", quest.title, quest.description, quest.progress, quest.target, status, stage_detail)
+                    format!(
+                        "{} — {}\n  Progress: {}/{} · {}{}\n",
+                        quest.title, quest.description, quest.progress, quest.target, status, stage_detail
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -814,7 +1027,7 @@ mod tests {
                 objective(QuestObjective::GatherResource { item_type: ItemType::Logs, required_count: 3 }, false, None),
             ],
         }], QuestReward::Gold(50), false));
-        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Dragon".into(), is_stronghold: false });
+        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Rat".into(), is_stronghold: false });
         notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Goblin".into(), is_stronghold: false });
         notify_event(&mut state, &GameEvent::ResourceGathered { skill_name: "Woodcutting".into(), item_type: ItemType::Logs, count: 2 });
         assert_eq!(state.active_quests[0].stages[0].objectives[0].progress, 1);
@@ -854,10 +1067,22 @@ mod tests {
             ],
         }], QuestReward::Gold(1), false));
         let starting_gold = state.player.gold;
-        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Goblin".into(), is_stronghold: false });
-        assert!(state.active_quests[0].is_completed);
+        notify_event(
+            &mut state,
+            &GameEvent::ItemCollected {
+                item_type: ItemType::Thread,
+                count: 1,
+            },
+        );
         assert_eq!(state.player.gold, starting_gold + 7);
-        notify_event(&mut state, &GameEvent::ItemCollected { item_type: ItemType::Thread, count: 1 });
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
+        assert!(state.active_quests[0].is_completed);
         assert_eq!(state.player.gold, starting_gold + 7);
     }
 

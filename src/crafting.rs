@@ -397,11 +397,29 @@ pub fn execute_recipe(
 
     for output in &recipe.outputs {
         match output {
-            RecipeOutput::Item { item_type, count } => crate::quests::notify_event(state, &GameEvent::ItemCrafted { recipe_id: recipe.id.clone(), item_type: Some(*item_type), count: *count }),
-            RecipeOutput::Weapon { count, .. } => crate::quests::notify_event(state, &GameEvent::ItemCrafted { recipe_id: recipe.id.clone(), item_type: None, count: *count }),
+            RecipeOutput::Item { item_type, count } => crate::quests::notify_event(
+                state,
+                &GameEvent::ItemCrafted {
+                    recipe_id: recipe.id.clone(),
+                    item_type: Some(*item_type),
+                    count: *count,
+                },
+            ),
+            RecipeOutput::Weapon { count, .. } => crate::quests::notify_event(
+                state,
+                &GameEvent::ItemCrafted {
+                    recipe_id: recipe.id.clone(),
+                    item_type: None,
+                    count: *count,
+                },
+            ),
         }
     }
-    Ok(CraftingResult { recipe, xp_awarded, level_up })
+    Ok(CraftingResult {
+        recipe,
+        xp_awarded,
+        level_up,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
