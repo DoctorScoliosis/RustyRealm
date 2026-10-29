@@ -180,7 +180,14 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         .map(|companion| companion.id)
         .collect();
     for id in knocked_out {
-        let _ = state.companion_recovery.record_knockout_by_id(state, id, &world);
+        let origin = state.current_location.clone();
+        let newly_recorded = {
+            let companion = state.companions.iter_mut().find(|companion| companion.id == id);
+            companion.map(|companion| state.companion_recovery.record_knockout(companion, &world, &origin))
+        };
+        if matches!(newly_recorded, Some(Ok(true))) {
+            let _ = state.party.remove_member(id);
+        }
     }
     let options = [
         "Travel / Explore Region",
@@ -545,7 +552,8 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
         if !is_here || selected != 0 {
             continue;
         }
-        match state.companion_recovery.apply_treatment(state, id, &state.current_location.clone(), world) {
+        let treatment_location = state.current_location.clone();
+        match state.companion_recovery.apply_treatment(state, id, &treatment_location, world) {
             Ok(cost) => tui.show_message(
                 "Treatment complete",
                 &format!("{} has recovered. {cost} gold paid; companion is available but has not been automatically added to the party.", crate::party::get_definition(id).name),
