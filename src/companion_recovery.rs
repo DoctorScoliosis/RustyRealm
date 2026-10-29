@@ -368,6 +368,7 @@ mod tests {
         "isolated", "Isolated", "No route to a settlement.", LocationCategory::Wilderness
     )).unwrap();
     let mut state = state_with_companion();
+    let gold_before = state.player.gold;
     state.companions[0].current_hp = 0;
     state.current_location = LocationId::from("isolated");
     let mut recovery = RecoveryState::default();
@@ -375,7 +376,7 @@ mod tests {
     assert_eq!(recovery.record(CompanionId::BranTheShield).unwrap().destination, None);
     let location = state.current_location.clone();
     assert!(matches!(recovery.apply_treatment(&mut state, CompanionId::BranTheShield, &location, &world), Err(RecoveryError::NoTreatmentSettlement)));
-    assert_eq!(state.player.gold, 1000 - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost);
+    assert_eq!(state.player.gold, gold_before);
     }
 
     #[test]
