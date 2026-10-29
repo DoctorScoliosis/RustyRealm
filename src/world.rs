@@ -479,8 +479,11 @@ pub fn build_initial_world() -> Result<World, WorldError> {
     world.add_bidirectional_route(&village, &whispering_woods, 20, 3)?;
     world.add_bidirectional_route(&whispering_woods, &sunken_ruins, 12, 4)?;
     world.add_bidirectional_route(&whispering_woods, &goblin_caves, 15, 5)?;
+    // A second high-danger route connects the ruins to the caves without letting
+    // a starting party bypass the wilderness.
+    world.add_bidirectional_route(&sunken_ruins, &goblin_caves, 10, 5)?;
 
-    world.validate()?;
+    world.validate()?
     Ok(world)
 }
 
