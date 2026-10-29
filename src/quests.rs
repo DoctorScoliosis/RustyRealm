@@ -1019,53 +1019,178 @@ mod tests {
 
     #[test]
     fn composite_stage_tracks_parallel_objectives_independently() {
-        let mut state = new_state(); state.active_quests.clear();
-        state.active_quests.push(make_composite_quest("composite_parallel", "Survey and Supply", "Do both goals.", vec![QuestStage {
-            id: "first".into(), title: "Gather and defend".into(), is_completed: false,
-            objectives: vec![
-                objective(QuestObjective::SpecificMonsterKills { monster_name: "Goblin".into(), required: 2 }, false, None),
-                objective(QuestObjective::GatherResource { item_type: ItemType::Logs, required_count: 3 }, false, None),
-            ],
-        }], QuestReward::Gold(50), false));
-        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Rat".into(), is_stronghold: false });
-        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Goblin".into(), is_stronghold: false });
-        notify_event(&mut state, &GameEvent::ResourceGathered { skill_name: "Woodcutting".into(), item_type: ItemType::Logs, count: 2 });
+        let mut state = new_state();
+        state.active_quests.clear();
+        state.active_quests.push(make_composite_quest(
+            "composite_parallel",
+            "Survey and Supply",
+            "Do both goals.",
+            vec![QuestStage {
+                id: "first".into(),
+                title: "Gather and defend".into(),
+                is_completed: false,
+                objectives: vec![
+                    objective(
+                        QuestObjective::SpecificMonsterKills {
+                            monster_name: "Goblin".into(),
+                            required: 2,
+                        },
+                        false,
+                        None,
+                    ),
+                    objective(
+                        QuestObjective::GatherResource {
+                            item_type: ItemType::Logs,
+                            required_count: 3,
+                        },
+                        false,
+                        None,
+                    ),
+                ],
+            }],
+            QuestReward::Gold(50),
+            false,
+        ));
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Rat".into(),
+                is_stronghold: false,
+            },
+        );
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
+        notify_event(
+            &mut state,
+            &GameEvent::ResourceGathered {
+                skill_name: "Woodcutting".into(),
+                item_type: ItemType::Logs,
+                count: 2,
+            },
+        );
         assert_eq!(state.active_quests[0].stages[0].objectives[0].progress, 1);
         assert_eq!(state.active_quests[0].stages[0].objectives[1].progress, 2);
         assert!(!state.active_quests[0].is_completed);
-        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Elite Goblin".into(), is_stronghold: false });
-        notify_event(&mut state, &GameEvent::ResourceGathered { skill_name: "Woodcutting".into(), item_type: ItemType::Logs, count: 1 });
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Elite Goblin".into(),
+                is_stronghold: false,
+            },
+        );
+        notify_event(
+            &mut state,
+            &GameEvent::ResourceGathered {
+                skill_name: "Woodcutting".into(),
+                item_type: ItemType::Logs,
+                count: 1,
+            },
+        );
         assert!(state.active_quests[0].is_completed);
     }
 
     #[test]
     fn sequential_stage_is_locked_until_previous_required_objectives_finish() {
-        let mut state = new_state(); state.active_quests.clear();
-        state.active_quests.push(make_composite_quest("sequence", "Two Steps", "Sequential stages.", vec![
-            QuestStage { id: "first".into(), title: "Defeat".into(), is_completed: false,
-                objectives: vec![objective(QuestObjective::SpecificMonsterKills { monster_name: "Goblin".into(), required: 1 }, false, None)] },
-            QuestStage { id: "second".into(), title: "Arrive".into(), is_completed: false,
-                objectives: vec![objective(QuestObjective::ReachLocation { location_id: LocationId::from("abandoned_mill") }, false, None)] },
-        ], QuestReward::Gold(5), false));
-        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("abandoned_mill") });
+        let mut state = new_state();
+        state.active_quests.clear();
+        state.active_quests.push(make_composite_quest(
+            "sequence",
+            "Two Steps",
+            "Sequential stages.",
+            vec![
+                QuestStage {
+                    id: "first".into(),
+                    title: "Defeat".into(),
+                    is_completed: false,
+                    objectives: vec![objective(
+                        QuestObjective::SpecificMonsterKills {
+                            monster_name: "Goblin".into(),
+                            required: 1,
+                        },
+                        false,
+                        None,
+                    )],
+                },
+                QuestStage {
+                    id: "second".into(),
+                    title: "Arrive".into(),
+                    is_completed: false,
+                    objectives: vec![objective(
+                        QuestObjective::ReachLocation {
+                            location_id: LocationId::from("abandoned_mill"),
+                        },
+                        false,
+                        None,
+                    )],
+                },
+            ],
+            QuestReward::Gold(5),
+            false,
+        ));
+        notify_event(
+            &mut state,
+            &GameEvent::LocationReached {
+                location_id: LocationId::from("abandoned_mill"),
+            },
+        );
         assert_eq!(state.active_quests[0].stages[1].objectives[0].progress, 0);
-        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Goblin".into(), is_stronghold: false });
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
         assert!(state.active_quests[0].stages[0].is_completed);
         assert!(!state.active_quests[0].stages[1].is_completed);
-        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("abandoned_mill") });
+        notify_event(
+            &mut state,
+            &GameEvent::LocationReached {
+                location_id: LocationId::from("abandoned_mill"),
+            },
+        );
         assert!(state.active_quests[0].is_completed);
     }
 
     #[test]
     fn optional_bonus_reward_does_not_block_main_completion_and_is_granted_once() {
-        let mut state = new_state(); state.active_quests.clear();
-        state.active_quests.push(make_composite_quest("optional", "Bonus", "Bonus doesn't block.", vec![QuestStage {
-            id: "stage".into(), title: "Main objective".into(), is_completed: false,
-            objectives: vec![
-                objective(QuestObjective::SpecificMonsterKills { monster_name: "Goblin".into(), required: 1 }, false, None),
-                objective(QuestObjective::CollectItem { item_type: ItemType::Thread, required_count: 1 }, true, Some(QuestReward::Gold(7))),
-            ],
-        }], QuestReward::Gold(1), false));
+        let mut state = new_state();
+        state.active_quests.clear();
+        state.active_quests.push(make_composite_quest(
+            "optional",
+            "Bonus",
+            "Bonus doesn't block.",
+            vec![QuestStage {
+                id: "stage".into(),
+                title: "Main objective".into(),
+                is_completed: false,
+                objectives: vec![
+                    objective(
+                        QuestObjective::SpecificMonsterKills {
+                            monster_name: "Goblin".into(),
+                            required: 1,
+                        },
+                        false,
+                        None,
+                    ),
+                    objective(
+                        QuestObjective::CollectItem {
+                            item_type: ItemType::Thread,
+                            required_count: 1,
+                        },
+                        true,
+                        Some(QuestReward::Gold(7)),
+                    ),
+                ],
+            }],
+            QuestReward::Gold(1),
+            false,
+        ));
         let starting_gold = state.player.gold;
         notify_event(
             &mut state,
@@ -1088,8 +1213,10 @@ mod tests {
 
     #[test]
     fn legacy_single_objective_quest_json_preserves_existing_progress() {
-        let state = new_state(); let mut legacy = state.active_quests[0].clone();
-        legacy.progress = 4; legacy.target = 9;
+        let state = new_state();
+        let mut legacy = state.active_quests[0].clone();
+        legacy.progress = 4;
+        legacy.target = 9;
         let mut value = serde_json::to_value(&legacy).unwrap();
         value.as_object_mut().unwrap().remove("stages");
         let restored: Quest = serde_json::from_value(value).unwrap();
