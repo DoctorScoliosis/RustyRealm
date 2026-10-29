@@ -1,46 +1,51 @@
 # Section 18 — Risk–Reward Balancing and Combat Simulation
 
-**Status:** Planned
-**Dependencies:** Combat, classes, effects, skill checks, recovery, quests, and economy systems to be evaluated as they stabilise.
+**Status:** In progress
+**Baseline version:** 1
+**Implementation:** `src/balance_simulation.rs`
 
-## Objective
+## Purpose and method
 
-Create repeatable balance measurements for enemies, classes, equipment, skills, quests, and rewards before substantially expanding realm content.
+The balance harness is separate from the interactive gameplay path. It invokes the shared `party_combat::Encounter` resolver and shared enemy action policy with reproducible, seed-derived hit and critical rolls. It does not use a separate damage formula for attacks. A regression row is reproducible from the scenario ID and seed.
 
-## Implementation slices
+Baseline ranges are initial design assumptions rather than assertions of objectively correct difficulty. When combat, economy, skill checks, recovery or Gauntlet rewards intentionally change, update the related range with evidence and explain the intended change in the corresponding PR.
 
-### 18.1 — Establish baseline scenarios and targets
+## Representative baseline scenarios
 
-- Audit enemy health, damage, speed, resistances, abilities, drops, and reward tables.
-- Define representative character/party builds and encounters for low, middle, and high progression.
-- Document expected difficulty ranges, target turn counts, acceptable incoming damage, healing/consumable use, and intended recovery cost.
-- Treat target values as explicit design assumptions that can be revised with evidence.
+| ID | Progression band | Encounter | Expected actor activations | Maximum expected damage taken |
+| --- | --- | --- | ---: | ---: |
+| `low-rat` | Low | Rat | 1–8 | 110 |
+| `low-goblin` | Low | Goblin | 1–10 | 150 |
+| `middle-stronghold-warrior` | Middle | Stronghold Warrior | 2–18 | 500 |
+| `middle-dragon` | Middle | Dragon | 2–20 | 650 |
+| `high-lacoyx` | High | Lacoyx | 3–35 | 1,200 |
+| `high-gauntlet-wave-10` | High | Gauntlet Fiend, Wave 10 | 4–45 | 1,400 |
 
-### 18.2 — Repeatable simulation
+The harness builds explicit low, middle and high characters with documented HP, stamina, mana, attack and defence values in source. Enemy health and attack receive a bounded seed-controlled 93–107% variance. The suite uses eight default seeds and is deliberately small enough for the existing unit-test CI job.
 
-- Build deterministic or seed-controlled combat simulations that invoke the same domain rules as real encounters.
-- Measure turns to defeat, party damage taken, knockout frequency, abilities/resources used, and encounter outcomes.
-- Compare class and party matchups against representative enemy archetypes.
-- Reassess Stronghold Gauntlet scaling, escalating rewards, and modifiers.
+## Metrics
 
-### 18.3 — Progression and economy
+Each run captures the scenario, progression band, seed, outcome, actor activations, party damage taken, knockouts, ability use, stamina and mana spent, healing usage, recovery-gold assumption, and reward estimates. Healing currently remains zero because the one-character baseline policy does not consume healing items; the field is retained for future party-policy simulations and must not be read as proof of consumable balance.
 
-- Review gold, XP, loot, crafting requirements, shop prices, skill-check curves, consumable supply, and recovery costs together.
-- Look for repeated-action, quest-claim, sale/buyback, Gauntlet, and other reward exploits.
-- Add regression thresholds for material balance shifts; document intentional changes instead of relying on vague intuition.
+The `check_regressions` helper compares the recorded measurements to explicit action-count, incoming-damage and scenario reward envelopes. This creates a starting point for future multi-party and resource/economy sweeps; it does not yet simulate every shop, quest-claim, crafting or resale transaction sequence.
 
-## Scope boundaries
+## Stronghold Gauntlet
 
-- Do not tune by undocumented intuition alone.
-- Do not overfit to a single character build or seed.
-- Keep simulations out of interactive gameplay paths and avoid making production play slower.
-- Balance changes must not silently alter save interpretation or quest progress.
+The simulation uses the production `calculate_gauntlet_rewards` helper for its wave-10 reward row. Existing formula tests retain the known quarter-per-wave reward curve and enemy-stat modifier behaviour. Future balance work should sweep more waves, compare reward growth with health/damage growth, and test whether carried resources/recovery costs make continuing rational, rather than silently changing production rewards on intuition.
 
-## Acceptance criteria
+## Economy and scope boundaries
 
-- Representative encounters have documented expected difficulty and reward ranges.
-- Repeatable simulations compare relevant classes/parties and enemy archetypes.
-- Classes have useful strengths and trade-offs without one universally dominating.
-- Higher-risk encounters offer proportionate rewards without trivialising progression.
-- Gauntlet difficulty and rewards remain worthwhile over its progression.
-- Regression checks flag significant unintended changes in combat and economy metrics.
+- Production economy transaction helpers and their atomicity/caps remain authoritative; the simulation does not mutate a real `GameState`.
+- The harness includes a conservative sell-spread invariant check, but repeated-action, quest-claim and sale/buyback exploit checks require dedicated transaction-sequence tests and are not claimed complete here.
+- Existing save interpretation, quest progress and live gameplay behavior are unchanged by this addition.
+- Thresholds are explicit, versioned design assumptions. A red metric is a request to investigate; it should not be fixed by weakening CI or blindly widening the threshold.
+
+## Running
+
+The existing GitHub Actions workflow runs the harness as part of `cargo test --package rustyrealm`, with the established formatting and Clippy gates:
+
+- `cargo fmt --check`
+- `cargo test --package rustyrealm`
+- `cargo clippy --package rustyrealm --tests`
+
+The feature branch must be validated on the latest pull-request head. If a check fails, inspect its logs, correct the specific cause on this branch, and repeat. The pull request stays open for owner review; do not merge it from the implementing agent.
