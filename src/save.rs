@@ -732,7 +732,10 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("active_world_event");
-        document["data"].as_object_mut().unwrap().remove("world_turn");
+        document["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("world_turn");
         document["data"]["player"]
             .as_object_mut()
             .unwrap()
