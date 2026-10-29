@@ -723,14 +723,14 @@ mod tests {
             EnemyProfile::for_name("Stronghold Ranger")
                 .status_payload
                 .unwrap()
-                .0,
+                .kind,
             StatusEffectKind::Mark
         );
         assert_eq!(
             EnemyProfile::for_name("Stronghold Warrior")
                 .status_payload
                 .unwrap()
-                .0,
+                .kind,
             StatusEffectKind::WeakenedDefences
         );
     }
