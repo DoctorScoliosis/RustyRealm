@@ -445,6 +445,17 @@ impl CombatEngine {
         }
     }
 
+    /// Interrupt an already committed attack when the enemy's activation begins stunned.
+    /// Returns true only when the stored telegraph was cancelled.
+    pub fn cancel_telegraph_if_stunned(enemy: &mut Combatant) -> bool {
+        if !enemy.is_stunned {
+            return false;
+        }
+        enemy.is_stunned = false;
+        enemy.telegraphed_attack = None;
+        true
+    }
+
     /// Resolve an existing telegraph or propose a new intent. Lacoyx keeps his
     /// phase-specific attack identities and probabilities; ordinary hostiles use
     /// the shared Section 13 tactical profile and status payload.
@@ -681,6 +692,23 @@ mod tests {
         assert_eq!(intent.status_payload, None);
         assert!(intent.logs.iter().any(|line| line.contains("Infernal Nova")));
         assert_eq!(enemy.telegraphed_attack, None);
+    }
+
+    #[test]
+    fn stun_interrupts_a_committed_legacy_telegraph() {
+        let mut enemy = Combatant::new_monster("Stronghold Mage", 110, 100);
+        let (chance, attack) =
+            lacoyx_telegraph_for_phase(LacoyxPhase::Phase2InfernalWarlord);
+        assert_eq!(chance, 0.5);
+        enemy.telegraphed_attack = Some(attack);
+        enemy.apply_status(StatusEffectKind::Stun, 1, 1);
+        enemy.tick_status_effects();
+
+        assert!(enemy.is_stunned);
+        assert!(CombatEngine::cancel_telegraph_if_stunned(&mut enemy));
+        assert!(!enemy.is_stunned);
+        assert!(enemy.telegraphed_attack.is_none());
+        assert!(!CombatEngine::cancel_telegraph_if_stunned(&mut enemy));
     }
 
     #[test]
