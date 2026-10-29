@@ -116,7 +116,7 @@ pub fn run_engine_battle(
                     ),
                     Some(state),
                 )?;
-    
+
                 let has_brew = state.player.get_item_count(ItemType::Potions) > 0;
                 let defensive_options: Vec<&str> = if has_brew {
                     vec![
@@ -136,13 +136,14 @@ pub fn run_engine_battle(
                         if state.player.remove_item(ItemType::Potions, 1) {
                             let healing = (player.max_hp / 4).max(1);
                             player.hp = player.hp.saturating_add(healing).min(player.max_hp);
-                            battle_log.push(format!("You consume a brew and restore {healing} HP."));
+                            battle_log
+                                .push(format!("You consume a brew and restore {healing} HP."));
                         }
                         DefensiveChoice::Consumable
                     }
                     _ => DefensiveChoice::Block,
                 };
-    
+
                 let intent = CombatEngine::generate_enemy_turn(&mut enemy, &player);
                 let raw_damage = intent.damage;
                 let damage_type = intent.damage_type;
@@ -165,7 +166,8 @@ pub fn run_engine_battle(
                     );
                     battle_log.extend(status_logs);
                 }
-                let armour_reduction = rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
+                let armour_reduction =
+                    rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
                 let damage = mitigated.saturating_sub(armour_reduction);
                 player.hp = player.hp.saturating_sub(damage);
                 battle_log.push(format!(
@@ -173,7 +175,7 @@ pub fn run_engine_battle(
                     enemy.name
                 ));
                 enemy_turn_consumed = true;
-    
+
                 if player.hp == 0 {
                     sync_player(state, &player);
                     tui.show_message(
