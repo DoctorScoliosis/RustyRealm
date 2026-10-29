@@ -189,11 +189,7 @@ impl SkillKind {
     }
 }
 
-fn award_skill_action_xp(
-    tui: &mut Tui,
-    state: &mut GameState,
-    skill: SkillKind,
-) -> io::Result<()> {
+fn award_skill_action_xp(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Result<()> {
     if award_xp(skill.data_mut(state)) {
         let new_level = skill.data(state).level;
         crate::quests::notify_event(
@@ -393,9 +389,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 } else {
                     (8, 1)
                 };
-                let Some(modifier) =
-                    begin_skill_action(tui, state, stamina_cost, turns)?
-                else {
+                let Some(modifier) = begin_skill_action(tui, state, stamina_cost, turns)? else {
                     continue;
                 };
                 let check = roll_skill_check(level, 25, modifier);
@@ -439,12 +433,14 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 } else {
                     (5, 1)
                 };
-                let Some(modifier) =
-                    begin_skill_action(tui, state, stamina_cost, turns)?
-                else {
+                let Some(modifier) = begin_skill_action(tui, state, stamina_cost, turns)? else {
                     continue;
                 };
-                let check = roll_skill_check(level, if level >= MAX_SKILL_LEVEL { 10 } else { 15 }, modifier);
+                let check = roll_skill_check(
+                    level,
+                    if level >= MAX_SKILL_LEVEL { 10 } else { 15 },
+                    modifier,
+                );
                 // Cooking always consumes the raw ingredients on an attempted
                 // action; a failed batch is spoiled rather than refunded.
                 let removed = state.player.remove_item(ItemType::RawFood, amount);
@@ -485,9 +481,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 } else {
                     (6, 1)
                 };
-                let Some(modifier) =
-                    begin_skill_action(tui, state, stamina_cost, turns)?
-                else {
+                let Some(modifier) = begin_skill_action(tui, state, stamina_cost, turns)? else {
                     continue;
                 };
                 let check = roll_skill_check(level, 25, modifier);
@@ -515,9 +509,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 } else {
                     (10, 1)
                 };
-                let Some(modifier) =
-                    begin_skill_action(tui, state, stamina_cost, turns)?
-                else {
+                let Some(modifier) = begin_skill_action(tui, state, stamina_cost, turns)? else {
                     continue;
                 };
                 let check = roll_skill_check(level, 30, modifier);
@@ -570,9 +562,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 } else {
                     (8, 1)
                 };
-                let Some(modifier) =
-                    begin_skill_action(tui, state, stamina_cost, turns)?
-                else {
+                let Some(modifier) = begin_skill_action(tui, state, stamina_cost, turns)? else {
                     continue;
                 };
                 let check = roll_skill_check(level, 25, modifier);
@@ -601,9 +591,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 } else {
                     (8, 1)
                 };
-                let Some(modifier) =
-                    begin_skill_action(tui, state, stamina_cost, turns)?
-                else {
+                let Some(modifier) = begin_skill_action(tui, state, stamina_cost, turns)? else {
                     continue;
                 };
                 let check = roll_skill_check(level, 25, modifier);
@@ -680,7 +668,9 @@ mod skill_check_integration_tests {
         assert_eq!(fresh, 0);
         assert!(tired < fresh);
         assert!(exhausted < tired);
-        assert!(resolve_skill_check(50, 25, tired, 0).success_chance
-            < resolve_skill_check(50, 25, fresh, 0).success_chance);
+        assert!(
+            resolve_skill_check(50, 25, tired, 0).success_chance
+                < resolve_skill_check(50, 25, fresh, 0).success_chance
+        );
     }
 }
