@@ -480,7 +480,11 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         assert_eq!(recovery.apply_treatment(&mut state, id, &location, &world), Ok(TREATMENT_COST));
         assert_eq!(state.companions[0].condition, CompanionCondition::Available);
         assert_eq!(state.companions[0].current_hp, state.companions[0].max_hp);
-        assert_eq!(state.player.gold, 1000 - TREATMENT_COST - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost);
+        assert_eq!(
+            state.player.gold,
+            1000 - TREATMENT_COST
+                - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost
+        );
         assert!(recovery.record(id).is_none());
         let location = state.current_location.clone();
         assert!(recovery.apply_treatment(&mut state, id, &location, &world).is_err());
