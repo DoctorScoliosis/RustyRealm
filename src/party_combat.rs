@@ -1296,7 +1296,7 @@ mod tests {
             .unwrap()
             .status_effects
             .iter()
-            .any(|effect| { effect.kind == StatusEffectKind::Bleed }));
+            .any(|effect| { effect.kind == StatusEffectKind::Burn }));
     }
 
     #[test]
