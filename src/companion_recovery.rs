@@ -46,15 +46,29 @@ pub enum RecoveryError {
 impl fmt::Display for RecoveryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-        Self::CompanionNotRecruited(id) => write!(f, "Companion {id} has not been recruited."),
-        Self::CompanionNotRecoverable(id) => write!(f, "Companion {id} is not awaiting recovery."),
-        Self::NoTreatmentSettlement => f.write_str("No reachable settlement can provide treatment. The companion remains safe but unavailable until a route or settlement becomes available."),
-        Self::NotAtTreatmentSettlement => f.write_str("Travel to the companion's recorded treatment settlement before paying for immediate treatment."),
-        Self::InsufficientGold { required, available } => write!(f, "Treatment costs {required} gold, but only {available} is available."),
-        Self::InvalidSettlement(id) => write!(f, "Location {id} is not a treatment-capable settlement."),
-        Self::DuplicateRecoveryRecord(id) => write!(f, "Companion {id} already has a recovery record."),
-        Self::PlayerAlreadyDefeated => f.write_str("The player has no health remaining."),
-    }
+            Self::CompanionNotRecruited(id) => {
+                write!(f, "Companion {id} has not been recruited.")
+            }
+            Self::CompanionNotRecoverable(id) => {
+                write!(f, "Companion {id} is not awaiting recovery.")
+            }
+            Self::NoTreatmentSettlement => f.write_str(
+                "No reachable settlement can provide treatment. The companion remains safe but unavailable until a route or settlement becomes available.",
+            ),
+            Self::NotAtTreatmentSettlement => f.write_str(
+                "Travel to the companion's recorded treatment settlement before paying for immediate treatment.",
+            ),
+            Self::InsufficientGold { required, available } => {
+                write!(f, "Treatment costs {required} gold, but only {available} is available.")
+            }
+            Self::InvalidSettlement(id) => {
+                write!(f, "Location {id} is not a treatment-capable settlement.")
+            }
+            Self::DuplicateRecoveryRecord(id) => {
+                write!(f, "Companion {id} already has a recovery record.")
+            }
+            Self::PlayerAlreadyDefeated => f.write_str("The player has no health remaining."),
+        }
     }
 }
 
