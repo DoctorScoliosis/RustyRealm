@@ -166,22 +166,50 @@ fn choose_target(
     tui: &mut Tui,
     state: &GameState,
     encounter: &Encounter,
+    actor: CombatantId,
     targets: &[CombatantId],
 ) -> io::Result<Option<CombatantId>> {
-    match targets {
-        [] => Ok(None),
-        [only] => Ok(Some(*only)),
-        _ => {
-            let mut labels: Vec<String> = targets
-                .iter()
-                .map(|id| target_label(encounter, *id))
-                .collect();
-            labels.push("Back".to_string());
-            let options: Vec<&str> = labels.iter().map(String::as_str).collect();
-            let choice = tui.select_menu("Choose a target", &options, Some(state))?;
-            Ok((choice < targets.len()).then_some(targets[choice]))
-        }
+    if targets.is_empty() {
+        return Ok(None);
     }
+
+    let actor_allegiance = encounter
+        .combatant(actor)
+        .map(|combatant| combatant.allegiance);
+    let candidates: Vec<CombatantId> = encounter
+        .combatants()
+        .iter()
+        .filter(|candidate| Some(candidate.allegiance) != actor_allegiance)
+        .map(|candidate| candidate.id)
+        .collect();
+
+    if targets.len() == 1 && candidates.len() <= 1 {
+        return Ok(Some(targets[0]));
+    }
+
+    let mut labels: Vec<String> = candidates
+        .iter()
+        .map(|id| {
+            let label = target_label(encounter, *id);
+            if targets.contains(id) {
+                label
+            } else if encounter
+                .combatant(*id)
+                .is_some_and(|target| !target.can_act())
+            {
+                format!("[Unavailable: Target is incapacitated.] {label}")
+            } else {
+                format!("[Unavailable: Out of range for this action.] {label}")
+            }
+        })
+        .collect();
+    labels.push("Back".to_string());
+    let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let choice = tui.select_menu("Choose a target", &options, Some(state))?;
+    Ok(candidates
+        .get(choice)
+        .filter(|id| targets.contains(id))
+        .copied())
 }
 
 fn battle_status(encounter: &Encounter, round_drain: u32, last_log: &str) -> String {
@@ -238,13 +266,15 @@ fn choose_player_action(
     let mut labels = Vec::new();
     let mut actions = Vec::new();
 
-    if !legal_targets(encounter, actor, None).is_empty() {
+    let basic_targets = legal_targets(encounter, actor, None);
+    if let Some(target) = basic_targets.first().copied() {
         labels.push("Basic attack".to_string());
-        actions.push(Some(CombatAction::BasicAttack {
-            actor,
-            target: legal_targets(encounter, actor, None)[0],
-        }));
+        actions.push(Some(CombatAction::BasicAttack { actor, target }));
+    } else {
+        labels.push("[Unavailable: No legal target is in range.] Basic attack".to_string());
+        actions.push(None);
     }
+
     for (id, label) in [
         (AbilityId::HeavyStrike, "Heavy Strike"),
         (AbilityId::LifeDrain, "Life Drain"),
@@ -253,34 +283,64 @@ fn choose_player_action(
         let ability = get_ability(id);
         let source = encounter.combatant(actor).expect("current actor exists");
         let targets = legal_targets(encounter, actor, Some(id));
-        if !targets.is_empty()
-            && source.stamina >= ability.stamina_cost
-            && source.mana >= ability.mana_cost
-        {
-            labels.push(format!(
-                "{label} · {} stamina / {} mana",
-                ability.stamina_cost, ability.mana_cost
+        let mut reasons = Vec::new();
+        if targets.is_empty() {
+            reasons.push("no legal target is in range".to_string());
+        }
+        if source.stamina < ability.stamina_cost {
+            reasons.push(format!(
+                "requires {} stamina (have {})",
+                ability.stamina_cost, source.stamina
             ));
+        }
+        if source.mana < ability.mana_cost {
+            reasons.push(format!(
+                "requires {} mana (have {})",
+                ability.mana_cost, source.mana
+            ));
+        }
+
+        let option_label = format!(
+            "{label} · {} stamina / {} mana",
+            ability.stamina_cost, ability.mana_cost
+        );
+        if reasons.is_empty() {
+            labels.push(option_label);
             actions.push(Some(CombatAction::UseAbility {
                 actor,
                 target: targets[0],
                 ability: id,
             }));
+        } else {
+            let status = if targets.is_empty() {
+                "Unavailable"
+            } else {
+                "Disabled"
+            };
+            labels.push(format!("[{status}: {}] {option_label}", reasons.join("; ")));
+            actions.push(None);
         }
     }
 
     let source = encounter.combatant(actor).expect("current actor exists");
     let shield = get_ability(AbilityId::ShieldWall);
+    let shield_label = format!(
+        "Shield Wall · {} stamina · guard the next two hits",
+        shield.stamina_cost
+    );
     if source.stamina >= shield.stamina_cost {
-        labels.push(format!(
-            "Shield Wall · {} stamina · guard the next two hits",
-            shield.stamina_cost
-        ));
+        labels.push(shield_label);
         actions.push(Some(CombatAction::UseAbility {
             actor,
             target: actor,
             ability: AbilityId::ShieldWall,
         }));
+    } else {
+        labels.push(format!(
+            "[Disabled: requires {} stamina (have {}).] {shield_label}",
+            shield.stamina_cost, source.stamina
+        ));
+        actions.push(None);
     }
     labels.push("Move".to_string());
     actions.push(Some(CombatAction::Move { actor }));
@@ -325,7 +385,7 @@ fn choose_player_action(
                     _ => None,
                 };
                 let targets = legal_targets(encounter, actor, ability);
-                let Some(target) = choose_target(tui, state, encounter, &targets)? else {
+                let Some(target) = choose_target(tui, state, encounter, actor, &targets)? else {
                     continue;
                 };
                 return Ok(Some(match action {

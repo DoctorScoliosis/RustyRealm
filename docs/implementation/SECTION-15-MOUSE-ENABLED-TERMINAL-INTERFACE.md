@@ -1,11 +1,11 @@
 # Section 15 — Mouse-Enabled Terminal Interface
 
-**Status:** Planned
-**Dependencies:** Existing Ratatui/Crossterm UI; party and combat screens can adopt mouse support as their interaction regions are added.
+**Status:** In review — PR #21
+**Dependencies:** Existing Ratatui/Crossterm UI, party domain model, and party-aware combat engine; Section 14 is merged into `main`.
 
 ## Objective
 
-Allow mouse interaction with visible menus, party members, combat targets, and actions while preserving all existing keyboard controls and a usable keyboard-only fallback.
+Allow mouse interaction with visible menus, party members, combat targets, and actions while preserving keyboard controls and supporting terminals that accept only whole text lines rather than live key events.
 
 ## Implementation slices
 
@@ -13,7 +13,8 @@ Allow mouse interaction with visible menus, party members, combat targets, and a
 
 - Add Crossterm mouse event handling and enable mouse capture only while the application owns the terminal.
 - Ensure mouse capture, raw mode, cursor state, alternate screen, and other terminal state are restored on normal exit and recoverable errors.
-- Integrate mouse events with the existing event loop without starving keyboard input or making the UI unresponsive.
+- Treat mouse capture as optional; continue with keyboard events when mouse capture itself is unsupported.
+- Fall back to line-input mode when standard input is not a terminal or raw-mode setup fails.
 
 ### 15.2 — Coordinate-to-action mapping
 
@@ -25,9 +26,18 @@ Allow mouse interaction with visible menus, party members, combat targets, and a
 ### 15.3 — Feedback and fallback
 
 - Visually distinguish selected, disabled, unavailable, and actionable entries.
-- Explain relevant unavailability reasons, such as insufficient resources or an out-of-range target.
-- Preserve keyboard navigation, shortcuts, and Escape/back behaviour.
-- On unsupported terminals, retain a usable keyboard-only experience and avoid failing application startup solely because mouse support is unavailable.
+- Explain relevant unavailability reasons, such as insufficient stamina/mana or an out-of-range target.
+- Do not return disabled/unavailable choices to domain-action handlers, whether selected by mouse, Enter, number shortcut, or text input.
+- Preserve keyboard navigation, shortcuts, and Escape/back behaviour in event-driven mode.
+- Retain a usable line-input experience on wrappers where per-key event monitoring is unavailable.
+
+### 15.4 — Line-input fallback
+
+- Select line-input mode automatically when stdin is not a terminal or event-driven raw-mode setup fails.
+- Allow wrappers that cannot deliver live key events to opt in with `RUSTYREALM_INPUT_MODE=text`.
+- Render menus as numbered choices; accept a number or exact label and confirm with Enter. Text prompts, messages, and long text screens use line input and Enter-to-continue.
+- Keep the same disabled/unavailable choice checks in line-input mode so text submissions cannot bypass action gating.
+- Warn that masked prompts cannot hide characters in line-input mode.
 
 ## Scope boundaries
 
@@ -43,3 +53,5 @@ Allow mouse interaction with visible menus, party members, combat targets, and a
 - Disabled actions cannot be executed by clicking.
 - Terminal state is restored after normal exits and recoverable failures.
 - Keyboard-only operation remains possible when mouse input is unavailable.
+- Line-input-only wrappers can operate using numbered choices and Enter-confirmed lines.
+- Disabled/unavailable options expose a reason and cannot be returned as actionable choices in any supported input mode.
