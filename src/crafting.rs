@@ -756,4 +756,84 @@ mod tests {
         assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
         assert!(state.player.inventory_weapons.contains(&WeaponTier::Iron));
     }
+    #[test]
+    fn failed_smelt_consumes_ore_and_returns_scraps_transactionally() {
+        let mut state = state();
+        state.player.add_item(ItemType::Ore, 1);
+
+        let attempt = attempt_recipe(&mut state, "smith_ingot", 99, 8, 0).unwrap();
+
+        assert!(!attempt.succeeded);
+        assert_eq!(attempt.success_chance, 15);
+        assert_eq!(attempt.scraps_awarded, 1);
+        assert_eq!(state.player.get_item_count(ItemType::Ore), 0);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 1);
+        assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
+        assert_eq!(state.player.skills.smithing.current_xp, 0);
+        assert_eq!(state.player.stamina, 92);
+    }
+
+    #[test]
+    fn failed_scrap_recovery_consumes_the_scrap_and_cannot_loop_forever() {
+        let mut state = state();
+        state.player.add_item(ItemType::ScrapMetal, 1);
+
+        let attempt = attempt_recipe(&mut state, "smith_scrap_ingot", 99, 7, 0).unwrap();
+
+        assert!(!attempt.succeeded);
+        assert_eq!(attempt.success_chance, 10);
+        assert_eq!(attempt.scraps_awarded, 0);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
+        assert_eq!(state.player.stamina, 93);
+    }
+
+    #[test]
+    fn successful_scrap_recovery_consumes_scrap_and_returns_an_ingot() {
+        let mut state = state();
+        state.player.skills.smithing.level = 100;
+        state.player.add_item(ItemType::ScrapMetal, 1);
+
+        let attempt = attempt_recipe(&mut state, "smith_scrap_ingot", 0, 7, 0).unwrap();
+
+        assert!(attempt.succeeded);
+        assert_eq!(attempt.scraps_awarded, 0);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Ingots), 1);
+        assert_eq!(state.player.stamina, 93);
+    }
+
+    #[test]
+    fn failed_cooking_consumes_raw_food_and_returns_no_food() {
+        let mut state = state();
+        state.player.add_item(ItemType::RawFood, 1);
+
+        let attempt = attempt_recipe(&mut state, "cook_food", 99, 5, 0).unwrap();
+
+        assert!(!attempt.succeeded);
+        assert_eq!(state.player.get_item_count(ItemType::RawFood), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Food), 0);
+        assert_eq!(state.player.skills.cooking.current_xp, 0);
+        assert_eq!(state.player.stamina, 95);
+    }
+
+    #[test]
+    fn insufficient_stamina_preserves_recipe_inputs_and_progress() {
+        let mut state = state();
+        state.player.stamina = 3;
+        state.player.add_item(ItemType::Ore, 1);
+
+        assert!(matches!(
+            attempt_recipe(&mut state, "smith_ingot", 0, 8, 0),
+            Err(CraftingError::InsufficientStamina {
+                required: 8,
+                available: 3
+            })
+        ));
+        assert_eq!(state.player.get_item_count(ItemType::Ore), 1);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 0);
+        assert_eq!(state.player.stamina, 3);
+        assert_eq!(state.player.skills.smithing.current_xp, 0);
+    }
+
 }
