@@ -403,7 +403,6 @@ mod tests {
     state.companions[0].current_hp = 0;
     let mut recovery = RecoveryState::default();
     recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
-    state.party.remove_member(id).unwrap();
     state.current_location = LocationId::from("village_start");
     let location = state.current_location.clone();
     assert_eq!(recovery.apply_treatment(&mut state, id, &location, &world), Ok(TREATMENT_COST));
