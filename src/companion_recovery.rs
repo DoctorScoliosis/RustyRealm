@@ -1,16 +1,16 @@
 //! Persistent companion knockout, rescue, recovery and expedition resolution.
- //!
+//!
  //! Recovery uses the world's existing shortest-path travel-cost queries. One recovery
  //! turn is one committed main-menu action (the game already advances the market by
  //! one turn after each main-menu selection); opening and closing nested menus does
  //! not advance recovery.
 
- use serde::{Deserialize, Serialize};
- use std::fmt;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
- use crate::party::{CompanionCondition, CompanionId, CompanionState, Party};
- use crate::state::GameState;
- use crate::world::{LocationId, LocationCategory, World};
+use crate::party::{CompanionCondition, CompanionId, CompanionState, Party};
+use crate::state::GameState;
+use crate::world::{LocationId, LocationCategory, World};
 
  pub const RECOVERY_TURNS: u32 = 3;
  pub const TREATMENT_COST: u32 = 50;
