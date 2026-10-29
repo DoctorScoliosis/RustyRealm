@@ -260,7 +260,9 @@ fn legal_action(
     action_roll: u32,
     metrics: &mut SimulationMetrics,
 ) -> CombatAction {
-    let source = encounter.combatant(actor).expect("current actor must exist");
+    let source = encounter
+        .combatant(actor)
+        .expect("current actor must exist");
     if source.allegiance == Allegiance::Enemies {
         return crate::status_combat::propose_enemy_action(encounter, actor, action_roll)
             .map(|decision| decision.intended.action)
@@ -280,13 +282,19 @@ fn legal_action(
 
     let heavy = get_ability(AbilityId::HeavyStrike);
     let actor_state = encounter.combatant(actor).expect("actor still exists");
-    if !encounter.legal_targets(actor, Some(AbilityId::HeavyStrike)).is_empty()
+    if !encounter
+        .legal_targets(actor, Some(AbilityId::HeavyStrike))
+        .is_empty()
         && actor_state.stamina >= heavy.stamina_cost
         && actor_state.mana >= heavy.mana_cost
         && action_roll % 3 == 0
     {
         metrics.abilities_used = metrics.abilities_used.saturating_add(1);
-        CombatAction::UseAbility { actor, target, ability: AbilityId::HeavyStrike }
+        CombatAction::UseAbility {
+            actor,
+            target,
+            ability: AbilityId::HeavyStrike,
+        }
     } else if encounter.legal_targets(actor, None).contains(&target) {
         CombatAction::BasicAttack { actor, target }
     } else {
@@ -303,12 +311,22 @@ pub fn simulate_encounter(
     let player_id = CombatantId(1);
     let enemy_id = CombatantId(2);
     let mut hero = EncounterCombatant::new(
-        player_id, CombatantSource::Player, "Balance simulator", Allegiance::Allies,
-        build.hp, build.stamina, build.mana, build.attack, build.defence,
+        player_id,
+        CombatantSource::Player,
+        "Balance simulator",
+        Allegiance::Allies,
+        build.hp,
+        build.stamina,
+        build.mana,
+        build.attack,
+        build.defence,
     );
     hero.defence = build.defence;
     let enemy = EncounterCombatant::new(
-        enemy_id, CombatantSource::Enemy, spec.enemy_name, Allegiance::Enemies,
+        enemy_id,
+        CombatantSource::Enemy,
+        spec.enemy_name,
+        Allegiance::Enemies,
         scenario_enemy_health(spec, seed),
         100,
         100,
@@ -317,10 +335,20 @@ pub fn simulate_encounter(
     );
     let mut encounter = Encounter::new(vec![hero, enemy]).expect("baseline contains an enemy");
     let mut metrics = SimulationMetrics {
-        scenario_id: spec.id.into(), progression, seed, won: false, actions: 0,
-        party_damage_taken: 0, knockouts: 0, abilities_used: 0, stamina_spent: 0, mana_spent: 0,
-        healing_used: 0, recovery_gold_assumption: DEFAULT_RECOVERY_GOLD_ASSUMPTION,
-        gold_reward: spec.expected_gold_min, xp_reward: spec.expected_xp_min,
+        scenario_id: spec.id.into(),
+        progression,
+        seed,
+        won: false,
+        actions: 0,
+        party_damage_taken: 0,
+        knockouts: 0,
+        abilities_used: 0,
+        stamina_spent: 0,
+        mana_spent: 0,
+        healing_used: 0,
+        recovery_gold_assumption: DEFAULT_RECOVERY_GOLD_ASSUMPTION,
+        gold_reward: spec.expected_gold_min,
+        xp_reward: spec.expected_xp_min,
     };
     let mut before_actor_turn = PlayerSnapshot {
         hp: build.hp,
@@ -331,7 +359,9 @@ pub fn simulate_encounter(
     while encounter.outcome == EncounterOutcome::Ongoing
         && metrics.actions < MAX_SIMULATION_ACTIONS
     {
-        let Some(actor) = encounter.current_actor() else { break };
+        let Some(actor) = encounter.current_actor() else {
+            break;
+        };
         let actor_roll = seed_roll(seed, metrics.actions, 3);
         if actor == player_id {
             before_actor_turn = PlayerSnapshot {
@@ -353,18 +383,20 @@ pub fn simulate_encounter(
             break;
         }
         if actor == player_id {
-            let after = encounter.combatant(player_id).expect("player remains in encounter");
-            metrics.stamina_spent = metrics.stamina_spent.saturating_add(
-                u64::from(before_actor_turn.stamina.saturating_sub(after.stamina)),
-            );
-            metrics.mana_spent = metrics.mana_spent.saturating_add(
-                u64::from(before_actor_turn.mana.saturating_sub(after.mana)),
-            );
+            let after = encounter
+                .combatant(player_id)
+                .expect("player remains in encounter");
+            metrics.stamina_spent = metrics.stamina_spent.saturating_add(u64::from(
+                before_actor_turn.stamina.saturating_sub(after.stamina),
+            ));
+            metrics.mana_spent = metrics
+                .mana_spent
+                .saturating_add(u64::from(before_actor_turn.mana.saturating_sub(after.mana)));
         } else {
             let after = encounter.combatant(player_id).map_or(0, |hero| hero.hp);
-            metrics.party_damage_taken = metrics.party_damage_taken.saturating_add(
-                u64::from(before_actor_turn.hp.saturating_sub(after)),
-            );
+            metrics.party_damage_taken = metrics
+                .party_damage_taken
+                .saturating_add(u64::from(before_actor_turn.hp.saturating_sub(after)));
             if before_actor_turn.hp > 0 && after == 0 {
                 metrics.knockouts = metrics.knockouts.saturating_add(1);
             }
@@ -401,7 +433,10 @@ pub fn run_baseline_suite(seeds: &[u64]) -> Vec<SimulationMetrics> {
             } else {
                 ProgressionBand::High
             };
-            seeds.iter().copied().map(move |seed| simulate_encounter(*spec, band, seed))
+            seeds
+                .iter()
+                .copied()
+                .map(move |seed| simulate_encounter(*spec, band, seed))
         })
         .collect()
 }
@@ -409,18 +444,24 @@ pub fn run_baseline_suite(seeds: &[u64]) -> Vec<SimulationMetrics> {
 pub fn check_regressions(results: &[SimulationMetrics]) -> Vec<RegressionFinding> {
     let mut findings = Vec::new();
     for metrics in results {
-        if let Some(spec) = BASELINE_ENCOUNTERS.iter().find(|spec| spec.id == metrics.scenario_id) {
+        if let Some(spec) = BASELINE_ENCOUNTERS
+            .iter()
+            .find(|spec| spec.id == metrics.scenario_id)
+        {
             if metrics.actions < spec.expected_actions_min
                 || metrics.actions > spec.expected_actions_max
             {
                 findings.push(RegressionFinding::ActionsOutsideRange {
-                    scenario: metrics.scenario_id.clone(), actual: metrics.actions,
-                    min: spec.expected_actions_min, max: spec.expected_actions_max,
+                    scenario: metrics.scenario_id.clone(),
+                    actual: metrics.actions,
+                    min: spec.expected_actions_min,
+                    max: spec.expected_actions_max,
                 });
             }
             if metrics.party_damage_taken > u64::from(spec.max_party_damage) {
                 findings.push(RegressionFinding::DamageAboveTarget {
-                    scenario: metrics.scenario_id.clone(), actual: metrics.party_damage_taken,
+                    scenario: metrics.scenario_id.clone(),
+                    actual: metrics.party_damage_taken,
                     maximum: u64::from(spec.max_party_damage),
                 });
             }
@@ -434,8 +475,10 @@ pub fn check_regressions(results: &[SimulationMetrics]) -> Vec<RegressionFinding
                 || metrics.gold_reward > spec.expected_gold_max
             {
                 findings.push(RegressionFinding::GoldOutsideRange {
-                    scenario: metrics.scenario_id.clone(), actual: metrics.gold_reward,
-                    min: spec.expected_gold_min, max: spec.expected_gold_max,
+                    scenario: metrics.scenario_id.clone(),
+                    actual: metrics.gold_reward,
+                    min: spec.expected_gold_min,
+                    max: spec.expected_gold_max,
                 });
             }
             if metrics.xp_reward < spec.expected_xp_min
