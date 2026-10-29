@@ -799,7 +799,7 @@ pub fn run_party_battle(
                 );
             }
             Ok(BattleOutcome::Victory)
-        },
+        }
         EncounterOutcome::Retreated => Ok(BattleOutcome::Fled),
         EncounterOutcome::PartyDefeated | EncounterOutcome::Ongoing => Err(io::Error::other(
             "Party encounter ended without a terminal outcome.",
