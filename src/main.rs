@@ -164,6 +164,24 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
 
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
+    // The location graph and recovery records are persisted separately; a
+    // companion with zero HP is normalised here so stale party IDs cannot let
+    // an older save field reintroduce them into combat.
+    for companion in &mut state.companions {
+        if companion.current_hp == 0
+            && !matches!(companion.condition, crate::party::CompanionCondition::KnockedOut | crate::party::CompanionCondition::Recovering)
+        {
+            companion.condition = crate::party::CompanionCondition::KnockedOut;
+        }
+    }
+    let knocked_out: Vec<_> = state.companions.iter()
+        .filter(|companion| companion.current_hp == 0
+            && state.companion_recovery.record(companion.id).is_none())
+        .map(|companion| companion.id)
+        .collect();
+    for id in knocked_out {
+        let _ = state.companion_recovery.record_knockout_by_id(state, id, &world);
+    }
     let options = [
         "Travel / Explore Region",
         "Wander Gielinor",
