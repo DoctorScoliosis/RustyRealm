@@ -1,6 +1,6 @@
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, Event, KeyCode, KeyEvent},
+    event::{self, Event, KeyCode, KeyEvent, MouseButton, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -12,11 +12,12 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
-use std::io::{self, Stdout};
+use std::io::{self, IsTerminal, Stdout, Write};
 
 use crate::state::GameState;
 
 /// Keeps the interactive terminal state scoped to the lifetime of the UI.
+/// Mouse capture is best-effort; the application remains keyboard-operable if enabling it fails.
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -24,9 +25,12 @@ impl TerminalGuard {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         if let Err(error) = execute!(stdout, EnterAlternateScreen, Hide) {
+            let _ = execute!(stdout, Show, LeaveAlternateScreen);
             let _ = disable_raw_mode();
             return Err(error);
         }
+        // Mouse capture is best-effort; restricted terminals retain keyboard navigation.
+        let _ = execute!(stdout, crossterm::event::EnableMouseCapture);
         Ok(Self)
     }
 }
@@ -35,25 +39,104 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         // Best-effort restoration also runs while unwinding from a panic.
         let mut stdout = io::stdout();
+        let _ = execute!(stdout, crossterm::event::DisableMouseCapture);
         let _ = execute!(stdout, Show, LeaveAlternateScreen);
         let _ = disable_raw_mode();
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InputMode {
+    Events,
+    Lines,
+}
+
 pub struct Tui {
     terminal: Terminal<CrosstermBackend<Stdout>>,
-    _guard: TerminalGuard,
+    _guard: Option<TerminalGuard>,
+    input_mode: InputMode,
 }
 
 impl Tui {
+    fn select_menu_lines(&self, title: &str, options: &[&str]) -> io::Result<usize> {
+        loop {
+            println!("\n{title}");
+            for (index, option) in options.iter().enumerate() {
+                let (kind, label, reason) = menu_option_parts(option);
+                let line = match kind {
+                    MenuOptionKind::Actionable => label.to_string(),
+                    MenuOptionKind::Disabled => format!(
+                        "[DISABLED] {label} — {}",
+                        reason.unwrap_or("This option is disabled.")
+                    ),
+                    MenuOptionKind::Unavailable => format!(
+                        "[UNAVAILABLE] {label} — {}",
+                        reason.unwrap_or("This option is unavailable.")
+                    ),
+                };
+                println!("  {}. {}", index + 1, line);
+            }
+            let prompt = format!(
+                "Type an option number or exact label (1-{}), then press Enter: ",
+                options.len()
+            );
+            let raw = read_line_prompt(&prompt)?;
+            let choice = raw.trim();
+            let selected = choice
+                .parse::<usize>()
+                .ok()
+                .filter(|number| (1..=options.len()).contains(number))
+                .map(|number| number - 1)
+                .or_else(|| {
+                    options.iter().position(|option| {
+                        let (_, label, _) = menu_option_parts(option);
+                        label.eq_ignore_ascii_case(choice)
+                    })
+                });
+            if let Some(index) = selected {
+                let (kind, label, reason) = menu_option_parts(options[index]);
+                if kind != MenuOptionKind::Actionable {
+                    println!(
+                        "{} cannot be selected: {}",
+                        label,
+                        reason.unwrap_or("This option is not currently available.")
+                    );
+                    continue;
+                }
+                return Ok(index);
+            }
+            println!("Invalid selection. Enter a listed number or exact option label.");
+        }
+    }
+
+    fn switch_to_line_input(&mut self) {
+        self.input_mode = InputMode::Lines;
+        drop(self._guard.take());
+    }
+
     pub fn new() -> io::Result<Self> {
-        let guard = TerminalGuard::new()?;
+        let configured_mode = std::env::var("RUSTYREALM_INPUT_MODE").ok();
+        let use_lines =
+            should_use_line_input(configured_mode.as_deref(), io::stdin().is_terminal());
+        let (guard, input_mode) = if use_lines {
+            (None, InputMode::Lines)
+        } else {
+            match TerminalGuard::new() {
+                Ok(guard) => (Some(guard), InputMode::Events),
+                // Some terminal wrappers do not support raw-mode event polling.
+                // Start in line-input mode instead of failing application startup.
+                Err(_) => (None, InputMode::Lines),
+            }
+        };
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
-        terminal.clear()?;
+        if input_mode == InputMode::Events {
+            terminal.clear()?;
+        }
         Ok(Self {
             terminal,
             _guard: guard,
+            input_mode,
         })
     }
 
@@ -69,7 +152,7 @@ impl Tui {
         Ok(())
     }
 
-    /// Arrow-key menu. Resize events trigger a new draw before waiting for input.
+    /// Keyboard- and mouse-enabled menu. Hit regions are recalculated on every draw.
     pub fn select_menu(
         &mut self,
         title: &str,
@@ -79,9 +162,14 @@ impl Tui {
         if options.is_empty() {
             return Ok(0);
         }
+        if self.input_mode == InputMode::Lines {
+            return self.select_menu_lines(title, options);
+        }
 
         let mut selected = 0usize;
         loop {
+            let mut menu_region = Rect::default();
+            let mut menu_offset = 0usize;
             self.render_screen(state, |frame, area, game_state| {
                 let title_height = if area.height >= 7 { 3 } else { 0 };
                 let footer_height = if area.height >= 10 { 2 } else { 0 };
@@ -122,29 +210,66 @@ impl Tui {
                         } else {
                             "   ".to_string()
                         };
-                        let line = if let Some(rest) = option.strip_prefix('[') {
-                            if let Some((rarity, name)) = rest.split_once("] ") {
-                                let color = match rarity {
-                                    "Common" => Color::Gray,
-                                    "Uncommon" => Color::Green,
-                                    "Rare" => Color::Blue,
-                                    "Epic" => Color::Magenta,
-                                    "Legendary" => Color::Yellow,
-                                    _ => Color::White,
-                                };
+                        let (kind, label, reason) = menu_option_parts(option);
+                        let line = match kind {
+                            MenuOptionKind::Disabled => {
+                                let style = Style::default().fg(Color::DarkGray);
                                 Line::from(vec![
-                                    Span::raw(prefix),
+                                    Span::styled(prefix, style),
+                                    Span::styled("× ", style.add_modifier(Modifier::BOLD)),
+                                    Span::styled(label.to_string(), style),
                                     Span::styled(
-                                        format!("[{rarity}] "),
-                                        Style::default().fg(color).add_modifier(Modifier::BOLD),
+                                        format!(" — {}", reason.unwrap_or("Disabled")),
+                                        style,
                                     ),
-                                    Span::raw(name.to_string()),
                                 ])
-                            } else {
-                                Line::from(format!("{prefix}{option}"))
                             }
-                        } else {
-                            Line::from(format!("{prefix}{option}"))
+                            MenuOptionKind::Unavailable => {
+                                let style = Style::default().fg(Color::Yellow);
+                                Line::from(vec![
+                                    Span::styled(prefix, style),
+                                    Span::styled("! ", style.add_modifier(Modifier::BOLD)),
+                                    Span::styled(label.to_string(), style),
+                                    Span::styled(
+                                        format!(" — {}", reason.unwrap_or("Unavailable")),
+                                        style,
+                                    ),
+                                ])
+                            }
+                            MenuOptionKind::Actionable => {
+                                let prefix_span = Span::styled(
+                                    prefix,
+                                    Style::default()
+                                        .fg(Color::Green)
+                                        .add_modifier(Modifier::BOLD),
+                                );
+                                if let Some(rest) = label.strip_prefix('[') {
+                                    if let Some((rarity, name)) = rest.split_once("] ") {
+                                        let color = match rarity {
+                                            "Common" => Color::Gray,
+                                            "Uncommon" => Color::Green,
+                                            "Rare" => Color::Blue,
+                                            "Epic" => Color::Magenta,
+                                            "Legendary" => Color::Yellow,
+                                            _ => Color::White,
+                                        };
+                                        Line::from(vec![
+                                            prefix_span,
+                                            Span::styled(
+                                                format!("[{rarity}] "),
+                                                Style::default()
+                                                    .fg(color)
+                                                    .add_modifier(Modifier::BOLD),
+                                            ),
+                                            Span::raw(name.to_string()),
+                                        ])
+                                    } else {
+                                        Line::from(vec![prefix_span, Span::raw(label.to_string())])
+                                    }
+                                } else {
+                                    Line::from(vec![prefix_span, Span::raw(label.to_string())])
+                                }
+                            }
                         };
                         ListItem::new(line)
                     })
@@ -169,7 +294,16 @@ impl Tui {
                     .highlight_symbol("▶ ");
                 let mut list_state = ListState::default();
                 list_state.select(Some(selected.min(options.len().saturating_sub(1))));
+                menu_region = Block::default()
+                    .title(if title_height == 0 {
+                        title
+                    } else {
+                        " Options "
+                    })
+                    .borders(Borders::ALL)
+                    .inner(chunks[index]);
                 frame.render_stateful_widget(list, chunks[index], &mut list_state);
+                menu_offset = list_state.offset();
                 index += 1;
 
                 if footer_height > 0 {
@@ -181,7 +315,48 @@ impl Tui {
                 }
             })?;
 
-            match event::read()? {
+            let input_event = match event::read() {
+                Ok(event) => event,
+                Err(_) if self.input_mode == InputMode::Events => {
+                    self.switch_to_line_input();
+                    return self.select_menu_lines(title, options);
+                }
+                Err(error) => return Err(error),
+            };
+            match input_event {
+                Event::Mouse(mouse)
+                    if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) =>
+                {
+                    if let Some(index) = menu_row_at(
+                        menu_region,
+                        options.len(),
+                        menu_offset,
+                        mouse.column,
+                        mouse.row,
+                    ) {
+                        selected = index;
+                        if let Some((label, reason)) = menu_option_reason(options[index]) {
+                            self.show_message(
+                                "Option unavailable",
+                                &format!("{label}\n\n{reason}"),
+                                state,
+                            )?;
+                        } else {
+                            return Ok(index);
+                        }
+                    }
+                }
+                Event::Mouse(mouse) if matches!(mouse.kind, MouseEventKind::Moved) => {
+                    if let Some(index) = menu_row_at(
+                        menu_region,
+                        options.len(),
+                        menu_offset,
+                        mouse.column,
+                        mouse.row,
+                    ) {
+                        selected = index;
+                    }
+                }
                 Event::Resize(_, _) => continue,
                 Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
@@ -213,7 +388,17 @@ impl Tui {
                 Event::Key(KeyEvent {
                     code: KeyCode::Enter,
                     ..
-                }) => return Ok(selected),
+                }) => {
+                    if let Some((label, reason)) = menu_option_reason(options[selected]) {
+                        self.show_message(
+                            "Option unavailable",
+                            &format!("{label}\n\n{reason}"),
+                            state,
+                        )?;
+                    } else {
+                        return Ok(selected);
+                    }
+                }
                 Event::Key(KeyEvent {
                     code: KeyCode::Esc, ..
                 }) => {
@@ -237,7 +422,17 @@ impl Tui {
                 }) if c.is_ascii_digit() => {
                     let digit = c.to_digit(10).unwrap_or(0) as usize;
                     if digit > 0 && digit <= options.len() && digit <= 9 {
-                        return Ok(digit - 1);
+                        let index = digit - 1;
+                        selected = index;
+                        if let Some((label, reason)) = menu_option_reason(options[index]) {
+                            self.show_message(
+                                "Option unavailable",
+                                &format!("{label}\n\n{reason}"),
+                                state,
+                            )?;
+                        } else {
+                            return Ok(index);
+                        }
                     }
                 }
                 _ => {}
@@ -251,6 +446,17 @@ impl Tui {
         masked: bool,
         state: Option<&GameState>,
     ) -> io::Result<String> {
+        if self.input_mode == InputMode::Lines {
+            if masked {
+                println!("Note: line-input mode cannot hide typed characters; input will be echoed by the terminal.");
+            }
+            let input = read_line_prompt(&format!("{prompt}: "))?;
+            return Ok(if masked {
+                input
+            } else {
+                input.trim().to_string()
+            });
+        }
         let mut input = String::new();
         loop {
             self.render_screen(state, |frame, area, game_state| {
@@ -282,7 +488,23 @@ impl Tui {
                 }
             })?;
 
-            match event::read()? {
+            let input_event = match event::read() {
+                Ok(event) => event,
+                Err(_) if self.input_mode == InputMode::Events => {
+                    self.switch_to_line_input();
+                    if masked {
+                        println!("Note: line-input mode cannot hide typed characters; input will be echoed by the terminal.");
+                    }
+                    let input = read_line_prompt(&format!("{prompt}: "))?;
+                    return Ok(if masked {
+                        input
+                    } else {
+                        input.trim().to_string()
+                    });
+                }
+                Err(error) => return Err(error),
+            };
+            match input_event {
                 Event::Resize(_, _) => continue,
                 Event::Key(KeyEvent {
                     code: KeyCode::Enter,
@@ -317,6 +539,11 @@ impl Tui {
         message: &str,
         state: Option<&GameState>,
     ) -> io::Result<()> {
+        if self.input_mode == InputMode::Lines {
+            println!("\n{title}\n\n{message}\n\nPress Enter to continue.");
+            let _ = read_line_prompt("")?;
+            return Ok(());
+        }
         let display_message = format!("{}\n\nPress Enter or Esc to continue.", message);
         let mut scroll = 0u16;
         loop {
@@ -335,7 +562,17 @@ impl Tui {
                 frame.render_widget(paragraph, inner);
             })?;
 
-            match event::read()? {
+            let input_event = match event::read() {
+                Ok(event) => event,
+                Err(_) if self.input_mode == InputMode::Events => {
+                    self.switch_to_line_input();
+                    println!("\n{title}\n\n{message}\n\nPress Enter to continue.");
+                    let _ = read_line_prompt("")?;
+                    return Ok(());
+                }
+                Err(error) => return Err(error),
+            };
+            match input_event {
                 Event::Resize(_, _) => continue,
                 Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
@@ -375,6 +612,11 @@ impl Tui {
         content: &str,
         state: Option<&GameState>,
     ) -> io::Result<()> {
+        if self.input_mode == InputMode::Lines {
+            println!("\n{title}\n\n{content}\n\nPress Enter to return.");
+            let _ = read_line_prompt("")?;
+            return Ok(());
+        }
         let mut scroll = 0u16;
         loop {
             self.render_screen(state, |frame, area, game_state| {
@@ -409,7 +651,17 @@ impl Tui {
                 }
             })?;
 
-            match event::read()? {
+            let input_event = match event::read() {
+                Ok(event) => event,
+                Err(_) if self.input_mode == InputMode::Events => {
+                    self.switch_to_line_input();
+                    println!("\n{title}\n\n{content}\n\nPress Enter to return.");
+                    let _ = read_line_prompt("")?;
+                    return Ok(());
+                }
+                Err(error) => return Err(error),
+            };
+            match input_event {
                 Event::Resize(_, _) => continue,
                 Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
@@ -437,6 +689,86 @@ impl Tui {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MenuOptionKind {
+    Actionable,
+    Disabled,
+    Unavailable,
+}
+
+fn menu_option_parts(option: &str) -> (MenuOptionKind, &str, Option<&str>) {
+    if let Some(rest) = option.strip_prefix("[Disabled: ") {
+        if let Some((reason, label)) = rest.split_once("] ") {
+            return (MenuOptionKind::Disabled, label, Some(reason));
+        }
+    }
+    if let Some(rest) = option.strip_prefix("[Unavailable: ") {
+        if let Some((reason, label)) = rest.split_once("] ") {
+            return (MenuOptionKind::Unavailable, label, Some(reason));
+        }
+    }
+    (MenuOptionKind::Actionable, option, None)
+}
+
+fn menu_option_reason(option: &str) -> Option<(&str, &str)> {
+    let (kind, label, reason) = menu_option_parts(option);
+    if kind == MenuOptionKind::Actionable {
+        None
+    } else {
+        Some((
+            label,
+            reason.unwrap_or("This option is not currently available."),
+        ))
+    }
+}
+
+fn should_use_line_input(configured_mode: Option<&str>, stdin_is_terminal: bool) -> bool {
+    let configured_mode = configured_mode
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        configured_mode.as_str(),
+        "text" | "line" | "plain" | "stdin"
+    ) || !stdin_is_terminal
+}
+
+fn read_line_prompt(prompt: &str) -> io::Result<String> {
+    let mut stdout = io::stdout();
+    write!(stdout, "{prompt}")?;
+    stdout.flush()?;
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input)? == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "text input stream closed before a line was received",
+        ));
+    }
+    Ok(input.trim_end_matches(&['\r', '\n'][..]).to_string())
+}
+
+/// Maps an absolute terminal coordinate to the currently rendered menu row.
+fn menu_row_at(
+    area: Rect,
+    option_count: usize,
+    first_visible: usize,
+    x: u16,
+    y: u16,
+) -> Option<usize> {
+    if option_count == 0
+        || x < area.x
+        || x >= area.x.saturating_add(area.width)
+        || y < area.y
+        || y >= area.y.saturating_add(area.height)
+    {
+        return None;
+    }
+    let row = first_visible.saturating_add(usize::from(y.saturating_sub(area.y)));
+    (row < option_count && row < first_visible.saturating_add(usize::from(area.height)))
+        .then_some(row)
 }
 
 pub fn render_responsive_base<F>(
@@ -684,6 +1016,59 @@ mod tests {
             assert_eq!(content.y, expected_y, "content y at {}x{}", width, height);
         }
     }
+    #[test]
+    fn line_input_mode_can_be_forced_and_is_selected_for_non_terminal_stdin() {
+        assert!(should_use_line_input(Some("text"), true));
+        assert!(should_use_line_input(Some("line"), true));
+        assert!(should_use_line_input(Some("STDIN"), true));
+        assert!(should_use_line_input(None, false));
+        assert!(!should_use_line_input(None, true));
+        assert!(!should_use_line_input(Some("auto"), true));
+    }
+
+    #[test]
+    fn menu_option_statuses_preserve_reasons_and_only_block_non_actionable_entries() {
+        assert_eq!(
+            menu_option_parts("[Disabled: requires 10 stamina (have 3).] Shield Wall"),
+            (
+                MenuOptionKind::Disabled,
+                "Shield Wall",
+                Some("requires 10 stamina (have 3).")
+            )
+        );
+        assert_eq!(
+            menu_option_parts("[Unavailable: Out of range for this action.] Goblin · HP 8/20"),
+            (
+                MenuOptionKind::Unavailable,
+                "Goblin · HP 8/20",
+                Some("Out of range for this action.")
+            )
+        );
+        assert_eq!(
+            menu_option_parts("Basic attack"),
+            (MenuOptionKind::Actionable, "Basic attack", None)
+        );
+        assert_eq!(menu_option_reason("Basic attack"), None);
+        assert_eq!(
+            menu_option_reason("[Disabled: no legal target.] Heavy Strike"),
+            Some(("Heavy Strike", "no legal target."))
+        );
+    }
+
+    #[test]
+    fn menu_hit_testing_maps_only_visible_rows() {
+        let area = Rect::new(4, 7, 20, 4);
+        assert_eq!(menu_row_at(area, 3, 0, 4, 7), Some(0));
+        assert_eq!(menu_row_at(area, 3, 0, 23, 9), Some(2));
+        assert_eq!(menu_row_at(area, 3, 0, 3, 7), None);
+        assert_eq!(menu_row_at(area, 3, 0, 24, 7), None);
+        assert_eq!(menu_row_at(area, 3, 0, 10, 10), None);
+        assert_eq!(menu_row_at(area, 3, 0, 10, 6), None);
+        assert_eq!(menu_row_at(area, 0, 0, 10, 7), None);
+        assert_eq!(menu_row_at(area, 10, 6, 10, 8), Some(7));
+        assert_eq!(menu_row_at(area, 10, 6, 10, 10), Some(9));
+    }
+
     #[test]
     fn centered_rect_stays_inside_small_areas() {
         for (width, height) in [(1, 1), (10, 3), (40, 10), (120, 30)] {
