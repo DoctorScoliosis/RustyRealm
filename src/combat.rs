@@ -100,8 +100,17 @@ pub fn run_engine_battle(
                 return Ok(BattleOutcome::Victory);
             }
 
-            sync_player(state, &player);
-            tui.show_message(
+            if enemy.is_stunned {
+                enemy.is_stunned = false;
+                enemy.telegraphed_attack = None;
+                battle_log.push(format!(
+                    "{}'s telegraphed attack was interrupted by Stun.",
+                    enemy.name
+                ));
+                enemy_turn_consumed = true;
+            } else {
+                sync_player(state, &player);
+                tui.show_message(
                 "DANGER · Incoming attack",
                 &format!(
                     "{} is preparing {}!\n{}",
@@ -179,6 +188,7 @@ pub fn run_engine_battle(
                 )?;
                 state.player.hp = state.player.max_hp;
                 return Ok(BattleOutcome::Defeated);
+            }
             }
         }
 
