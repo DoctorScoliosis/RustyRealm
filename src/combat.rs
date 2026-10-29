@@ -100,9 +100,7 @@ pub fn run_engine_battle(
                 return Ok(BattleOutcome::Victory);
             }
 
-            if enemy.is_stunned {
-                enemy.is_stunned = false;
-                enemy.telegraphed_attack = None;
+            if CombatEngine::cancel_telegraph_if_stunned(&mut enemy) {
                 battle_log.push(format!(
                     "{}'s telegraphed attack was interrupted by Stun.",
                     enemy.name
