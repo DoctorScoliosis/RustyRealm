@@ -6,12 +6,12 @@
 //! should include a rationale in the PR that changes the related mechanic.
 
 use crate::data::{get_ability, AbilityId};
-use serde::{Deserialize, Serialize};
 use crate::party_combat::{
     Allegiance, CombatAction, CombatantId, CombatantSource, Encounter, EncounterCombatant,
     EncounterOutcome,
 };
 use crate::status_combat::{EnemyArchetype, EnemyProfile};
+use serde::{Deserialize, Serialize};
 
 pub const BASELINE_SCHEMA_VERSION: u32 = 2;
 pub const DEFAULT_SEEDS: [u64; 8] = [3, 11, 29, 47, 83, 131, 197, 257];
@@ -799,12 +799,7 @@ mod tests {
         let spec = BASELINE_ENCOUNTERS[0];
         let mut state = AdaptivePressureState::default();
         let first_profile = state.profile();
-        let first = simulate_encounter_with_profile(
-            spec,
-            ProgressionBand::Low,
-            11,
-            first_profile,
-        );
+        let first = simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, first_profile);
         let baseline = simulate_encounter(spec, ProgressionBand::Low, 11);
         assert_eq!(first_profile.warmup_stage, Some(1));
         assert_eq!(first_profile.enemy_stat_multiplier_bps, WARMUP_ONE_ENEMY_BPS);
@@ -817,21 +812,25 @@ mod tests {
         state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
         let second_profile = state.profile();
         assert_eq!(second_profile.warmup_stage, Some(2));
-        assert_eq!(second_profile.enemy_stat_multiplier_bps, WARMUP_TWO_ENEMY_BPS);
-        assert_eq!(second_profile.reward_multiplier_bps, WARMUP_TWO_REWARD_BPS);
-        let second = simulate_encounter_with_profile(
-            spec,
-            ProgressionBand::Low,
-            11,
-            second_profile,
+        assert_eq!(
+            second_profile.enemy_stat_multiplier_bps,
+            WARMUP_TWO_ENEMY_BPS
         );
+        assert_eq!(
+            second_profile.reward_multiplier_bps,
+            WARMUP_TWO_REWARD_BPS
+        );
+        let second = simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, second_profile);
         assert!(second.gold_reward < baseline.gold_reward);
         assert!(second.xp_reward < baseline.xp_reward);
 
         state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
         let third_profile = state.profile();
         assert_eq!(third_profile.warmup_stage, None);
-        assert_eq!(third_profile.enemy_stat_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+        assert_eq!(
+            third_profile.enemy_stat_multiplier_bps,
+            NORMAL_MULTIPLIER_BPS
+        );
         assert_eq!(third_profile.reward_multiplier_bps, NORMAL_MULTIPLIER_BPS);
     }
 
@@ -841,7 +840,10 @@ mod tests {
         for _ in 0..2 {
             state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
         }
-        assert_eq!(state.profile().enemy_stat_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+        assert_eq!(
+            state.profile().enemy_stat_multiplier_bps,
+            NORMAL_MULTIPLIER_BPS
+        );
 
         state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
         assert_eq!(state.pressure_steps, 1);
@@ -854,7 +856,10 @@ mod tests {
         }
         let max_profile = state.profile();
         assert_eq!(state.pressure_steps, MAX_PRESSURE_STEPS);
-        assert_eq!(max_profile.enemy_stat_multiplier_bps, MAX_PRESSURE_MULTIPLIER_BPS);
+        assert_eq!(
+            max_profile.enemy_stat_multiplier_bps,
+            MAX_PRESSURE_MULTIPLIER_BPS
+        );
         assert_eq!(max_profile.reward_multiplier_bps, NORMAL_MULTIPLIER_BPS);
     }
 
@@ -913,14 +918,15 @@ mod tests {
         let spec = BASELINE_ENCOUNTERS[0];
         let grace_profile = state.profile();
         assert!(grace_profile.recovery_grace_active);
-        assert_eq!(grace_profile.enemy_stat_multiplier_bps, TPK_RECOVERY_ENEMY_CAP_BPS);
-        assert_eq!(grace_profile.reward_multiplier_bps, TPK_RECOVERY_REWARD_CAP_BPS);
-        let grace_row = simulate_encounter_with_profile(
-            spec,
-            ProgressionBand::Low,
-            11,
-            grace_profile,
+        assert_eq!(
+            grace_profile.enemy_stat_multiplier_bps,
+            TPK_RECOVERY_ENEMY_CAP_BPS
         );
+        assert_eq!(
+            grace_profile.reward_multiplier_bps,
+            TPK_RECOVERY_REWARD_CAP_BPS
+        );
+        let grace_row = simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, grace_profile);
         let baseline = simulate_encounter(spec, ProgressionBand::Low, 11);
         assert!(grace_row.gold_reward < baseline.gold_reward);
         assert!(grace_row.xp_reward < baseline.xp_reward);
@@ -935,7 +941,10 @@ mod tests {
         assert_eq!(state.recovery_grace_encounters_remaining, 1);
         state.record_outcome(AdaptiveEncounterOutcome::Victory { party_knockouts: 0 });
         assert_eq!(state.recovery_grace_encounters_remaining, 0);
-        assert_eq!(state.profile().enemy_stat_multiplier_bps, NORMAL_MULTIPLIER_BPS);
+        assert_eq!(
+            state.profile().enemy_stat_multiplier_bps,
+            NORMAL_MULTIPLIER_BPS
+        );
     }
 
     #[test]
