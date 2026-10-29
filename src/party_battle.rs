@@ -38,7 +38,10 @@ pub struct BattleConfig<'a> {
     pub resource_drain_per_turn: u32,
 }
 
-fn build_encounter(state: &GameState, config: &BattleConfig<'_>) -> Result<Encounter, EncounterError> {
+fn build_encounter(
+    state: &GameState,
+    config: &BattleConfig<'_>,
+) -> Result<Encounter, EncounterError> {
     let enemy = EncounterCombatant::new(
         CombatantId(10_000),
         CombatantSource::Enemy,
@@ -50,16 +53,13 @@ fn build_encounter(state: &GameState, config: &BattleConfig<'_>) -> Result<Encou
         config.enemy_attack_power.max(1),
         0,
     );
-    Encounter::from_party(
-        &state.player,
-        &state.party,
-        &state.companions,
-        vec![enemy],
-    )
+    Encounter::from_party(&state.player, &state.party, &state.companions, vec![enemy])
 }
 
 fn encounter_error(error: EncounterError) -> io::Error {
-    io::Error::other(format!("Party encounter could not resolve an action: {error:?}"))
+    io::Error::other(format!(
+        "Party encounter could not resolve an action: {error:?}"
+    ))
 }
 
 fn sync_player_state(state: &mut GameState, encounter: &Encounter) {
@@ -89,7 +89,9 @@ fn sync_persistent_state(
     let mut recovery = std::mem::take(&mut state.companion_recovery);
     let result = recovery.sync_party_encounter(state, encounter, world);
     state.companion_recovery = recovery;
-    result.map(|_| ()).map_err(|error| io::Error::other(error.to_string()))
+    result
+        .map(|_| ())
+        .map_err(|error| io::Error::other(error.to_string()))
 }
 
 fn actor_source(encounter: &Encounter, actor: CombatantId) -> Option<CombatantSource> {
@@ -108,7 +110,11 @@ fn target_label(encounter: &Encounter, id: CombatantId) -> String {
         .unwrap_or_else(|| format!("Combatant {}", id.0))
 }
 
-fn legal_targets(encounter: &Encounter, actor: CombatantId, ability: Option<AbilityId>) -> Vec<CombatantId> {
+fn legal_targets(
+    encounter: &Encounter,
+    actor: CombatantId,
+    ability: Option<AbilityId>,
+) -> Vec<CombatantId> {
     encounter.legal_targets(actor, ability)
 }
 
@@ -139,12 +145,14 @@ fn battle_status(encounter: &Encounter, round_drain: u32, last_log: &str) -> Str
         .combatants()
         .iter()
         .find(|combatant| combatant.source == CombatantSource::Player);
-    let hero_line = hero.map(|c| {
-        format!(
-            "You · HP {}/{} · Stamina {}/{} · Mana {}/{}",
-            c.hp, c.max_hp, c.stamina, c.max_stamina, c.mana, c.max_mana
-        )
-    }).unwrap_or_else(|| "You · unavailable".to_string());
+    let hero_line = hero
+        .map(|c| {
+            format!(
+                "You · HP {}/{} · Stamina {}/{} · Mana {}/{}",
+                c.hp, c.max_hp, c.stamina, c.max_stamina, c.mana, c.max_mana
+            )
+        })
+        .unwrap_or_else(|| "You · unavailable".to_string());
     let allies = encounter
         .combatants()
         .iter()
@@ -165,7 +173,11 @@ fn battle_status(encounter: &Encounter, round_drain: u32, last_log: &str) -> Str
     format!(
         "Round {}{drain}\n{hero_line}\nParty: {}\nHostiles: {}\n{}",
         encounter.round(),
-        if allies.is_empty() { "none".to_string() } else { allies.join(" · ") },
+        if allies.is_empty() {
+            "none".to_string()
+        } else {
+            allies.join(" · ")
+        },
         hostiles.join(" · "),
         last_log
     )
@@ -259,7 +271,11 @@ fn choose_player_action(
             return Ok(None);
         };
         match &action {
-            CombatAction::BasicAttack { .. } | CombatAction::UseAbility { ability: AbilityId::HeavyStrike | AbilityId::LifeDrain | AbilityId::Cleave, .. } => {
+            CombatAction::BasicAttack { .. }
+            | CombatAction::UseAbility {
+                ability: AbilityId::HeavyStrike | AbilityId::LifeDrain | AbilityId::Cleave,
+                ..
+            } => {
                 let ability = match action {
                     CombatAction::UseAbility { ability, .. } => Some(ability),
                     _ => None,
@@ -270,7 +286,11 @@ fn choose_player_action(
                 };
                 return Ok(Some(match action {
                     CombatAction::BasicAttack { .. } => CombatAction::BasicAttack { actor, target },
-                    CombatAction::UseAbility { ability, .. } => CombatAction::UseAbility { actor, target, ability },
+                    CombatAction::UseAbility { ability, .. } => CombatAction::UseAbility {
+                        actor,
+                        target,
+                        ability,
+                    },
                     other => other,
                 }));
             }
@@ -291,7 +311,8 @@ fn companion_action(encounter: &Encounter, actor: CombatantId) -> Option<CombatA
     if let Some(ability_id) = ability {
         let def = get_ability(ability_id);
         let targets = legal_targets(encounter, actor, Some(ability_id));
-        if !targets.is_empty() && source.stamina >= def.stamina_cost && source.mana >= def.mana_cost {
+        if !targets.is_empty() && source.stamina >= def.stamina_cost && source.mana >= def.mana_cost
+        {
             return Some(CombatAction::UseAbility {
                 actor,
                 target: targets[0],
@@ -310,11 +331,7 @@ fn roll() -> u32 {
     rand::thread_rng().gen_range(0..u32::MAX)
 }
 
-fn award_combat_xp(
-    state: &mut GameState,
-    damage: u32,
-    tui: &mut Tui,
-) -> io::Result<()> {
+fn award_combat_xp(state: &mut GameState, damage: u32, tui: &mut Tui) -> io::Result<()> {
     let xp = (damage / 4).saturating_mul(3);
     if xp == 0 {
         return Ok(());
@@ -362,8 +379,16 @@ fn update_lacoyx_phase(
     }
     *phase = next;
     let (label, description, multiplier) = match next {
-        2 => ("Phase 2 · Infernal Warlord", "Lacoyx's strikes intensify and status pressure rises.", 125),
-        _ => ("Phase 3 · Desperate Overlord", "Lacoyx fights with overwhelming force.", 150),
+        2 => (
+            "Phase 2 · Infernal Warlord",
+            "Lacoyx's strikes intensify and status pressure rises.",
+            125,
+        ),
+        _ => (
+            "Phase 3 · Desperate Overlord",
+            "Lacoyx fights with overwhelming force.",
+            150,
+        ),
     };
     encounter
         .set_attack(enemy_id, base_attack.saturating_mul(multiplier) / 100)
@@ -404,8 +429,14 @@ pub fn run_party_battle(
 
         if config.resource_drain_per_turn > 0 && encounter.round() != last_drain_round {
             last_drain_round = encounter.round();
-            state.player.stamina = state.player.stamina.saturating_sub(config.resource_drain_per_turn);
-            state.player.mana = state.player.mana.saturating_sub(config.resource_drain_per_turn);
+            state.player.stamina = state
+                .player
+                .stamina
+                .saturating_sub(config.resource_drain_per_turn);
+            state.player.mana = state
+                .player
+                .mana
+                .saturating_sub(config.resource_drain_per_turn);
             encounter
                 .sync_player_from(&state.player)
                 .map_err(encounter_error)?;
@@ -422,8 +453,12 @@ pub fn run_party_battle(
                 .map(|(_, tick)| format!("{tick:?}"))
                 .collect::<Vec<_>>()
                 .join(" · ");
-            if ticks.iter().any(|(_, tick)| matches!(tick, crate::status_combat::StatusTick::Stunned))
-                && pending_telegraph.as_ref().is_some_and(|telegraph| telegraph.actor == actor)
+            if ticks
+                .iter()
+                .any(|(_, tick)| matches!(tick, crate::status_combat::StatusTick::Stunned))
+                && pending_telegraph
+                    .as_ref()
+                    .is_some_and(|telegraph| telegraph.actor == actor)
             {
                 let telegraph = pending_telegraph.take().expect("pending telegraph matched");
                 last_log = format!("{} is interrupted by Stun.", telegraph.name);
@@ -441,14 +476,9 @@ pub fn run_party_battle(
         let source = actor_source(&encounter, actor).expect("current actor is in encounter");
         let action_result = match source {
             CombatantSource::Player => {
-                let Some(action) = choose_player_action(
-                    tui,
-                    state,
-                    &mut encounter,
-                    actor,
-                    &config,
-                    &last_log,
-                )? else {
+                let Some(action) =
+                    choose_player_action(tui, state, &mut encounter, actor, &config, &last_log)?
+                else {
                     continue;
                 };
                 encounter
@@ -458,7 +488,9 @@ pub fn run_party_battle(
             CombatantSource::Companion(_) => {
                 let action = companion_action(&encounter, actor)
                     .ok_or_else(|| io::Error::other("Companion had no legal combat action."))?;
-                encounter.apply_action(action, roll(), roll()).map_err(encounter_error)?
+                encounter
+                    .apply_action(action, roll(), roll())
+                    .map_err(encounter_error)?
             }
             CombatantSource::Enemy => {
                 if let Some(telegraph) = pending_telegraph
@@ -471,10 +503,7 @@ pub fn run_party_battle(
                         .is_some_and(|target| target.source == CombatantSource::Player);
                     tui.show_message(
                         "Incoming attack",
-                        &format!(
-                            "{}\n{}",
-                            telegraph.name, telegraph.description
-                        ),
+                        &format!("{}\n{}", telegraph.name, telegraph.description),
                         Some(state),
                     )?;
                     if target_is_player
@@ -484,7 +513,10 @@ pub fn run_party_battle(
                     {
                         if tui.select_menu(
                             "Defensive reaction",
-                            &["Brace · spend 10 stamina to reduce damage by 50%", "Take the hit"],
+                            &[
+                                "Brace · spend 10 stamina to reduce damage by 50%",
+                                "Take the hit",
+                            ],
                             Some(state),
                         )? == 0
                         {
@@ -527,7 +559,9 @@ pub fn run_party_battle(
                     propose_enemy_action(&encounter, actor, roll());
                 let Some(decision) = decision else {
                     let action = CombatAction::Defend { actor };
-                    encounter.apply_action(action, roll(), roll()).map_err(encounter_error)?;
+                    encounter
+                        .apply_action(action, roll(), roll())
+                        .map_err(encounter_error)?;
                     last_log = "The enemy loses its activation.".to_string();
                     sync_persistent_state(state, &encounter, &world)?;
                     continue;
@@ -554,20 +588,45 @@ pub fn run_party_battle(
                 .sync_player_from(&state.player)
                 .map_err(encounter_error)?;
         }
-        last_log = match (action_result.hit, action_result.damage, action_result.healing) {
-            (Some(false), _, _) => format!("{} misses.", encounter.combatant(actor).map(|c| c.name.as_str()).unwrap_or("Actor")),
+        last_log = match (
+            action_result.hit,
+            action_result.damage,
+            action_result.healing,
+        ) {
+            (Some(false), _, _) => format!(
+                "{} misses.",
+                encounter
+                    .combatant(actor)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Actor")
+            ),
             (_, damage, healing) if damage > 0 && healing > 0 => format!(
                 "{} deals {damage} damage and recovers {healing} HP.",
-                encounter.combatant(actor).map(|c| c.name.as_str()).unwrap_or("Actor")
+                encounter
+                    .combatant(actor)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Actor")
             ),
             (_, damage, _) if damage > 0 => format!(
                 "{} deals {damage} damage.",
-                encounter.combatant(actor).map(|c| c.name.as_str()).unwrap_or("Actor")
+                encounter
+                    .combatant(actor)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Actor")
             ),
-            (_, _, healing) if healing > 0 => format!("{} recovers {healing} HP.", encounter.combatant(actor).map(|c| c.name.as_str()).unwrap_or("Actor")),
+            (_, _, healing) if healing > 0 => format!(
+                "{} recovers {healing} HP.",
+                encounter
+                    .combatant(actor)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Actor")
+            ),
             _ => format!(
                 "{}: {}.",
-                encounter.combatant(actor).map(|c| c.name.as_str()).unwrap_or("Actor"),
+                encounter
+                    .combatant(actor)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Actor"),
                 action_result.message
             ),
         };
@@ -613,20 +672,20 @@ pub fn run_party_battle(
     match encounter.outcome {
         EncounterOutcome::Victory => Ok(BattleOutcome::Victory),
         EncounterOutcome::Retreated => Ok(BattleOutcome::Fled),
-        EncounterOutcome::PartyDefeated | EncounterOutcome::Ongoing => {
-            Err(io::Error::other("Party encounter ended without a terminal outcome."))
-        }
+        EncounterOutcome::PartyDefeated | EncounterOutcome::Ongoing => Err(io::Error::other(
+            "Party encounter ended without a terminal outcome.",
+        )),
     }
 }
 
 
 #[cfg(test)]
 mod tests {
-   use super::*;
-   use crate::party::{CompanionId, PartyManager};
-   use crate::state::Player;
+    use super::*;
+    use crate::party::{CompanionId, PartyManager};
+    use crate::state::Player;
 
-   fn test_state_with_party() -> GameState {
+    fn test_state_with_party() -> GameState {
        let mut state = GameState::new(Player::new("party-test".into(), String::new()));
        state.player.combat_level = 99;
        state.player.gold = 10_000;
@@ -637,10 +696,10 @@ mod tests {
        PartyManager::add_to_party(&mut state.party, &state.companions, id)
            .expect("recruited companion should join");
        state
-   }
+    }
 
-   #[test]
-   fn build_encounter_preserves_current_and_maximum_resources_for_party() {
+    #[test]
+    fn build_encounter_preserves_current_and_maximum_resources_for_party() {
        let mut state = test_state_with_party();
        state.player.hp = state.player.max_hp / 2;
        state.player.stamina = state.player.max_stamina / 2;
@@ -691,5 +750,5 @@ mod tests {
        assert_eq!(enemy.name, "Goblin");
        assert_eq!(enemy.max_hp, 120);
        assert_eq!(enemy.attack, 18);
-   }
+    }
 }
