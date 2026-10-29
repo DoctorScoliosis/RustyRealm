@@ -87,7 +87,7 @@
              destination,
              turns_remaining: RECOVERY_TURNS,
          });
-         self.records.sort_by_key(|record| record.companion_id);
+         self.records.sort_by(|left, right| left.companion_id.as_str().cmp(right.companion_id.as_str()));
          Ok(true)
      }
 
@@ -154,12 +154,15 @@
      pub fn advance_committed_turn(&mut self, companions: &mut [CompanionState]) -> Vec<CompanionId> {
          let mut recovered = Vec::new();
          for record in &mut self.records {
-             if record.turns_remaining > 0 {
+             // Without a reachable treatment settlement, neither time nor payment
+             // may silently complete rescue. A future world graph can be re-evaluated
+             // explicitly without losing the original safe recovery record.
+             if record.destination.is_some() && record.turns_remaining > 0 {
                  record.turns_remaining -= 1;
              }
          }
          let completed: Vec<CompanionId> = self.records.iter()
-             .filter(|record| record.turns_remaining == 0)
+             .filter(|record| record.destination.is_some() && record.turns_remaining == 0)
              .map(|record| record.companion_id)
              .collect();
          for id in &completed {
@@ -180,7 +183,6 @@
              return Err(RecoveryError::PlayerAlreadyDefeated);
          }
 
-         let newly_defeated = state.player.hp == 0;
          let destination = world.get_nearest_settlement(&state.current_location);
          let destination = destination.ok_or(RecoveryError::NoTreatmentSettlement)?;
 
@@ -199,7 +201,6 @@
 
          *state = next_state;
          *self = next_recovery;
-         let _ = newly_defeated;
          Ok(())
      }
  }
