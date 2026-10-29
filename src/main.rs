@@ -209,6 +209,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
     let options = [
         "Travel / Explore Region",
+        "Interact with Current Location",
         "Wander Gielinor",
         "Weapon Shop",
         "Armour Shop",
@@ -264,29 +265,30 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         let choice = tui.select_menu(&title, &options, Some(state))?;
         match choice {
             0 => travel_menu(tui, state, &world)?,
-            1 => combat::wander_gielinor(tui, state)?,
-            2 => shops::weapon_shop(tui, state)?,
-            3 => shops::armour_shop(tui, state)?,
-            4 => shops::legends_store(tui, state)?,
-            5 => general_store(tui, state)?,
-            6 => shops::max_shop(tui, state)?,
-            7 => shops::smuggler(tui, state)?,
-            8 => stronghold::enter_stronghold(tui, state)?,
-            9 => {
+            1 => interact_with_current_location(tui, state, &world)?,
+            2 => combat::wander_gielinor(tui, state)?,
+            3 => shops::weapon_shop(tui, state)?,
+            4 => shops::armour_shop(tui, state)?,
+            5 => shops::legends_store(tui, state)?,
+            6 => general_store(tui, state)?,
+            7 => shops::max_shop(tui, state)?,
+            8 => shops::smuggler(tui, state)?,
+            9 => stronghold::enter_stronghold(tui, state)?,
+            10 => {
                 skills::skill_plot(tui, state)?;
                 continue;
             }
-            10 => bank::bank_menu(tui, state)?,
-            11 => quests::quest_hall(tui, state)?,
-            12 => inventory::view_inventory(tui, state, false)?,
-            13 => crate::achievements::progression_menu(tui, state)?,
-            14 => companion_menu(tui, state)?,
-            15 => companion_recovery_menu(tui, state, &world)?,
-            16 => {
+            11 => bank::bank_menu(tui, state)?,
+            12 => quests::quest_hall(tui, state)?,
+            13 => inventory::view_inventory(tui, state, false)?,
+            14 => crate::achievements::progression_menu(tui, state)?,
+            15 => companion_menu(tui, state)?,
+            16 => companion_recovery_menu(tui, state, &world)?,
+            17 => {
                 rest_menu(tui, state, &world)?;
                 continue;
             }
-            17 => settings_menu(tui, state)?,
+            18 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
@@ -307,6 +309,33 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             )?;
         }
     }
+}
+
+/// Interact with the current location using a stable machine-facing ID.
+fn interact_with_current_location(
+    tui: &mut Tui,
+    state: &mut GameState,
+    world: &World,
+) -> io::Result<()> {
+    let Some(location) = world.get_location(&state.current_location) else {
+        tui.show_message(
+            "Explore",
+            "The current location is not known to this world.",
+            Some(state),
+        )?;
+        return Ok(());
+    };
+    let target_id = location.id.as_str().to_string();
+    let location_name = location.name.clone();
+    crate::quests::notify_event(
+        state,
+        &crate::event::GameEvent::TargetInteracted { target_id },
+    );
+    tui.show_message(
+        "Explore",
+        &format!("You inspect {location_name}."),
+        Some(state),
+    )
 }
 
 /// Rest trades resources and world time for stamina recovery.
@@ -450,6 +479,19 @@ fn apply_travel(
 
     // Mutate only after the direct route and its cost have been validated.
     state.current_location = destination.id.clone();
+    crate::quests::notify_event(
+        state,
+        &crate::event::GameEvent::LocationTraversed {
+            from_location_id: current_id.clone(),
+            to_location_id: destination.id.clone(),
+        },
+    );
+    crate::quests::notify_event(
+        state,
+        &crate::event::GameEvent::LocationReached {
+            location_id: destination.id.clone(),
+        },
+    );
     Ok(travel_cost)
 }
 

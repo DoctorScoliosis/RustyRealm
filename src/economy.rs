@@ -556,6 +556,7 @@ mod tests {
             is_claimed: false,
             reward: QuestReward::Gold(1),
             is_daily: false,
+            stages: Vec::new(),
         });
         state.player.add_item(ItemType::Ore, 1);
 

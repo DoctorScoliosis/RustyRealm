@@ -395,6 +395,26 @@ pub fn execute_recipe(
         );
     }
 
+    for output in &recipe.outputs {
+        match output {
+            RecipeOutput::Item { item_type, count } => crate::quests::notify_event(
+                state,
+                &GameEvent::ItemCrafted {
+                    recipe_id: recipe.id.clone(),
+                    item_type: Some(*item_type),
+                    count: *count,
+                },
+            ),
+            RecipeOutput::Weapon { count, .. } => crate::quests::notify_event(
+                state,
+                &GameEvent::ItemCrafted {
+                    recipe_id: recipe.id.clone(),
+                    item_type: None,
+                    count: *count,
+                },
+            ),
+        }
+    }
     Ok(CraftingResult {
         recipe,
         xp_awarded,
@@ -727,6 +747,7 @@ mod tests {
             is_claimed: false,
             reward: QuestReward::Gold(1),
             is_daily: false,
+            stages: Vec::new(),
         });
         state.player.skills.smithing.xp_remaining = 10;
         state.player.add_item(ItemType::Ore, 1);

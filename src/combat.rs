@@ -239,6 +239,13 @@ fn handle_victory(
     };
 
     state.player.add_item(item, amount);
+    crate::quests::notify_event(
+        state,
+        &GameEvent::ItemCollected {
+            item_type: item,
+            count: amount,
+        },
+    );
     let encounter_name = if is_elite {
         format!("Elite {}", npc_type.name())
     } else {
