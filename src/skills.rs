@@ -2,8 +2,8 @@ use crate::crafting::{execute_recipe, get_recipes_for_skill};
 use crate::data::{ItemType, MAX_GOLD, MAX_SKILL_LEVEL};
 use crate::event::GameEvent;
 use crate::state::{GameState, SkillData};
-use crate::ui::Tui;
 use crate::skill_checks::SkillCheck;
+use crate::ui::Tui;
 use rand::Rng;
 use std::io;
 
@@ -511,7 +511,6 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
         };
     }
 }
-
 
 #[cfg(test)]
 mod skill_check_integration_tests {
