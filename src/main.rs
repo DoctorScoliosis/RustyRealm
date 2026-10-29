@@ -2,6 +2,7 @@ mod achievements;
 mod bank;
 mod combat;
 mod combat_engine;
+mod companion_recovery;
 mod crafting;
 mod data;
 mod economy;
