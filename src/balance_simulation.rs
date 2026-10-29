@@ -187,8 +187,6 @@ fn legal_action(encounter: &Encounter, actor: CombatantId, action_roll: u32, met
         && action_roll % 3 == 0
     {
         metrics.abilities_used = metrics.abilities_used.saturating_add(1);
-        metrics.stamina_spent = metrics.stamina_spent.saturating_add(u64::from(heavy.stamina_cost));
-        metrics.mana_spent = metrics.mana_spent.saturating_add(u64::from(heavy.mana_cost));
         CombatAction::UseAbility { actor, target, ability: AbilityId::HeavyStrike }
     } else if encounter.legal_targets(actor, None).contains(&target) {
         CombatAction::BasicAttack { actor, target }
