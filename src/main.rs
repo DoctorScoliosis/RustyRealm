@@ -16,6 +16,7 @@ mod quests;
 mod save;
 mod shops;
 mod skills;
+mod skill_checks;
 mod state;
 mod status_combat;
 mod stronghold;
