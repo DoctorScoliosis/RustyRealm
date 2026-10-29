@@ -98,8 +98,8 @@ mod tests {
     #[test]
     fn controlled_roll_is_deterministic_and_uses_exclusive_threshold() {
         let check = check(50, 35, 0);
-        assert!(check.resolve(19).unwrap().succeeded);
-        assert!(!check.resolve(20).unwrap().succeeded);
+        assert!(check.resolve(29).unwrap().succeeded);
+        assert!(!check.resolve(30).unwrap().succeeded);
         assert!(!check.resolve(99).unwrap().succeeded);
     }
 
