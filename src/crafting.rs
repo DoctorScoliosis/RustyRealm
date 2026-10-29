@@ -24,7 +24,10 @@ pub enum CraftingError {
     OutputOverflow(ItemType),
     InvalidRecipeDefinition(String),
     InventoryCapacity,
-    InsufficientStamina { required: u32, available: u32 },
+    InsufficientStamina {
+        required: u32,
+        available: u32,
+    },
     InvalidRoll(u8),
 }
 
@@ -66,11 +69,14 @@ impl fmt::Display for CraftingError {
                     "There is not enough memory available to store the crafted weapon."
                 )
             }
-            Self::InsufficientStamina { required, available } => write!(
+            Self::InsufficientStamina {
+                required,
+                available,
+            } => write!(
                 f,
                 "This action needs {required} stamina, but only {available} remains."
             ),
-            Self::InvalidRoll(roll) => write!(f, "Invalid skill-check roll: {roll}.")
+            Self::InvalidRoll(roll) => write!(f, "Invalid skill-check roll: {roll}."),
         }
     }
 }
