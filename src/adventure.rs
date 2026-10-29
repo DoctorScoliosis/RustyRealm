@@ -19,6 +19,16 @@ pub const REGION_QUEST_REWARD_GOLD: u32 = 450;
 pub const REGION_QUEST_REWARD_XP: u32 = 150;
 pub const REGION_QUEST_REWARD_LOGS: u32 = 2;
 
+/// Save-backed idempotency keys for the region. IDs are stable content IDs,
+/// not display names, so translations/renames cannot reset paid rewards.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RegionProgress {
+    pub cleared_encounters: Vec<String>,
+    pub landmark_interactions: Vec<String>,
+}
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EncounterBand {
     SafeRoad,
@@ -296,14 +306,13 @@ pub fn claim_encounter_clear_reward(
         return Err(ExpeditionError::WrongLocation);
     }
 
-    let flag = format!("region_encounter:{encounter_id}");
-    if state.player.quests_completed.iter().any(|id| id == &flag) {
+    if state.region_progress.cleared_encounters.iter().any(|id| id == encounter_id) {
         return Err(ExpeditionError::AlreadyClaimed);
     }
 
     state.player.gold = state.player.gold.saturating_add(encounter.reward_gold).min(crate::data::MAX_GOLD);
     state.player.xp = state.player.xp.saturating_add(encounter.reward_xp).min(1_000_000);
-    state.player.quests_completed.push(flag);
+    state.region_progress.cleared_encounters.push(encounter_id.to_string());
     Ok((encounter.reward_gold, encounter.reward_xp))
 }
 
@@ -333,6 +342,9 @@ pub fn claim_region_quest(state: &mut GameState) -> Result<QuestReward, Expediti
 }
 
 pub fn notify_landmark_interaction(state: &mut GameState, target_id: &str) {
+    if !state.region_progress.landmark_interactions.iter().any(|known| known == target_id) {
+        state.region_progress.landmark_interactions.push(target_id.to_string());
+    }
     crate::quests::notify_event(
         state,
         &GameEvent::TargetInteracted {
@@ -375,9 +387,15 @@ mod tests {
         let mut state = state();
         ensure_region_quest(&mut state);
         let before = state.player.gold;
-        let quest = state.active_quests.iter_mut().find(|q| q.id == REGION_QUEST_ID).unwrap();
-        quest.is_completed = true;
+        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("standing_stones") });
+        notify_landmark_interaction(&mut state, "standing_stones_survey");
+        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("sunken_ruins") });
+        notify_event(&mut state, &GameEvent::MonsterDefeated { name: "Stone Guardian".into(), is_stronghold: false });
+        notify_event(&mut state, &GameEvent::ResourceGathered { skill_name: "Woodcutting".into(), item_type: ItemType::Logs, count: 3 });
         state.current_location = LocationId::from("village_start");
+        notify_event(&mut state, &GameEvent::LocationReached { location_id: LocationId::from("village_start") });
+        notify_landmark_interaction(&mut state, "village_supply_board");
+        assert!(state.active_quests.iter().find(|q| q.id == REGION_QUEST_ID).unwrap().is_completed);
         assert_eq!(claim_region_quest(&mut state), Ok(QuestReward::Gold(REGION_QUEST_REWARD_GOLD)));
         assert_eq!(state.player.gold, before + REGION_QUEST_REWARD_GOLD);
         let gold = state.player.gold;
@@ -393,6 +411,9 @@ mod tests {
         let before = state.player.gold;
         assert_eq!(claim_encounter_clear_reward(&mut state, "woods_patrol"), Ok((35, 60)));
         assert_eq!(state.player.gold, before + 35);
+        let encoded = serde_json::to_string(&state).unwrap();
+        let loaded: GameState = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(loaded.region_progress.cleared_encounters, vec!["woods_patrol"]);
         assert_eq!(claim_encounter_clear_reward(&mut state, "woods_patrol"), Err(ExpeditionError::AlreadyClaimed));
         assert_eq!(state.player.gold, before + 35);
     }
@@ -406,7 +427,9 @@ mod tests {
         state.player.gold -= cost;
         PartyManager::add_to_party(&mut state.party, &state.companions, id).unwrap();
         state.companions.iter_mut().find(|c| c.id == id).unwrap().current_hp = 0;
-        state.companion_recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
+        let mut recovery = std::mem::take(&mut state.companion_recovery);
+        recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
+        state.companion_recovery = recovery;
         assert_eq!(state.companion_recovery.records.len(), 1);
         let json = serde_json::to_string(&state).unwrap();
         let mut loaded: GameState = serde_json::from_str(&json).unwrap();
