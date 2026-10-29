@@ -993,7 +993,9 @@ impl Encounter {
             }
         }
         let target_source = self.combatant(target_id).map(|target| target.source);
-        let target_knocked_out = self.combatant(target_id).is_some_and(|target| !target.can_act());
+        let target_knocked_out = self
+            .combatant(target_id)
+            .is_some_and(|target| !target.can_act());
         self.consume_turn(actor_id);
         self.refresh_outcome();
         Ok(ActionResult {
