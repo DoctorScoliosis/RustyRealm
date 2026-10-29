@@ -80,8 +80,6 @@ fn advance_skill_time(tui: &mut Tui, state: &mut GameState, turns: u32) -> io::R
     for _ in 0..turns {
         recovered.extend(state.advance_world_turn());
     }
-    recovered.sort();
-    recovered.dedup();
     if !recovered.is_empty() {
         let names = recovered
             .iter()
@@ -554,6 +552,19 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     continue;
                 }
                 let amount = batch_count(ore);
+                if state
+                    .player
+                    .get_item_count(ItemType::ScrapMetal)
+                    .checked_add(amount)
+                    .is_none()
+                {
+                    tui.show_message(
+                        "Inventory full",
+                        "There is not enough capacity to store the Metal Scraps that a failed smelting action could produce.",
+                        Some(state),
+                    )?;
+                    continue;
+                }
                 let (stamina_cost, turns) = if level >= MAX_SKILL_LEVEL {
                     batch_budget(8, amount)
                 } else {
@@ -568,22 +579,11 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 let removed = state.player.remove_item(ItemType::Ore, amount);
                 debug_assert!(removed, "validated ore must still exist");
                 if !check.succeeded {
-                    let scraps_after = state
-                        .player
-                        .get_item_count(ItemType::ScrapMetal)
-                        .checked_add(amount);
-                    if scraps_after.is_none() {
-                        // Keep the input transaction intact when salvage would overflow.
-                        state.player.add_item(ItemType::Ore, amount);
-                        state.player.stamina = state.player.stamina.saturating_add(stamina_cost).min(state.player.max_stamina);
-                        format!("The failed smelting batch would overflow your scrap inventory; no ore or stamina was lost.")
-                    } else {
-                        state.player.add_item(ItemType::ScrapMetal, amount);
-                        format!(
-                            "Smelting failed ({}% success chance). {amount} ore became Metal Scraps. You can try recovering ingots from scraps at a lower success chance. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
-                            check.success_chance
-                        )
-                    }
+                    state.player.add_item(ItemType::ScrapMetal, amount);
+                    format!(
+                        "Smelting failed ({}% success chance). {amount} ore became Metal Scraps. You can try recovering ingots from scraps at a lower success chance. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
+                        check.success_chance
+                    )
                 } else {
                     state.player.add_item(ItemType::Ingots, amount);
                     if level < MAX_SKILL_LEVEL {
@@ -645,14 +645,14 @@ mod skill_check_integration_tests {
 
     #[test]
     fn gathering_checks_use_distinct_documented_difficulties() {
-        assert_eq!(gathering_check(50, 25, 0).success_chance, 30);
-        assert_eq!(gathering_check(50, 30, 0).success_chance, 25);
+        assert_eq!(resolve_skill_check(50, 25, 0, 0).success_chance, 40);
+        assert_eq!(resolve_skill_check(50, 30, 0, 0).success_chance, 35);
     }
 
     #[test]
     fn thieving_check_is_skill_sensitive_and_bounded() {
-        let low = thieving_check(1, 0);
-        let high = thieving_check(100, 0);
+        let low = resolve_skill_check(1, 25, 0, 0);
+        let high = resolve_skill_check(100, 25, 0, 0);
         assert!(high.success_chance > low.success_chance);
         assert!(low.success_chance >= crate::skill_checks::MIN_SUCCESS_CHANCE);
         assert!(high.success_chance <= crate::skill_checks::MAX_SUCCESS_CHANCE);
@@ -660,15 +660,27 @@ mod skill_check_integration_tests {
 
     #[test]
     fn worst_roll_fails_without_awarding_success() {
-        assert!(!gathering_check(1, 25, 99).succeeded);
-        assert!(!gathering_check(100, 25, 99).succeeded);
-        assert!(!thieving_check(100, 99).succeeded);
+        assert!(!resolve_skill_check(1, 25, 0, 99).succeeded);
+        assert!(!resolve_skill_check(100, 25, 0, 99).succeeded);
+        assert!(!resolve_skill_check(100, 25, 0, 99).succeeded);
     }
 
     #[test]
     fn best_roll_succeeds_for_high_skill_gathering() {
-        assert!(gathering_check(100, 25, 0).succeeded);
-        assert!(gathering_check(100, 30, 0).succeeded);
-        assert!(thieving_check(100, 0).succeeded);
+        assert!(resolve_skill_check(100, 25, 0, 0).succeeded);
+        assert!(resolve_skill_check(100, 30, 0, 0).succeeded);
+        assert!(resolve_skill_check(100, 25, 0, 0).succeeded);
+    }
+
+    #[test]
+    fn fatigue_reduces_success_chance_after_stamina_is_spent() {
+        let fresh = stamina_fatigue_modifier(90, 100);
+        let tired = stamina_fatigue_modifier(40, 100);
+        let exhausted = stamina_fatigue_modifier(10, 100);
+        assert_eq!(fresh, 0);
+        assert!(tired < fresh);
+        assert!(exhausted < tired);
+        assert!(resolve_skill_check(50, 25, tired, 0).success_chance
+            < resolve_skill_check(50, 25, fresh, 0).success_chance);
     }
 }
