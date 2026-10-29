@@ -535,6 +535,7 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
         if !is_here {
             detail.push_str("\n\nTravel to that settlement before paying for immediate treatment.");
         }
+        tui.show_message("Recovery details", &detail, Some(state))?;
         let choices = if is_here {
             vec!["Pay for immediate treatment", "Back"]
         } else {
