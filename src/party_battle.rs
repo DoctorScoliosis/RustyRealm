@@ -10,7 +10,7 @@ use crate::event::GameEvent;
 use crate::party::CompanionId;
 use crate::party_combat::{
     Allegiance, CombatAction, CombatantId, CombatantSource, Encounter, EncounterCombatant,
-    EncounterError, EncounterOutcome, RangeBand,
+    EncounterError, EncounterOutcome,
 };
 use crate::state::GameState;
 use crate::status_combat::{
