@@ -11,6 +11,7 @@ mod inventory;
 mod mastery;
 mod party;
 mod party_combat;
+mod party_battle;
 mod quests;
 mod save;
 mod shops;
