@@ -437,53 +437,55 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 let level = skill.data(state).level;
                 let check = thieving_check(level, rand::thread_rng().gen_range(0..100));
                 if !check.succeeded {
-                    // Failure is a wasted attempt only. No gold, thread or XP is
-                    // awarded, and no inventory/resource mutation has occurred.
-                    format!("You are caught in the act and get away empty-handed ({}% chance).", check.success_chance)
+                    // Failure is a wasted attempt only: no gold, thread, or XP.
+                    format!(
+                        "You get away empty-handed ({}% success chance).",
+                        check.success_chance
+                    )
                 } else {
                     let found_thread = rand::thread_rng().gen_bool(0.4);
                     if found_thread {
                         state.player.add_item(ItemType::Thread, 1);
                     }
 
-                if skill.data(state).level >= MAX_SKILL_LEVEL {
-                    state.player.gold = state.player.gold.saturating_add(10_000).min(MAX_GOLD);
-                    if found_thread {
-                        "Mastery: stole 10,000 coins and found a thread.".to_string()
+                    if level >= MAX_SKILL_LEVEL {
+                        state.player.gold = state.player.gold.saturating_add(10_000).min(MAX_GOLD);
+                        if found_thread {
+                            "Mastery: stole 10,000 coins and found a thread.".to_string()
+                        } else {
+                            "Mastery: stole 10,000 coins.".to_string()
+                        }
                     } else {
-                        "Mastery: stole 10,000 coins.".to_string()
+                        state.player.gold = state.player.gold.saturating_add(10).min(MAX_GOLD);
+                        if award_xp(skill.data_mut(state)) {
+                            let new_level = skill.data(state).level;
+                            crate::quests::notify_event(
+                                state,
+                                &GameEvent::SkillLeveledUp {
+                                    skill_name: skill.name().to_string(),
+                                    new_level,
+                                },
+                            );
+                            tui.show_message(
+                                "Skill level up",
+                                &format!(
+                                    "Congratulations, your Thieving level is now {}{}.",
+                                    new_level,
+                                    if new_level >= MAX_SKILL_LEVEL {
+                                        " (maximum level)"
+                                    } else {
+                                        ""
+                                    }
+                                ),
+                                Some(state),
+                            )?;
+                        }
+                        if found_thread {
+                            "You stole some coins and found a thread.".to_string()
+                        } else {
+                            "You stole some coins.".to_string()
+                        }
                     }
-                } else {
-                    state.player.gold = state.player.gold.saturating_add(10).min(MAX_GOLD);
-                    if award_xp(skill.data_mut(state)) {
-                        let new_level = skill.data(state).level;
-                        crate::quests::notify_event(
-                            state,
-                            &GameEvent::SkillLeveledUp {
-                                skill_name: skill.name().to_string(),
-                                new_level,
-                            },
-                        );
-                        tui.show_message(
-                            "Skill level up",
-                            &format!(
-                                "Congratulations, your Thieving level is now {}{}.",
-                                new_level,
-                                if new_level >= MAX_SKILL_LEVEL {
-                                    " (maximum level)"
-                                } else {
-                                    ""
-                                }
-                            ),
-                            Some(state),
-                        )?;
-                    }
-                    if found_thread {
-                        "You stole some coins and found a thread.".to_string()
-                    } else {
-                        "You stole some coins.".to_string()
-                    }
-                }
                 }
             }
         };
