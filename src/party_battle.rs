@@ -7,7 +7,7 @@
 
  use crate::data::{get_ability, AbilityId, ItemType, MAX_PLAYER_LEVEL};
  use crate::event::GameEvent;
- use crate::party::{CompanionId, CompanionState};
+ use crate::party::CompanionId;
  use crate::party_combat::{
      Allegiance, CombatAction, CombatantId, CombatantSource, Encounter, EncounterCombatant,
      EncounterError, EncounterOutcome, RangeBand,
@@ -307,7 +307,7 @@
  }
 
  fn roll() -> u32 {
-     rand::thread_rng().gen()
+     rand::thread_rng().gen_range(0..u32::MAX)
  }
 
  fn award_combat_xp(
