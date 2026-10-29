@@ -841,5 +841,4 @@ mod tests {
         assert_eq!(state.player.stamina, 3);
         assert_eq!(state.player.skills.smithing.current_xp, 0);
     }
-
 }
