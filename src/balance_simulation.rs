@@ -802,7 +802,10 @@ mod tests {
         let first = simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, first_profile);
         let baseline = simulate_encounter(spec, ProgressionBand::Low, 11);
         assert_eq!(first_profile.warmup_stage, Some(1));
-        assert_eq!(first_profile.enemy_stat_multiplier_bps, WARMUP_ONE_ENEMY_BPS);
+        assert_eq!(
+            first_profile.enemy_stat_multiplier_bps,
+            WARMUP_ONE_ENEMY_BPS
+        );
         assert_eq!(first_profile.reward_multiplier_bps, WARMUP_ONE_REWARD_BPS);
         assert!(first.effective_enemy_health < baseline.effective_enemy_health);
         assert!(first.effective_enemy_attack < baseline.effective_enemy_attack);
@@ -816,11 +819,9 @@ mod tests {
             second_profile.enemy_stat_multiplier_bps,
             WARMUP_TWO_ENEMY_BPS
         );
-        assert_eq!(
-            second_profile.reward_multiplier_bps,
-            WARMUP_TWO_REWARD_BPS
-        );
-        let second = simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, second_profile);
+        assert_eq!(second_profile.reward_multiplier_bps, WARMUP_TWO_REWARD_BPS);
+        let second =
+            simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, second_profile);
         assert!(second.gold_reward < baseline.gold_reward);
         assert!(second.xp_reward < baseline.xp_reward);
 
@@ -926,7 +927,8 @@ mod tests {
             grace_profile.reward_multiplier_bps,
             TPK_RECOVERY_REWARD_CAP_BPS
         );
-        let grace_row = simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, grace_profile);
+        let grace_row =
+            simulate_encounter_with_profile(spec, ProgressionBand::Low, 11, grace_profile);
         let baseline = simulate_encounter(spec, ProgressionBand::Low, 11);
         assert!(grace_row.gold_reward < baseline.gold_reward);
         assert!(grace_row.xp_reward < baseline.xp_reward);
