@@ -959,14 +959,14 @@ impl Encounter {
                     _ => None,
                 }
             };
-            if let Some((kind, duration, potency, chance_pct)) = payload {
+            if let Some(payload) = payload {
                 let _ = self.apply_status_effect(
                     target_id,
-                    kind,
+                    payload.kind,
                     Some(actor_id),
-                    potency,
-                    duration,
-                    chance_pct,
+                    payload.potency,
+                    payload.duration,
+                    payload.application_chance_pct,
                     critical_roll,
                 )?;
             }
