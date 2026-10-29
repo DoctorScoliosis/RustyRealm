@@ -473,7 +473,14 @@ mod tests {
             },
         );
         notify_landmark_interaction(&mut state, "village_supply_board");
-        assert!(state.active_quests.iter().find(|q| q.id == REGION_QUEST_ID).unwrap().is_completed);
+        assert!(
+            state
+                .active_quests
+                .iter()
+                .find(|q| q.id == REGION_QUEST_ID)
+                .unwrap()
+                .is_completed
+        );
         assert_eq!(
             claim_region_quest(&mut state),
             Ok(QuestReward::Gold(REGION_QUEST_REWARD_GOLD))
