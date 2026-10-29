@@ -1,7 +1,7 @@
 //! Reusable skill checks for optional, non-combat actions.
 //!
 //! Probability is linear in the relevant skill's 0..=100 level:
-//! raw = 30 + skill_level / 2 - difficulty + modifier.
+//! raw = 40 + skill_level / 2 - difficulty + modifier.
 //! The result is clamped to 10..=95 percent. Modifiers are percentage points
 //! and should only be supplied when relevant to the checked action. Rolls are
 //! integers in 0..=99; a roll below the success chance succeeds.
@@ -29,7 +29,7 @@ pub struct SkillCheckResult {
 impl SkillCheck {
     pub fn success_chance(self) -> u8 {
         let level = self.skill_level.min(100) as i32;
-        (30 + level / 2 - self.difficulty + self.modifier)
+        (40 + level / 2 - self.difficulty + self.modifier)
             .clamp(i32::from(MIN_SUCCESS_CHANCE), i32::from(MAX_SUCCESS_CHANCE)) as u8
     }
 
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn low_medium_and_high_skill_chances_are_bounded() {
         assert_eq!(check(1, 60, 0).success_chance(), MIN_SUCCESS_CHANCE);
-        assert_eq!(check(50, 35, 0).success_chance(), 20);
+        assert_eq!(check(50, 35, 0).success_chance(), 30);
         assert_eq!(check(100, -100, 0).success_chance(), MAX_SUCCESS_CHANCE);
     }
 
