@@ -1,8 +1,8 @@
 use crate::data::{ItemType, MAX_GOLD, MAX_PLAYER_LEVEL, MAX_SKILL_LEVEL};
 use crate::event::{GameEvent, WorldEvent};
 use crate::state::GameState;
-use crate::world::LocationId;
 use crate::ui::Tui;
+use crate::world::LocationId;
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -579,7 +579,12 @@ pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), Q
                 QuestObjective::ItemHandIn {
                     item_type,
                     required_count,
-                } => (*item_type, *required_count, quest.is_completed, quest.is_claimed),
+                } => (
+                    *item_type,
+                    *required_count,
+                    quest.is_completed,
+                    quest.is_claimed,
+                ),
                 _ => return Err(QuestError::InvalidOperation),
             }
         } else {
@@ -600,7 +605,10 @@ pub fn hand_in_item_quest(state: &mut GameState, quest_id: &str) -> Result<(), Q
                 QuestObjective::ItemHandIn {
                     item_type,
                     required_count,
-                } => (*item_type, required_count.saturating_sub(objective.progress)),
+                } => (
+                    *item_type,
+                    required_count.saturating_sub(objective.progress),
+                ),
                 _ => unreachable!("filtered above"),
             };
             (item_type, count, quest.is_completed, quest.is_claimed)
@@ -707,26 +715,43 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                         String::new()
                     } else {
                         let current = quest.stages.iter().position(|stage| !stage.is_completed);
-                        let stages = quest.stages.iter().enumerate().map(|(index, stage)| {
-                            let stage_status = if stage.is_completed {
-                                "complete"
-                            } else if current == Some(index) {
-                                "current"
-                            } else {
-                                "locked"
-                            };
-                            let goals = stage.objectives.iter().map(|objective| {
-                                let mark = if objective.is_completed { "✓" } else { "·" };
-                                let optional = if objective.optional { " (optional)" } else { "" };
+                        let stages = quest
+                            .stages
+                            .iter()
+                            .enumerate()
+                            .map(|(index, stage)| {
+                                let stage_status = if stage.is_completed {
+                                    "complete"
+                                } else if current == Some(index) {
+                                    "current"
+                                } else {
+                                    "locked"
+                                };
+                                let goals = stage
+                                    .objectives
+                                    .iter()
+                                    .map(|objective| {
+                                        let mark = if objective.is_completed { "✓" } else { "·" };
+                                        let optional =
+                                            if objective.optional { " (optional)" } else { "" };
+                                        format!(
+                                            "    {mark} {}/{} {:?}{optional}",
+                                            objective.progress,
+                                            objective_target(&objective.objective),
+                                            objective.objective
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
                                 format!(
-                                    "    {mark} {}/{} {:?}{optional}",
-                                    objective.progress,
-                                    objective_target(&objective.objective),
-                                    objective.objective
+                                    "  Stage {} — {} [{stage_status}]\n{}",
+                                    index + 1,
+                                    stage.title,
+                                    goals
                                 )
-                            }).collect::<Vec<_>>().join("\n");
-                            format!("  Stage {} — {} [{stage_status}]\n{}", index + 1, stage.title, goals)
-                        }).collect::<Vec<_>>().join("\n");
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
                         format!("\n{stages}")
                     };
                     format!(
