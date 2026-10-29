@@ -218,7 +218,10 @@ impl RecoveryState {
     }
 
     /// Advance once for a committed main-menu action, never for nested menus or reloads.
-    pub fn advance_committed_turn(&mut self, companions: &mut [CompanionState]) -> Vec<CompanionId> {
+    pub fn advance_committed_turn(
+        &mut self,
+        companions: &mut [CompanionState],
+    ) -> Vec<CompanionId> {
         let mut recovered = Vec::new();
         for record in &mut self.records {
             // Without a reachable treatment settlement, neither time nor payment
@@ -401,22 +404,22 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
 }
 
     #[cfg(test)]
-    mod tests {
-        use super::*;
-        use crate::party::{CompanionId, PartyManager};
-        use crate::state::{GameState, Player};
-        use crate::world::build_initial_world;
+mod tests {
+    use super::*;
+    use crate::party::{CompanionId, PartyManager};
+    use crate::state::{GameState, Player};
+    use crate::world::build_initial_world;
 
-        fn state_with_companion() -> GameState {
+    fn state_with_companion() -> GameState {
         let mut state = GameState::new(Player::new("tester".into(), String::new()));
         let cost = PartyManager::recruit(&mut state.companions, CompanionId::BranTheShield, 99, 1000).unwrap();
         state.player.gold -= cost;
         PartyManager::add_to_party(&mut state.party, &state.companions, CompanionId::BranTheShield).unwrap();
         state
-        }
+}
 
     #[test]
-        fn knockout_is_idempotent_and_uses_nearest_reachable_settlement() {
+    fn knockout_is_idempotent_and_uses_nearest_reachable_settlement() {
         let world = build_initial_world().unwrap();
         let mut state = state_with_companion();
         state.companions[0].current_hp = 0;
@@ -433,10 +436,10 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         // This operation records the state only; the caller's main combat adapter removes
         // the companion from the active party as soon as it processes the knockout.
         assert!(validate_recovery_invariants(&state, &recovery));
-        }
+}
 
     #[test]
-        fn no_reachable_settlement_is_safe_and_explicit() {
+    fn no_reachable_settlement_is_safe_and_explicit() {
         let mut world = build_initial_world().unwrap();
         world.add_location(crate::world::Location::new(
         "isolated", "Isolated", "No route to a settlement.", LocationCategory::Wilderness
@@ -451,10 +454,10 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         let location = state.current_location.clone();
         assert!(matches!(recovery.apply_treatment(&mut state, CompanionId::BranTheShield, &location, &world), Err(RecoveryError::NoTreatmentSettlement)));
         assert_eq!(state.player.gold, gold_before);
-        }
+}
 
     #[test]
-        fn failed_treatment_never_charges_gold_or_partially_restores() {
+    fn failed_treatment_never_charges_gold_or_partially_restores() {
         let world = build_initial_world().unwrap();
         let mut state = state_with_companion();
         let id = CompanionId::BranTheShield;
@@ -468,10 +471,10 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         assert_eq!(state.player.gold, before.player.gold);
         assert_eq!(state.companions[0].current_hp, 0);
         assert_eq!(recovery.record(id).unwrap().turns_remaining, RECOVERY_TURNS);
-        }
+}
 
     #[test]
-        fn paid_treatment_restores_once_and_requires_explicit_reselection() {
+    fn paid_treatment_restores_once_and_requires_explicit_reselection() {
         let world = build_initial_world().unwrap();
         let mut state = state_with_companion();
         let id = CompanionId::BranTheShield;
@@ -484,18 +487,18 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         assert_eq!(state.companions[0].condition, CompanionCondition::Available);
         assert_eq!(state.companions[0].current_hp, state.companions[0].max_hp);
         assert_eq!(
-            state.player.gold,
-            1000 - TREATMENT_COST
-                - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost
+        state.player.gold,
+        1000 - TREATMENT_COST
+        - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost
         );
         assert!(recovery.record(id).is_none());
         let location = state.current_location.clone();
         assert!(recovery.apply_treatment(&mut state, id, &location, &world).is_err());
         PartyManager::add_to_party(&mut state.party, &state.companions, id).unwrap();
-        }
+}
 
     #[test]
-        fn committed_turns_advance_recovery_but_menus_and_reload_do_not() {
+    fn committed_turns_advance_recovery_but_menus_and_reload_do_not() {
         let mut state = state_with_companion();
         state.companions[0].current_hp = 0;
         let mut recovery = RecoveryState::default();
@@ -509,15 +512,15 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         assert_eq!(loaded.advance_committed_turn(&mut state.companions), vec![CompanionId::BranTheShield]);
         assert_eq!(state.companions[0].condition, CompanionCondition::Available);
         assert!(loaded.record(CompanionId::BranTheShield).is_none());
-        }
+}
 
- 
+
     #[test]
-        fn party_combat_knockout_persists_once_and_keeps_other_allies_active() {
-        use crate::party_combat::{
+    fn party_combat_knockout_persists_once_and_keeps_other_allies_active() {
+    use crate::party_combat::{
         Allegiance, CombatAction, CombatantId, CombatantSource, Encounter, EncounterCombatant,
         EncounterOutcome,
-        };
+        }
         let world = build_initial_world().unwrap();
         let mut state = state_with_companion();
         let id = CompanionId::BranTheShield;
@@ -525,17 +528,17 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         let companion = &state.companions[0];
         let encounter = Encounter::new(vec![
         EncounterCombatant::new(
-            CombatantId(1), CombatantSource::Player, "tester", Allegiance::Allies,
-            state.player.hp, 100, 50, 20, 5
+        CombatantId(1), CombatantSource::Player, "tester", Allegiance::Allies,
+        state.player.hp, 100, 50, 20, 5
         ),
         EncounterCombatant::new(
-            CombatantId(2), CombatantSource::Companion(id), companion.display_name(),
-            Allegiance::Allies, 1, companion.current_stamina, companion.current_mana,
-            companion.attack, companion.defence
+        CombatantId(2), CombatantSource::Companion(id), companion.display_name(),
+        Allegiance::Allies, 1, companion.current_stamina, companion.current_mana,
+        companion.attack, companion.defence
         ),
         EncounterCombatant::new(
-            CombatantId(3), CombatantSource::Enemy, "Goblin", Allegiance::Enemies,
-            500, 0, 0, 500, 0
+        CombatantId(3), CombatantSource::Enemy, "Goblin", Allegiance::Enemies,
+        500, 0, 0, 500, 0
         ),
         ]).unwrap();
         let mut encounter = encounter;
@@ -557,10 +560,10 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         assert!(recovery.sync_party_encounter(&mut state, &encounter, &world).unwrap().is_empty());
         assert_eq!(recovery.record(id), Some(&original));
         assert!(validate_recovery_invariants(&state, &recovery));
-        }
+}
 
     #[test]
-        fn companion_without_treatment_destination_does_not_recover_from_elapsed_turns() {
+    fn companion_without_treatment_destination_does_not_recover_from_elapsed_turns() {
         let mut world = build_initial_world().unwrap();
         world.add_location(crate::world::Location::new(
         "isolated_recovery", "Isolated recovery", "Disconnected.", LocationCategory::Wilderness
@@ -575,13 +578,13 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         let before = recovery.record(id).unwrap().clone();
         for _ in 0..(RECOVERY_TURNS + 2) {
         assert!(recovery.advance_committed_turn(&mut state.companions).is_empty());
-        }
+}
         assert_eq!(recovery.record(id), Some(&before));
         assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
-        }
+}
 
     #[test]
-        fn defeat_resolution_is_atomic_and_recoverable() {
+    fn defeat_resolution_is_atomic_and_recoverable() {
         let world = build_initial_world().unwrap();
         let mut state = state_with_companion();
         state.player.hp = 0;
@@ -594,5 +597,5 @@ pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState)
         assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
         assert_eq!(recovery.expedition_defeat_count, 1);
         assert!(recovery.record(CompanionId::BranTheShield).is_some());
-        }
-    }
+}
+}
