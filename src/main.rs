@@ -179,15 +179,17 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             && state.companion_recovery.record(companion.id).is_none())
         .map(|companion| companion.id)
         .collect();
+    let origin = state.current_location.clone();
+    let mut new_records = Vec::new();
     for id in knocked_out {
-        let origin = state.current_location.clone();
-        let newly_recorded = {
-            let companion = state.companions.iter_mut().find(|companion| companion.id == id);
-            companion.map(|companion| state.companion_recovery.record_knockout(companion, &world, &origin))
-        };
-        if matches!(newly_recorded, Some(Ok(true))) {
-            let _ = state.party.remove_member(id);
+        if let Some(companion) = state.companions.iter_mut().find(|companion| companion.id == id) {
+            if let Ok(true) = state.companion_recovery.record_knockout(companion, &world, &origin) {
+                new_records.push(id);
+            }
         }
+    }
+    for id in new_records {
+        let _ = state.party.remove_member(id);
     }
     let options = [
         "Travel / Explore Region",
