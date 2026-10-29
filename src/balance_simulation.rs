@@ -524,22 +524,13 @@ mod tests {
         let findings = check_regressions(&[row]);
         assert!(findings
             .iter()
-            .any(|finding| matches!(
-                finding,
-                RegressionFinding::ActionsOutsideRange { .. }
-            )));
+            .any(|finding| matches!(finding, RegressionFinding::ActionsOutsideRange { .. })));
         assert!(findings
             .iter()
-            .any(|finding| matches!(
-                finding,
-                RegressionFinding::GoldOutsideRange { .. }
-            )));
+            .any(|finding| matches!(finding, RegressionFinding::GoldOutsideRange { .. })));
         assert!(findings
             .iter()
-            .any(|finding| matches!(
-                finding,
-                RegressionFinding::XpOutsideRange { .. }
-            )));
+            .any(|finding| matches!(finding, RegressionFinding::XpOutsideRange { .. })));
     }
 
     #[test]
