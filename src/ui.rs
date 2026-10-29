@@ -930,8 +930,15 @@ fn render_compact_header(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
         .map(|t| format!(" · {t}"))
         .unwrap_or_default();
     let text = format!(
-        "Lv{} HP:{}/{} G:{}{}",
-        state.player.combat_level, state.player.hp, state.player.max_hp, state.player.gold, title
+        "Lv{} HP:{}/{} St:{}/{} G:{} T:{}{}",
+        state.player.combat_level,
+        state.player.hp,
+        state.player.max_hp,
+        state.player.stamina,
+        state.player.max_stamina,
+        state.player.gold,
+        state.world_turn,
+        title
     );
     frame.render_widget(
         Paragraph::new(text).style(Style::default().fg(theme_color(Some(state)))),

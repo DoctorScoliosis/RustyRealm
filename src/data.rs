@@ -384,6 +384,7 @@ pub enum ItemType {
     RawFood,
     Bait,
     Ingots,
+    ScrapMetal,
     Bows,
     Thread,
     GourmetFeast,
@@ -407,6 +408,7 @@ impl ItemType {
             ItemType::RawFood => "Raw Food",
             ItemType::Bait => "Bait",
             ItemType::Ingots => "Ingots",
+            ItemType::ScrapMetal => "Metal Scraps",
             ItemType::Bows => "Bows",
             ItemType::Thread => "Thread",
             ItemType::GourmetFeast => "Gourmet Feast",
@@ -430,6 +432,8 @@ impl ItemType {
             ItemType::RawFood => 100,
             ItemType::Bait => 2,
             ItemType::Ingots => 473,
+            // Salvage material is a crafting input, never purchased from shops.
+            ItemType::ScrapMetal => 0,
             ItemType::Bows => 713,
             // Crafting-only products are not sold by the Trading Post.
             ItemType::Thread | ItemType::GourmetFeast => 0,

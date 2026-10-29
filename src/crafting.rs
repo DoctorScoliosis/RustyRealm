@@ -1,6 +1,7 @@
 use crate::data::{ItemType, WeaponTier, MAX_SKILL_LEVEL};
 use crate::event::GameEvent;
 use crate::quests;
+use crate::skill_checks::SkillCheck;
 use crate::state::{GameState, SkillData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -23,6 +24,11 @@ pub enum CraftingError {
     OutputOverflow(ItemType),
     InvalidRecipeDefinition(String),
     InventoryCapacity,
+    InsufficientStamina {
+        required: u32,
+        available: u32,
+    },
+    InvalidRoll(u8),
 }
 
 impl fmt::Display for CraftingError {
@@ -63,6 +69,14 @@ impl fmt::Display for CraftingError {
                     "There is not enough memory available to store the crafted weapon."
                 )
             }
+            Self::InsufficientStamina {
+                required,
+                available,
+            } => write!(
+                f,
+                "This action needs {required} stamina, but only {available} remains."
+            ),
+            Self::InvalidRoll(roll) => write!(f, "Invalid skill-check roll: {roll}."),
         }
     }
 }
@@ -129,6 +143,18 @@ pub fn all_recipes() -> Vec<Recipe> {
                 count: 1,
             }],
             xp_reward: 33,
+        },
+        Recipe {
+            id: "smith_scrap_ingot".into(),
+            name: "Recover Ingot from Metal Scraps".into(),
+            skill_name: "Smithing".into(),
+            required_level: 1,
+            inputs: vec![(ItemType::ScrapMetal, 1)],
+            outputs: vec![RecipeOutput::Item {
+                item_type: ItemType::Ingots,
+                count: 1,
+            }],
+            xp_reward: 10,
         },
         Recipe {
             id: "smith_iron_sword".into(),
@@ -383,6 +409,131 @@ pub struct CraftingResult {
     pub level_up: Option<u32>,
 }
 
+/// Result of a resource-consuming crafting attempt. The input transaction is
+/// committed only after the recipe's prerequisites, stamina and output capacity
+/// have been validated. Failed Smithing attempts turn consumed metal inputs
+/// into salvage; recovering an ingot from one scrap can itself fail and consume
+/// that scrap, preventing an unlimited retry loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecipeAttemptResult {
+    pub recipe: Recipe,
+    pub succeeded: bool,
+    pub success_chance: u8,
+    pub xp_awarded: u32,
+    pub level_up: Option<u32>,
+    pub scraps_awarded: u32,
+}
+
+fn recipe_difficulty(recipe_id: &str) -> i32 {
+    match recipe_id {
+        "cook_food" => 15,
+        "cook_gourmet_feast" => 35,
+        "fletch_bow" => 25,
+        "smith_ingot" => 25,
+        "smith_iron_sword" => 35,
+        "smith_scrap_ingot" => 50,
+        _ => 30,
+    }
+}
+
+/// Make one checked recipe attempt with an injectable 0..=99 roll.
+/// Prerequisites are validated by executing the recipe against a clone first.
+/// Failure then consumes the validated inputs and commits only its defined
+/// salvage outcome; no partial state changes leak from a failed attempt.
+pub fn attempt_recipe(
+    state: &mut GameState,
+    recipe_id: &str,
+    roll: u8,
+    stamina_cost: u32,
+    modifier: i32,
+) -> Result<RecipeAttemptResult, CraftingError> {
+    let mut successful_state = state.clone();
+    let success_result = execute_recipe(&mut successful_state, recipe_id)?;
+    let recipe = success_result.recipe.clone();
+
+    let skill_level = get_skill_data(state, &recipe.skill_name)
+        .map(|skill| skill.level)
+        .ok_or_else(|| CraftingError::UnknownSkill(recipe.skill_name.clone()))?;
+    if state.player.stamina < stamina_cost {
+        return Err(CraftingError::InsufficientStamina {
+            required: stamina_cost,
+            available: state.player.stamina,
+        });
+    }
+
+    let check = SkillCheck {
+        skill_level,
+        difficulty: recipe_difficulty(recipe_id),
+        modifier,
+    }
+    .resolve(roll)
+    .map_err(|_| CraftingError::InvalidRoll(roll))?;
+
+    if check.succeeded {
+        successful_state.player.stamina -= stamina_cost;
+        *state = successful_state;
+        return Ok(RecipeAttemptResult {
+            recipe,
+            succeeded: true,
+            success_chance: check.success_chance,
+            xp_awarded: success_result.xp_awarded,
+            level_up: success_result.level_up,
+            scraps_awarded: 0,
+        });
+    }
+
+    // Match execute_recipe's aggregated input requirements, including the
+    // Master Artisan discount, before consuming anything on a failed attempt.
+    let mut input_totals: HashMap<ItemType, u32> = HashMap::new();
+    for (item, count) in &recipe.inputs {
+        let total = input_totals.entry(*item).or_insert(0);
+        *total = total
+            .checked_add(*count)
+            .ok_or_else(|| CraftingError::InvalidRecipeDefinition(recipe.id.clone()))?;
+    }
+    if crate::mastery::has_perk(state, crate::data::MasteryPerkId::MasterArtisan) {
+        for required in input_totals.values_mut() {
+            *required = crate::mastery::discounted_ingredient_count(*required);
+        }
+    }
+
+    let scraps_awarded = if recipe.skill_name == "Smithing" && recipe.id != "smith_scrap_ingot" {
+        input_totals.values().try_fold(0u32, |sum, quantity| {
+            sum.checked_add(*quantity)
+                .ok_or_else(|| CraftingError::InvalidRecipeDefinition(recipe.id.clone()))
+        })?
+    } else {
+        0
+    };
+
+    let existing_scraps = state.player.get_item_count(ItemType::ScrapMetal);
+    existing_scraps
+        .checked_add(scraps_awarded)
+        .ok_or(CraftingError::OutputOverflow(ItemType::ScrapMetal))?;
+
+    let mut failed_state = state.clone();
+    failed_state.player.stamina -= stamina_cost;
+    for (item, quantity) in input_totals {
+        let removed = failed_state.player.remove_item(item, quantity);
+        debug_assert!(removed, "validated recipe inputs must still exist");
+    }
+    if scraps_awarded > 0 {
+        failed_state
+            .player
+            .add_item(ItemType::ScrapMetal, scraps_awarded);
+    }
+    *state = failed_state;
+
+    Ok(RecipeAttemptResult {
+        recipe,
+        succeeded: false,
+        success_chance: check.success_chance,
+        xp_awarded: 0,
+        level_up: None,
+        scraps_awarded,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,5 +761,85 @@ mod tests {
         execute_recipe(&mut state, "smith_iron_sword").unwrap();
         assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
         assert!(state.player.inventory_weapons.contains(&WeaponTier::Iron));
+    }
+    #[test]
+    fn failed_smelt_consumes_ore_and_returns_scraps_transactionally() {
+        let mut state = state();
+        state.player.add_item(ItemType::Ore, 1);
+
+        let attempt = attempt_recipe(&mut state, "smith_ingot", 99, 8, 0).unwrap();
+
+        assert!(!attempt.succeeded);
+        assert_eq!(attempt.success_chance, 15);
+        assert_eq!(attempt.scraps_awarded, 1);
+        assert_eq!(state.player.get_item_count(ItemType::Ore), 0);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 1);
+        assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
+        assert_eq!(state.player.skills.smithing.current_xp, 0);
+        assert_eq!(state.player.stamina, 92);
+    }
+
+    #[test]
+    fn failed_scrap_recovery_consumes_the_scrap_and_cannot_loop_forever() {
+        let mut state = state();
+        state.player.add_item(ItemType::ScrapMetal, 1);
+
+        let attempt = attempt_recipe(&mut state, "smith_scrap_ingot", 99, 7, 0).unwrap();
+
+        assert!(!attempt.succeeded);
+        assert_eq!(attempt.success_chance, 10);
+        assert_eq!(attempt.scraps_awarded, 0);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Ingots), 0);
+        assert_eq!(state.player.stamina, 93);
+    }
+
+    #[test]
+    fn successful_scrap_recovery_consumes_scrap_and_returns_an_ingot() {
+        let mut state = state();
+        state.player.skills.smithing.level = 100;
+        state.player.add_item(ItemType::ScrapMetal, 1);
+
+        let attempt = attempt_recipe(&mut state, "smith_scrap_ingot", 0, 7, 0).unwrap();
+
+        assert!(attempt.succeeded);
+        assert_eq!(attempt.scraps_awarded, 0);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Ingots), 1);
+        assert_eq!(state.player.stamina, 93);
+    }
+
+    #[test]
+    fn failed_cooking_consumes_raw_food_and_returns_no_food() {
+        let mut state = state();
+        state.player.add_item(ItemType::RawFood, 1);
+
+        let attempt = attempt_recipe(&mut state, "cook_food", 99, 5, 0).unwrap();
+
+        assert!(!attempt.succeeded);
+        assert_eq!(attempt.success_chance, 25);
+        assert_eq!(state.player.get_item_count(ItemType::RawFood), 0);
+        assert_eq!(state.player.get_item_count(ItemType::Food), 0);
+        assert_eq!(state.player.skills.cooking.current_xp, 0);
+        assert_eq!(state.player.stamina, 95);
+    }
+
+    #[test]
+    fn insufficient_stamina_preserves_recipe_inputs_and_progress() {
+        let mut state = state();
+        state.player.stamina = 3;
+        state.player.add_item(ItemType::Ore, 1);
+
+        assert!(matches!(
+            attempt_recipe(&mut state, "smith_ingot", 0, 8, 0),
+            Err(CraftingError::InsufficientStamina {
+                required: 8,
+                available: 3
+            })
+        ));
+        assert_eq!(state.player.get_item_count(ItemType::Ore), 1);
+        assert_eq!(state.player.get_item_count(ItemType::ScrapMetal), 0);
+        assert_eq!(state.player.stamina, 3);
+        assert_eq!(state.player.skills.smithing.current_xp, 0);
     }
 }

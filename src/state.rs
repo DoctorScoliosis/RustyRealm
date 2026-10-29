@@ -148,6 +148,7 @@ impl Player {
         items.insert(ItemType::DragonHides, 0);
         items.insert(ItemType::RunicTablets, 0);
         items.insert(ItemType::Ingots, 0);
+        items.insert(ItemType::ScrapMetal, 0);
         items.insert(ItemType::Bows, 0);
         items.insert(ItemType::Thread, 0);
         items.insert(ItemType::GourmetFeast, 0);
@@ -290,6 +291,9 @@ pub struct GameState {
     /// Added with defaults for backward-compatible progression saves.
     #[serde(default)]
     pub market_state: MarketState,
+    /// Number of committed world turns; skill actions and rests advance this clock.
+    #[serde(default)]
+    pub world_turn: u64,
     #[serde(default)]
     pub stronghold_high_score: u32,
     #[serde(default)]
@@ -318,6 +322,15 @@ pub struct GameState {
 }
 
 impl GameState {
+    /// Commit one unit of world time and advance turn-based world systems.
+    /// Returns companions whose recovery completed on this turn.
+    pub fn advance_world_turn(&mut self) -> Vec<crate::party::CompanionId> {
+        self.world_turn = self.world_turn.saturating_add(1);
+        self.market_state.advance_turn();
+        self.companion_recovery
+            .advance_committed_turn(&mut self.companions)
+    }
+
     pub fn new(player: Player) -> Self {
         let mut state = Self {
             player,
@@ -325,6 +338,7 @@ impl GameState {
             active_quests: Vec::new(),
             active_world_event: WorldEvent::none(),
             market_state: MarketState::new(),
+            world_turn: 0,
             stronghold_high_score: 0,
             lacoyx_defeated: false,
             unlocked_achievements: Vec::new(),
