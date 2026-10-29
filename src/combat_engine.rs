@@ -468,38 +468,7 @@ impl CombatEngine {
 
         if enemy.name == "Lacoyx" {
             let phase = enemy.lacoyx_phase.unwrap_or(LacoyxPhase::Phase1Commander);
-            let (chance, attack) = match phase {
-                LacoyxPhase::Phase1Commander => (
-                    0.4,
-                    TelegraphedAttack {
-                        name: "Grand Cleave".into(),
-                        description: "Lacoyx winds up a massive sword slash!".into(),
-                        damage: 80,
-                        damage_type: DamageType::Physical,
-                        status_payload: None,
-                    },
-                ),
-                LacoyxPhase::Phase2InfernalWarlord => (
-                    0.5,
-                    TelegraphedAttack {
-                        name: "Infernal Nova".into(),
-                        description: "Lacoyx channels infernal flames!".into(),
-                        damage: 100,
-                        damage_type: DamageType::Fire,
-                        status_payload: None,
-                    },
-                ),
-                LacoyxPhase::Phase3DesperateOverlord => (
-                    0.6,
-                    TelegraphedAttack {
-                        name: "Apocalyptic Strike".into(),
-                        description: "Lacoyx gathers apocalyptic energy!".into(),
-                        damage: 140,
-                        damage_type: DamageType::Arcane,
-                        status_payload: None,
-                    },
-                ),
-            };
+            let (chance, attack) = lacoyx_telegraph_for_phase(phase);
             if rng.gen_bool(chance) {
                 let logs = vec![format!(
                     "TELEGRAPH: {} — {}",
