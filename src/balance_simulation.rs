@@ -356,8 +356,7 @@ pub fn simulate_encounter(
         mana: build.mana,
     };
 
-    while encounter.outcome == EncounterOutcome::Ongoing
-        && metrics.actions < MAX_SIMULATION_ACTIONS
+    while encounter.outcome == EncounterOutcome::Ongoing && metrics.actions < MAX_SIMULATION_ACTIONS
     {
         let Some(actor) = encounter.current_actor() else {
             break;
@@ -481,8 +480,7 @@ pub fn check_regressions(results: &[SimulationMetrics]) -> Vec<RegressionFinding
                     max: spec.expected_gold_max,
                 });
             }
-            if metrics.xp_reward < spec.expected_xp_min
-                || metrics.xp_reward > spec.expected_xp_max
+            if metrics.xp_reward < spec.expected_xp_min || metrics.xp_reward > spec.expected_xp_max
             {
                 findings.push(RegressionFinding::XpOutsideRange {
                     scenario: metrics.scenario_id.clone(), actual: metrics.xp_reward,
