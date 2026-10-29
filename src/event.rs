@@ -1,4 +1,5 @@
 use crate::data::ItemType;
+use crate::world::LocationId;
 use serde::{Deserialize, Serialize};
 
 /// A domain event emitted after a gameplay action succeeds.
@@ -8,6 +9,14 @@ pub enum GameEvent {
     PlayerLeveledUp { new_level: u32 },
     SkillLeveledUp { skill_name: String, new_level: u32 },
     ItemHandedIn { item_type: ItemType, count: u32 },
+    ItemCollected { item_type: ItemType, count: u32 },
+    ResourceGathered { skill_name: String, item_type: ItemType, count: u32 },
+    ItemCrafted { recipe_id: String, item_type: Option<ItemType>, count: u32 },
+    LocationReached { location_id: LocationId },
+    LocationTraversed { from_location_id: LocationId, to_location_id: LocationId },
+    /// Stable world/entity ID, not a display label.
+    TargetInteracted { target_id: String },
+    PrerequisiteQuestCompleted { quest_id: String },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

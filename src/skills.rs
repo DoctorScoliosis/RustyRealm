@@ -404,6 +404,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         if level >= MAX_SKILL_LEVEL { 100 } else { 1 },
                     );
                     state.player.add_item(ItemType::Logs, count);
+                    crate::quests::notify_event(state, &GameEvent::ResourceGathered { skill_name: skill.name().to_string(), item_type: ItemType::Logs, count });
                     if level < MAX_SKILL_LEVEL {
                         award_skill_action_xp(tui, state, skill)?;
                         "You cut some logs.".to_string()
@@ -452,6 +453,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     )
                 } else {
                     state.player.add_item(ItemType::Food, amount);
+                    crate::quests::notify_event(state, &GameEvent::ItemCollected { item_type: ItemType::Food, count: amount });
                     if level < MAX_SKILL_LEVEL {
                         award_skill_action_xp(tui, state, skill)?;
                         "You cooked some food.".to_string()
@@ -494,6 +496,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     )
                 } else {
                     state.player.add_item(ItemType::RawFood, amount);
+                    crate::quests::notify_event(state, &GameEvent::ResourceGathered { skill_name: skill.name().to_string(), item_type: ItemType::RawFood, count: amount });
                     if level < MAX_SKILL_LEVEL {
                         award_skill_action_xp(tui, state, skill)?;
                         "You caught a fish.".to_string()
@@ -524,6 +527,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         if level >= MAX_SKILL_LEVEL { 100 } else { 1 },
                     );
                     state.player.add_item(ItemType::Ore, count);
+                    crate::quests::notify_event(state, &GameEvent::ResourceGathered { skill_name: skill.name().to_string(), item_type: ItemType::Ore, count });
                     if level < MAX_SKILL_LEVEL {
                         award_skill_action_xp(tui, state, skill)?;
                         "You mined some ore.".to_string()
@@ -576,6 +580,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     )
                 } else {
                     state.player.add_item(ItemType::Ingots, amount);
+                    crate::quests::notify_event(state, &GameEvent::ResourceGathered { skill_name: skill.name().to_string(), item_type: ItemType::Ingots, count: amount });
                     if level < MAX_SKILL_LEVEL {
                         award_skill_action_xp(tui, state, skill)?;
                         "You smithed an ingot.".to_string()
@@ -604,6 +609,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                     let found_thread = rand::thread_rng().gen_bool(0.4);
                     if found_thread {
                         state.player.add_item(ItemType::Thread, 1);
+                        crate::quests::notify_event(state, &GameEvent::ItemCollected { item_type: ItemType::Thread, count: 1 });
                     }
                     if level >= MAX_SKILL_LEVEL {
                         state.player.gold = state.player.gold.saturating_add(10_000).min(MAX_GOLD);
