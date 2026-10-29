@@ -312,7 +312,6 @@ mod tests {
          assert!(!state.party.contains(id));
          // This operation records the state only; the caller's main combat adapter removes
          // the companion from the active party as soon as it processes the knockout.
-         state.party.remove_member(id).unwrap();
          assert!(validate_recovery_invariants(&state, &recovery));
      }
 
@@ -329,7 +328,7 @@ mod tests {
          assert_eq!(recovery.record(CompanionId::BranTheShield).unwrap().destination, None);
          let location = state.current_location.clone();
          assert!(matches!(recovery.apply_treatment(&mut state, CompanionId::BranTheShield, &location, &world), Err(RecoveryError::NoTreatmentSettlement)));
-         assert_eq!(state.player.gold, 1000 - all_companion_definitions()[0].recruitment_cost);
+         assert_eq!(state.player.gold, 1000 - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost);
      }
 
      #[test]
@@ -364,7 +363,7 @@ mod tests {
          assert_eq!(recovery.apply_treatment(&mut state, id, &location, &world), Ok(TREATMENT_COST));
          assert_eq!(state.companions[0].condition, CompanionCondition::Available);
          assert_eq!(state.companions[0].current_hp, state.companions[0].max_hp);
-         assert_eq!(state.player.gold, 1000 - TREATMENT_COST - all_companion_definitions()[0].recruitment_cost);
+         assert_eq!(state.player.gold, 1000 - TREATMENT_COST - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost);
          assert!(recovery.record(id).is_none());
          let location = state.current_location.clone();
          assert!(recovery.apply_treatment(&mut state, id, &location, &world).is_err());
