@@ -1,4 +1,5 @@
 mod achievements;
+mod balance_simulation;
 mod bank;
 mod combat;
 mod combat_engine;
