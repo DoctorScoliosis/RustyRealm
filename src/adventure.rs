@@ -422,8 +422,12 @@ mod tests {
             &LocationId::from("whispering_woods")
         ));
         assert_eq!(ENCOUNTERS.len(), 3);
-        assert!(ENCOUNTERS.iter().any(|e| e.danger == 5 && e.location_id == "goblin_caves"));
-        assert!(LANDMARKS.iter().all(|landmark| world.get_location(&LocationId::from(landmark.location_id)).is_some()));
+        assert!(ENCOUNTERS
+            .iter()
+            .any(|e| e.danger == 5 && e.location_id == "goblin_caves"));
+        assert!(LANDMARKS.iter().all(|landmark| world
+            .get_location(&LocationId::from(landmark.location_id))
+            .is_some()));
         assert!(enemy_for_name("Stone Guardian").is_some());
         assert!(enemy_for_name("Cave Bandit").is_some());
     }
@@ -469,14 +473,22 @@ mod tests {
             },
         );
         notify_landmark_interaction(&mut state, "village_supply_board");
-        assert!(state.active_quests.iter().find(|q| q.id == REGION_QUEST_ID).unwrap().is_completed);
+        assert!(state
+            .active_quests
+            .iter()
+            .find(|q| q.id == REGION_QUEST_ID)
+            .unwrap()
+            .is_completed);
         assert_eq!(
             claim_region_quest(&mut state),
             Ok(QuestReward::Gold(REGION_QUEST_REWARD_GOLD))
         );
         assert_eq!(state.player.gold, before + REGION_QUEST_REWARD_GOLD);
         let gold = state.player.gold;
-        assert_eq!(claim_region_quest(&mut state), Err(ExpeditionError::AlreadyClaimed));
+        assert_eq!(
+            claim_region_quest(&mut state),
+            Err(ExpeditionError::AlreadyClaimed)
+        );
         assert_eq!(state.player.gold, gold);
     }
 
@@ -489,7 +501,10 @@ mod tests {
             Err(ExpeditionError::WrongLocation)
         );
         let before = state.player.gold;
-        assert_eq!(claim_encounter_clear_reward(&mut state, "woods_patrol"), Ok((35, 60)));
+        assert_eq!(
+            claim_encounter_clear_reward(&mut state, "woods_patrol"),
+            Ok((35, 60))
+        );
         assert_eq!(state.player.gold, before + 35);
         let encoded = serde_json::to_string(&state).unwrap();
         let loaded: GameState = serde_json::from_str(&encoded).unwrap();
@@ -518,7 +533,12 @@ mod tests {
         .unwrap();
         state.player.gold -= cost;
         PartyManager::add_to_party(&mut state.party, &state.companions, id).unwrap();
-        state.companions.iter_mut().find(|c| c.id == id).unwrap().current_hp = 0;
+        state
+            .companions
+            .iter_mut()
+            .find(|c| c.id == id)
+            .unwrap()
+            .current_hp = 0;
         let mut recovery = std::mem::take(&mut state.companion_recovery);
         recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
         state.companion_recovery = recovery;
