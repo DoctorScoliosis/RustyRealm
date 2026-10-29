@@ -1,6 +1,6 @@
 # Section 19 — Realm Content and End-to-End Adventure Loop
 
-**Status:** Planned
+**Status:** Implemented on `work/section-19-realm-adventure-loop` (open PR; owner review pending)
 **Dependencies:** World, party, combat, class/range, effects/AI, recovery, quest, skill-check, and balance foundations from earlier sections.
 
 ## Objective
