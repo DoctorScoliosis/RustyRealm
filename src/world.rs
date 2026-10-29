@@ -483,7 +483,7 @@ pub fn build_initial_world() -> Result<World, WorldError> {
     // a starting party bypass the wilderness.
     world.add_bidirectional_route(&sunken_ruins, &goblin_caves, 10, 5)?;
 
-    world.validate()?
+    world.validate()?;
     Ok(world)
 }
 
