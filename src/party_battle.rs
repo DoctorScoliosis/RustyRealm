@@ -773,7 +773,20 @@ pub fn run_party_battle(
     }
     sync_persistent_state(state, &encounter, &world)?;
     match encounter.outcome {
-        EncounterOutcome::Victory => Ok(BattleOutcome::Victory),
+        EncounterOutcome::Victory => {
+            if let Some(enemy) = crate::adventure::enemy_for_name(config.enemy_name) {
+                state.player.gold = state.player.gold.saturating_add(enemy.gold_reward).min(crate::data::MAX_GOLD);
+                if let Some((item, count)) = enemy.item_reward {
+                    state.player.add_item(item, count);
+                    crate::quests::notify_event(state, &GameEvent::ItemCollected { item_type: item, count });
+                }
+                crate::quests::notify_event(state, &GameEvent::MonsterDefeated {
+                    name: enemy.name.to_string(),
+                    is_stronghold: false,
+                });
+            }
+            Ok(BattleOutcome::Victory)
+        },
         EncounterOutcome::Retreated => Ok(BattleOutcome::Fled),
         EncounterOutcome::PartyDefeated | EncounterOutcome::Ongoing => Err(io::Error::other(
             "Party encounter ended without a terminal outcome.",
