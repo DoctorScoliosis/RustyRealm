@@ -29,7 +29,7 @@ mod world;
 use crate::data::ItemType;
 use crate::state::GameState;
 use crate::ui::Tui;
-use crate::world::{build_initial_world, LocationId, World};
+use crate::world::{build_initial_world, LocationCategory, LocationId, World};
 use std::io;
 
 fn main() -> io::Result<()> {
@@ -224,6 +224,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         "Mastery & Achievements",
         "Companions & Party",
         "Companion Recovery",
+        "Rest / Recover",
         "Settings",
         "Log Out",
     ];
@@ -256,7 +257,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     state.current_location
                 ))
             })?;
-        let title = format!("Final Realm · {current_location_name}");
+        let title = format!("Final Realm · {current_location_name} · Turn {}", state.world_turn);
         let choice = tui.select_menu(&title, &options, Some(state))?;
         match choice {
             0 => travel_menu(tui, state, &world)?,
@@ -268,24 +269,28 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             6 => shops::max_shop(tui, state)?,
             7 => shops::smuggler(tui, state)?,
             8 => stronghold::enter_stronghold(tui, state)?,
-            9 => skills::skill_plot(tui, state)?,
+            9 => {
+                skills::skill_plot(tui, state)?;
+                continue;
+            }
             10 => bank::bank_menu(tui, state)?,
             11 => quests::quest_hall(tui, state)?,
             12 => inventory::view_inventory(tui, state, false)?,
             13 => crate::achievements::progression_menu(tui, state)?,
             14 => companion_menu(tui, state)?,
             15 => companion_recovery_menu(tui, state, &world)?,
-            16 => settings_menu(tui, state)?,
+            16 => {
+                rest_menu(tui, state, &world)?;
+                continue;
+            }
+            17 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
                 return Ok(());
             }
         }
-        state.market_state.advance_turn();
-        let recovered = state
-            .companion_recovery
-            .advance_committed_turn(&mut state.companions);
+        let recovered = state.advance_world_turn();
         if !recovered.is_empty() {
             let names = recovered
                 .iter()
