@@ -9,9 +9,9 @@ use crate::data::{get_ability, AbilityId};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
 use crate::status_combat::{
-    defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects, EnemyStatusPayload,
-    StatusApplication, StatusEffect, StatusEffectKind, StatusResistance, StatusTick,
-    MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
+    defence_vulnerability_pct, mark_hit_bonus, slow_penalty, tick_status_effects,
+    EnemyStatusPayload, StatusApplication, StatusEffect, StatusEffectKind, StatusResistance,
+    StatusTick, MAX_EFFECT_DURATION, MAX_EFFECT_POTENCY,
 };
 use std::collections::HashSet;
 
