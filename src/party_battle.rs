@@ -782,7 +782,13 @@ pub fn run_party_battle(
                     .min(crate::data::MAX_GOLD);
                 if let Some((item, count)) = enemy.item_reward {
                     state.player.add_item(item, count);
-                    crate::quests::notify_event(state, &GameEvent::ItemCollected { item_type: item, count });
+                    crate::quests::notify_event(
+                        state,
+                        &GameEvent::ItemCollected {
+                            item_type: item,
+                            count,
+                        },
+                    );
                 }
                 crate::quests::notify_event(state, &GameEvent::MonsterDefeated {
                     name: enemy.name.to_string(),
