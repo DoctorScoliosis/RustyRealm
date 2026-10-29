@@ -522,18 +522,24 @@ mod tests {
         row.gold_reward = u32::MAX;
         row.xp_reward = 0;
         let findings = check_regressions(&[row]);
-        assert!(findings.iter().any(|finding| matches!(
-            finding,
-            RegressionFinding::ActionsOutsideRange { .. }
-        )));
-        assert!(findings.iter().any(|finding| matches!(
-            finding,
-            RegressionFinding::GoldOutsideRange { .. }
-        )));
-        assert!(findings.iter().any(|finding| matches!(
-            finding,
-            RegressionFinding::XpOutsideRange { .. }
-        )));
+        assert!(findings
+            .iter()
+            .any(|finding| matches!(
+                finding,
+                RegressionFinding::ActionsOutsideRange { .. }
+            )));
+        assert!(findings
+            .iter()
+            .any(|finding| matches!(
+                finding,
+                RegressionFinding::GoldOutsideRange { .. }
+            )));
+        assert!(findings
+            .iter()
+            .any(|finding| matches!(
+                finding,
+                RegressionFinding::XpOutsideRange { .. }
+            )));
     }
 
     #[test]
