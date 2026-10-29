@@ -136,9 +136,11 @@ pub fn run_engine_battle(
                 _ => DefensiveChoice::Block,
             };
 
-            let (raw_damage, damage_type, _, logs) =
-                CombatEngine::generate_enemy_turn(&mut enemy, &player);
-            battle_log.extend(logs);
+            let intent = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+            let raw_damage = intent.damage;
+            let damage_type = intent.damage_type;
+            let status_payload = intent.status_payload;
+            battle_log.extend(intent.logs);
             let (mitigated, logs) = CombatEngine::calculate_damage(
                 raw_damage,
                 damage_type,
@@ -147,6 +149,15 @@ pub fn run_engine_battle(
                 defence,
             );
             battle_log.extend(logs);
+            if mitigated > 0 {
+                let status_logs = CombatEngine::apply_enemy_status_payload(
+                    &enemy.name,
+                    &mut player,
+                    status_payload,
+                    rand::thread_rng().gen_range(0..100),
+                );
+                battle_log.extend(status_logs);
+            }
             let armour_reduction = rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
             let damage = mitigated.saturating_sub(armour_reduction);
             player.hp = player.hp.saturating_sub(damage);
@@ -368,9 +379,11 @@ pub fn run_engine_battle(
                 enemy.is_stunned = false;
                 battle_log.push(format!("{} is stunned and misses its turn.", enemy.name));
             } else {
-                let (raw_damage, damage_type, _, logs) =
-                    CombatEngine::generate_enemy_turn(&mut enemy, &player);
-                battle_log.extend(logs);
+                let intent = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+                let raw_damage = intent.damage;
+                let damage_type = intent.damage_type;
+                let status_payload = intent.status_payload;
+                battle_log.extend(intent.logs);
 
                 if raw_damage > 0 {
                     let (mitigated, logs) = CombatEngine::calculate_damage(
@@ -381,6 +394,15 @@ pub fn run_engine_battle(
                         DefensiveChoice::None,
                     );
                     battle_log.extend(logs);
+                    if mitigated > 0 {
+                        let status_logs = CombatEngine::apply_enemy_status_payload(
+                            &enemy.name,
+                            &mut player,
+                            status_payload,
+                            rand::thread_rng().gen_range(0..100),
+                        );
+                        battle_log.extend(status_logs);
+                    }
                     let armour_reduction =
                         rand::thread_rng().gen_range(0..=state.player.armour.max_dr());
                     let damage = mitigated.saturating_sub(armour_reduction);
