@@ -86,23 +86,24 @@ impl RecoveryState {
         origin: &LocationId,
     ) -> Result<bool, RecoveryError> {
         if companion.current_hp > 0 {
-        return Ok(false);
-    }
+            return Ok(false);
+        }
         if self.record(companion.id).is_some() {
-        // Idempotent processing: retain the original destination and timer.
+            // Idempotent processing: retain the original destination and timer.
+            companion.condition = CompanionCondition::KnockedOut;
+            return Ok(false);
+        }
+        let destination = world.get_nearest_settlement(origin);
+        companion.current_hp = 0;
         companion.condition = CompanionCondition::KnockedOut;
-        return Ok(false);
-    }
-    let destination = world.get_nearest_settlement(origin);
-    companion.current_hp = 0;
-    companion.condition = CompanionCondition::KnockedOut;
-    self.records.push(CompanionRecoveryRecord {
-        companion_id: companion.id,
-        destination,
-        turns_remaining: RECOVERY_TURNS,
-    });
-    self.records.sort_by(|left, right| left.companion_id.as_str().cmp(right.companion_id.as_str()));
-    Ok(true)
+        self.records.push(CompanionRecoveryRecord {
+            companion_id: companion.id,
+            destination,
+            turns_remaining: RECOVERY_TURNS,
+        });
+        self.records
+            .sort_by(|left, right| left.companion_id.as_str().cmp(right.companion_id.as_str()));
+        Ok(true)
     }
 
     pub fn record_knockout_by_id(
