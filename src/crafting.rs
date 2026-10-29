@@ -426,7 +426,7 @@ pub struct RecipeAttemptResult {
 
 fn recipe_difficulty(recipe_id: &str) -> i32 {
     match recipe_id {
-        "cook_food" => 10,
+        "cook_food" => 15,
         "cook_gourmet_feast" => 35,
         "fletch_bow" => 25,
         "smith_ingot" => 25,
@@ -817,6 +817,7 @@ mod tests {
         let attempt = attempt_recipe(&mut state, "cook_food", 99, 5, 0).unwrap();
 
         assert!(!attempt.succeeded);
+        assert_eq!(attempt.success_chance, 25);
         assert_eq!(state.player.get_item_count(ItemType::RawFood), 0);
         assert_eq!(state.player.get_item_count(ItemType::Food), 0);
         assert_eq!(state.player.skills.cooking.current_xp, 0);
