@@ -1,6 +1,6 @@
 use crate::data::{ArmourTier, NpcType, WeaponTier, MAX_GOLD, MAX_PLAYER_LEVEL};
-use crate::party_battle::{run_party_battle, BattleConfig, BattleOutcome};
 use crate::event::GameEvent;
+use crate::party_battle::{run_party_battle, BattleConfig, BattleOutcome};
 use crate::state::GameState;
 use crate::ui::Tui;
 use rand::Rng;
