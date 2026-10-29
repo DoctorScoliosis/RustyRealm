@@ -4,7 +4,23 @@ use crate::event::GameEvent;
 use crate::state::{GameState, SkillData};
 use crate::ui::Tui;
 use rand::Rng;
+use crate::skill_checks::SkillCheck;
 use std::io;
+
+/// Resolve an optional gathering check. The penalty for failure is a wasted
+/// action: no items or skill XP are consumed/awarded. Existing recipe actions
+/// and resource-consuming fishing/cooking/smithing retain their prior rules.
+fn gathering_check(skill_level: u32, difficulty: i32, roll: u8) -> crate::skill_checks::SkillCheckResult {
+    SkillCheck { skill_level, difficulty, modifier: 0 }
+        .resolve(roll)
+        .expect("generated skill-check roll is within 0..=99")
+}
+
+fn thieving_check(skill_level: u32, roll: u8) -> crate::skill_checks::SkillCheckResult {
+    SkillCheck { skill_level, difficulty: 35, modifier: 0 }
+        .resolve(roll)
+        .expect("generated skill-check roll is within 0..=99")
+}
 
 fn award_xp(skill: &mut SkillData) -> bool {
     skill.current_xp += skill.xp_gain_per_action;
@@ -212,7 +228,11 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
         status = match skill {
             SkillKind::Woodcutting => {
                 let level = skill.data(state).level;
-                if level >= MAX_SKILL_LEVEL {
+                let difficulty = 25;
+                let check = gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
+                if !check.succeeded {
+                    format!("You fail to find a good cut and gain no logs or XP ({}% chance).", check.success_chance)
+                } else if level >= MAX_SKILL_LEVEL {
                     let count = crate::mastery::gathering_yield(state, 100);
                     state.player.add_item(ItemType::Logs, count);
                     format!("Mastery: instantly cut {count} logs.")
@@ -332,7 +352,12 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 }
             }
             SkillKind::Mining => {
-                if skill.data(state).level >= MAX_SKILL_LEVEL {
+                let level = skill.data(state).level;
+                let difficulty = 30;
+                let check = gathering_check(level, difficulty, rand::thread_rng().gen_range(0..100));
+                if !check.succeeded {
+                    format!("You fail to extract usable ore and gain no ore or XP ({}% chance).", check.success_chance)
+                } else if level >= MAX_SKILL_LEVEL {
                     let count = crate::mastery::gathering_yield(state, 100);
                     state.player.add_item(ItemType::Ore, count);
                     format!("Mastery: instantly mined {count} ore.")
@@ -409,10 +434,17 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 }
             }
             SkillKind::Thieving => {
-                let found_thread = rand::thread_rng().gen_bool(0.4);
-                if found_thread {
-                    state.player.add_item(ItemType::Thread, 1);
-                }
+                let level = skill.data(state).level;
+                let check = thieving_check(level, rand::thread_rng().gen_range(0..100));
+                if !check.succeeded {
+                    // Failure is a wasted attempt only. No gold, thread or XP is
+                    // awarded, and no inventory/resource mutation has occurred.
+                    format!("You are caught in the act and get away empty-handed ({}% chance).", check.success_chance)
+                } else {
+                    let found_thread = rand::thread_rng().gen_bool(0.4);
+                    if found_thread {
+                        state.player.add_item(ItemType::Thread, 1);
+                    }
 
                 if skill.data(state).level >= MAX_SKILL_LEVEL {
                     state.player.gold = state.player.gold.saturating_add(10_000).min(MAX_GOLD);
@@ -452,7 +484,43 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         "You stole some coins.".to_string()
                     }
                 }
+                }
             }
         };
+    }
+}
+
+
+#[cfg(test)]
+mod skill_check_integration_tests {
+    use super::*;
+
+    #[test]
+    fn gathering_checks_use_distinct_documented_difficulties() {
+        assert_eq!(gathering_check(50, 25, 0).success_chance, 30);
+        assert_eq!(gathering_check(50, 30, 0).success_chance, 25);
+    }
+
+    #[test]
+    fn thieving_check_is_skill_sensitive_and_bounded() {
+        let low = thieving_check(1, 0);
+        let high = thieving_check(100, 0);
+        assert!(high.success_chance > low.success_chance);
+        assert!(low.success_chance >= crate::skill_checks::MIN_SUCCESS_CHANCE);
+        assert!(high.success_chance <= crate::skill_checks::MAX_SUCCESS_CHANCE);
+    }
+
+    #[test]
+    fn worst_roll_fails_without_awarding_success() {
+        assert!(!gathering_check(1, 25, 99).succeeded);
+        assert!(!gathering_check(100, 25, 99).succeeded);
+        assert!(!thieving_check(100, 99).succeeded);
+    }
+
+    #[test]
+    fn best_roll_succeeds_for_high_skill_gathering() {
+        assert!(gathering_check(100, 25, 0).succeeded);
+        assert!(gathering_check(100, 30, 0).succeeded);
+        assert!(thieving_check(100, 0).succeeded);
     }
 }
