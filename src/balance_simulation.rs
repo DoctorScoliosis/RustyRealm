@@ -89,12 +89,84 @@ pub struct EncounterSpec {
 }
 
 pub const BASELINE_ENCOUNTERS: [EncounterSpec; 6] = [
-    EncounterSpec { id: "low-rat", enemy_name: "Rat", base_health: 55, base_attack: 12, expected_actions_min: 1, expected_actions_max: 8, max_party_damage: 110, expected_gold_min: 20, expected_gold_max: 100, expected_xp_min: 20, expected_xp_max: 200 },
-    EncounterSpec { id: "low-goblin", enemy_name: "Goblin", base_health: 90, base_attack: 18, expected_actions_min: 1, expected_actions_max: 10, max_party_damage: 150, expected_gold_min: 20, expected_gold_max: 200, expected_xp_min: 20, expected_xp_max: 250 },
-    EncounterSpec { id: "middle-stronghold-warrior", enemy_name: "Stronghold Warrior", base_health: 750, base_attack: 200, expected_actions_min: 2, expected_actions_max: 18, max_party_damage: 500, expected_gold_min: 250, expected_gold_max: 1_500, expected_xp_min: 250, expected_xp_max: 2_500 },
-    EncounterSpec { id: "middle-dragon", enemy_name: "Dragon", base_health: 650, base_attack: 90, expected_actions_min: 2, expected_actions_max: 20, max_party_damage: 650, expected_gold_min: 100, expected_gold_max: 1_000, expected_xp_min: 100, expected_xp_max: 2_000 },
-    EncounterSpec { id: "high-lacoyx", enemy_name: "Lacoyx", base_health: 2_780, base_attack: 600, expected_actions_min: 3, expected_actions_max: 35, max_party_damage: 1_200, expected_gold_min: 1_000, expected_gold_max: 5_000, expected_xp_min: 1_000, expected_xp_max: 5_000 },
-    EncounterSpec { id: "high-gauntlet-wave-10", enemy_name: "Gauntlet Fiend · Wave 10", base_health: 4_045, base_attack: 62, expected_actions_min: 4, expected_actions_max: 45, max_party_damage: 1_400, expected_gold_min: 100, expected_gold_max: 5_000, expected_xp_min: 100, expected_xp_max: 5_000 },
+    EncounterSpec {
+        id: "low-rat",
+        enemy_name: "Rat",
+        base_health: 55,
+        base_attack: 12,
+        expected_actions_min: 1,
+        expected_actions_max: 8,
+        max_party_damage: 110,
+        expected_gold_min: 20,
+        expected_gold_max: 100,
+        expected_xp_min: 20,
+        expected_xp_max: 200,
+    },
+    EncounterSpec {
+        id: "low-goblin",
+        enemy_name: "Goblin",
+        base_health: 90,
+        base_attack: 18,
+        expected_actions_min: 1,
+        expected_actions_max: 10,
+        max_party_damage: 150,
+        expected_gold_min: 20,
+        expected_gold_max: 200,
+        expected_xp_min: 20,
+        expected_xp_max: 250,
+    },
+    EncounterSpec {
+        id: "middle-stronghold-warrior",
+        enemy_name: "Stronghold Warrior",
+        base_health: 750,
+        base_attack: 200,
+        expected_actions_min: 2,
+        expected_actions_max: 18,
+        max_party_damage: 500,
+        expected_gold_min: 250,
+        expected_gold_max: 1_500,
+        expected_xp_min: 250,
+        expected_xp_max: 2_500,
+    },
+    EncounterSpec {
+        id: "middle-dragon",
+        enemy_name: "Dragon",
+        base_health: 650,
+        base_attack: 90,
+        expected_actions_min: 2,
+        expected_actions_max: 20,
+        max_party_damage: 650,
+        expected_gold_min: 100,
+        expected_gold_max: 1_000,
+        expected_xp_min: 100,
+        expected_xp_max: 2_000,
+    },
+    EncounterSpec {
+        id: "high-lacoyx",
+        enemy_name: "Lacoyx",
+        base_health: 2_780,
+        base_attack: 600,
+        expected_actions_min: 3,
+        expected_actions_max: 35,
+        max_party_damage: 1_200,
+        expected_gold_min: 1_000,
+        expected_gold_max: 5_000,
+        expected_xp_min: 1_000,
+        expected_xp_max: 5_000,
+    },
+    EncounterSpec {
+        id: "high-gauntlet-wave-10",
+        enemy_name: "Gauntlet Fiend · Wave 10",
+        base_health: 4_045,
+        base_attack: 62,
+        expected_actions_min: 4,
+        expected_actions_max: 45,
+        max_party_damage: 1_400,
+        expected_gold_min: 100,
+        expected_gold_max: 5_000,
+        expected_xp_min: 100,
+        expected_xp_max: 5_000,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,11 +192,33 @@ pub struct SimulationMetrics {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegressionFinding {
-    ActionsOutsideRange { scenario: String, actual: u32, min: u32, max: u32 },
-    DamageAboveTarget { scenario: String, actual: u64, maximum: u64 },
-    UnexpectedDefeat { scenario: String, seed: u64 },
-    GoldOutsideRange { scenario: String, actual: u32, min: u32, max: u32 },
-    XpOutsideRange { scenario: String, actual: u32, min: u32, max: u32 },
+    ActionsOutsideRange {
+        scenario: String,
+        actual: u32,
+        min: u32,
+        max: u32,
+    },
+    DamageAboveTarget {
+        scenario: String,
+        actual: u64,
+        maximum: u64,
+    },
+    UnexpectedDefeat {
+        scenario: String,
+        seed: u64,
+    },
+    GoldOutsideRange {
+        scenario: String,
+        actual: u32,
+        min: u32,
+        max: u32,
+    },
+    XpOutsideRange {
+        scenario: String,
+        actual: u32,
+        min: u32,
+        max: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,7 +254,12 @@ fn enemy_defence(spec: EncounterSpec) -> u32 {
     }
 }
 
-fn legal_action(encounter: &Encounter, actor: CombatantId, action_roll: u32, metrics: &mut SimulationMetrics) -> CombatAction {
+fn legal_action(
+    encounter: &Encounter,
+    actor: CombatantId,
+    action_roll: u32,
+    metrics: &mut SimulationMetrics,
+) -> CombatAction {
     let source = encounter.combatant(actor).expect("current actor must exist");
     if source.allegiance == Allegiance::Enemies {
         return crate::status_combat::propose_enemy_action(encounter, actor, action_roll)
@@ -195,7 +294,11 @@ fn legal_action(encounter: &Encounter, actor: CombatantId, action_roll: u32, met
     }
 }
 
-pub fn simulate_encounter(spec: EncounterSpec, progression: ProgressionBand, seed: u64) -> SimulationMetrics {
+pub fn simulate_encounter(
+    spec: EncounterSpec,
+    progression: ProgressionBand,
+    seed: u64,
+) -> SimulationMetrics {
     let build = progression.player_build();
     let player_id = CombatantId(1);
     let enemy_id = CombatantId(2);
@@ -206,7 +309,11 @@ pub fn simulate_encounter(spec: EncounterSpec, progression: ProgressionBand, see
     hero.defence = build.defence;
     let enemy = EncounterCombatant::new(
         enemy_id, CombatantSource::Enemy, spec.enemy_name, Allegiance::Enemies,
-        scenario_enemy_health(spec, seed), 100, 100, scenario_enemy_attack(spec, seed), enemy_defence(spec),
+        scenario_enemy_health(spec, seed),
+        100,
+        100,
+        scenario_enemy_attack(spec, seed),
+        enemy_defence(spec),
     );
     let mut encounter = Encounter::new(vec![hero, enemy]).expect("baseline contains an enemy");
     let mut metrics = SimulationMetrics {
@@ -215,9 +322,15 @@ pub fn simulate_encounter(spec: EncounterSpec, progression: ProgressionBand, see
         healing_used: 0, recovery_gold_assumption: DEFAULT_RECOVERY_GOLD_ASSUMPTION,
         gold_reward: spec.expected_gold_min, xp_reward: spec.expected_xp_min,
     };
-    let mut before_actor_turn = PlayerSnapshot { hp: build.hp, stamina: build.stamina, mana: build.mana };
+    let mut before_actor_turn = PlayerSnapshot {
+        hp: build.hp,
+        stamina: build.stamina,
+        mana: build.mana,
+    };
 
-    while encounter.outcome == EncounterOutcome::Ongoing && metrics.actions < MAX_SIMULATION_ACTIONS {
+    while encounter.outcome == EncounterOutcome::Ongoing
+        && metrics.actions < MAX_SIMULATION_ACTIONS
+    {
         let Some(actor) = encounter.current_actor() else { break };
         let actor_roll = seed_roll(seed, metrics.actions, 3);
         if actor == player_id {
@@ -297,7 +410,9 @@ pub fn check_regressions(results: &[SimulationMetrics]) -> Vec<RegressionFinding
     let mut findings = Vec::new();
     for metrics in results {
         if let Some(spec) = BASELINE_ENCOUNTERS.iter().find(|spec| spec.id == metrics.scenario_id) {
-            if metrics.actions < spec.expected_actions_min || metrics.actions > spec.expected_actions_max {
+            if metrics.actions < spec.expected_actions_min
+                || metrics.actions > spec.expected_actions_max
+            {
                 findings.push(RegressionFinding::ActionsOutsideRange {
                     scenario: metrics.scenario_id.clone(), actual: metrics.actions,
                     min: spec.expected_actions_min, max: spec.expected_actions_max,
@@ -310,15 +425,22 @@ pub fn check_regressions(results: &[SimulationMetrics]) -> Vec<RegressionFinding
                 });
             }
             if !metrics.won {
-                findings.push(RegressionFinding::UnexpectedDefeat { scenario: metrics.scenario_id.clone(), seed: metrics.seed });
+                findings.push(RegressionFinding::UnexpectedDefeat {
+                    scenario: metrics.scenario_id.clone(),
+                    seed: metrics.seed,
+                });
             }
-            if metrics.gold_reward < spec.expected_gold_min || metrics.gold_reward > spec.expected_gold_max {
+            if metrics.gold_reward < spec.expected_gold_min
+                || metrics.gold_reward > spec.expected_gold_max
+            {
                 findings.push(RegressionFinding::GoldOutsideRange {
                     scenario: metrics.scenario_id.clone(), actual: metrics.gold_reward,
                     min: spec.expected_gold_min, max: spec.expected_gold_max,
                 });
             }
-            if metrics.xp_reward < spec.expected_xp_min || metrics.xp_reward > spec.expected_xp_max {
+            if metrics.xp_reward < spec.expected_xp_min
+                || metrics.xp_reward > spec.expected_xp_max
+            {
                 findings.push(RegressionFinding::XpOutsideRange {
                     scenario: metrics.scenario_id.clone(), actual: metrics.xp_reward,
                     min: spec.expected_xp_min, max: spec.expected_xp_max,
@@ -364,14 +486,32 @@ mod tests {
 
     #[test]
     fn class_attribute_profiles_remain_distinct() {
-        let neutral = CombatAttributes { speed: 50, accuracy: 50, evasion: 50, power: 50, resistance: 50 };
-        let zero = CombatAttributes { speed: 0, accuracy: 0, evasion: 0, power: 0, resistance: 0 };
-        let profiles: Vec<_> = CharacterClass::ALL.into_iter()
+        let neutral = CombatAttributes {
+            speed: 50,
+            accuracy: 50,
+            evasion: 50,
+            power: 50,
+            resistance: 50,
+        };
+        let zero = CombatAttributes {
+            speed: 0,
+            accuracy: 0,
+            evasion: 0,
+            power: 0,
+            resistance: 0,
+        };
+        let profiles: Vec<_> = CharacterClass::ALL
             .map(|class| (class, CombatAttributes::derived(class, neutral, zero, zero)))
             .collect();
         for (index, (class, attrs)) in profiles.iter().enumerate() {
             for (other, other_attrs) in profiles.iter().skip(index + 1) {
-                assert_ne!(attrs, other_attrs, "{} and {} need detectable trade-offs", class.name(), other.name());
+                assert_ne!(
+                    attrs,
+                    other_attrs,
+                    "{} and {} need detectable trade-offs",
+                    class.name(),
+                    other.name()
+                );
             }
         }
     }
