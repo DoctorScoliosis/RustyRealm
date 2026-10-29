@@ -734,6 +734,25 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_telegraph_carries_its_profile_payload_into_resolution() {
+        let mut enemy = Combatant::new_monster("Stronghold Mage", 110, 100);
+        let player = player();
+        let proposal =
+            CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
+        let telegraph = proposal.telegraph.expect("zero roll commits a Mage telegraph");
+        let payload = telegraph.status_payload;
+
+        enemy.telegraphed_attack = Some(telegraph.clone());
+        let resolved = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+
+        assert_eq!(resolved.damage, telegraph.damage);
+        assert_eq!(resolved.damage_type, telegraph.damage_type);
+        assert_eq!(resolved.status_payload, payload);
+        assert!(resolved.telegraph.is_none());
+        assert!(enemy.telegraphed_attack.is_none());
+    }
+
+    #[test]
     fn legacy_enemy_status_payload_uses_shared_resistance_and_application_chance() {
         let mut target = Combatant::new_monster("TestHero", 1, 100);
         target.status_resistance_pct = 90;
