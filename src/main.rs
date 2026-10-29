@@ -2,6 +2,7 @@ mod achievements;
 mod bank;
 mod combat;
 mod combat_engine;
+mod companion_recovery;
 mod crafting;
 mod data;
 mod economy;
@@ -9,6 +10,7 @@ mod event;
 mod inventory;
 mod mastery;
 mod party;
+mod party_battle;
 mod party_combat;
 mod quests;
 mod save;
@@ -163,6 +165,47 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
 
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
+    // The location graph and recovery records are persisted separately; a
+    // companion with zero HP is normalised here so stale party IDs cannot let
+    // an older save field reintroduce them into combat.
+    for companion in &mut state.companions {
+        if companion.current_hp == 0
+            && !matches!(
+                companion.condition,
+                crate::party::CompanionCondition::KnockedOut
+                    | crate::party::CompanionCondition::Recovering
+            )
+        {
+            companion.condition = crate::party::CompanionCondition::KnockedOut;
+        }
+    }
+    let knocked_out: Vec<_> = state
+        .companions
+        .iter()
+        .filter(|companion| {
+            companion.current_hp == 0 && state.companion_recovery.record(companion.id).is_none()
+        })
+        .map(|companion| companion.id)
+        .collect();
+    let origin = state.current_location.clone();
+    let mut new_records = Vec::new();
+    for id in knocked_out {
+        if let Some(companion) = state
+            .companions
+            .iter_mut()
+            .find(|companion| companion.id == id)
+        {
+            if let Ok(true) = state
+                .companion_recovery
+                .record_knockout(companion, &world, &origin)
+            {
+                new_records.push(id);
+            }
+        }
+    }
+    for id in new_records {
+        let _ = state.party.remove_member(id);
+    }
     let options = [
         "Travel / Explore Region",
         "Wander Gielinor",
@@ -179,6 +222,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         "Your Inventory",
         "Mastery & Achievements",
         "Companions & Party",
+        "Companion Recovery",
         "Settings",
         "Log Out",
     ];
@@ -229,7 +273,8 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             12 => inventory::view_inventory(tui, state, false)?,
             13 => crate::achievements::progression_menu(tui, state)?,
             14 => companion_menu(tui, state)?,
-            15 => settings_menu(tui, state)?,
+            15 => companion_recovery_menu(tui, state, &world)?,
+            16 => settings_menu(tui, state)?,
             _ => {
                 crate::save::save_game(state)
                     .map_err(|error| io::Error::other(error.to_string()))?;
@@ -237,6 +282,21 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             }
         }
         state.market_state.advance_turn();
+        let recovered = state
+            .companion_recovery
+            .advance_committed_turn(&mut state.companions);
+        if !recovered.is_empty() {
+            let names = recovered
+                .iter()
+                .map(|id| crate::party::get_definition(*id).name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            tui.show_message(
+                "Companion recovered",
+                &format!("{names} recovered after completing the required main-menu turns. They are available for explicit party selection."),
+                Some(state),
+            )?;
+        }
     }
 }
 
@@ -450,6 +510,117 @@ fn buy_sell_item(tui: &mut Tui, state: &mut GameState, item: ItemType) -> io::Re
                 }
             }
             _ => return Ok(()),
+        }
+    }
+}
+
+fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
+    use crate::companion_recovery::{RecoveryError, TREATMENT_COST};
+
+    loop {
+        let mut labels = Vec::new();
+        let mut ids = Vec::new();
+        for record in &state.companion_recovery.records {
+            if let Some(companion) = state
+                .companions
+                .iter()
+                .find(|c| c.id == record.companion_id)
+            {
+                let destination = record
+                    .destination
+                    .as_ref()
+                    .and_then(|id| world.get_location(id))
+                    .map(|location| location.name.as_str())
+                    .unwrap_or("No reachable treatment settlement");
+                labels.push(format!(
+                    "{} · {} · {} committed turn(s) remaining · treatment {}g",
+                    companion.display_name(),
+                    destination,
+                    record.turns_remaining,
+                    TREATMENT_COST
+                ));
+                ids.push(record.companion_id);
+            }
+        }
+        labels.push("Back".to_string());
+        let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let choice = tui.select_menu("Companion Recovery", &options, Some(state))?;
+        if choice >= ids.len() {
+            return Ok(());
+        }
+        let id = ids[choice];
+        let record = state.companion_recovery.record(id).cloned();
+        let destination = record.as_ref().and_then(|r| r.destination.clone());
+        let Some(destination) = destination else {
+            tui.show_message(
+                "Treatment unavailable",
+                "No reachable settlement was found when the companion was knocked out. Their state is preserved; no teleport or payment has been applied.",
+                Some(state),
+            )?;
+            continue;
+        };
+        let destination_name = world
+            .get_location(&destination)
+            .map(|loc| loc.name.clone())
+            .unwrap_or_else(|| destination.to_string());
+        let is_here = state.current_location == destination;
+        let mut detail = format!(
+            "{} is being treated at {}.\nRecovery requirement: {} committed main-menu turn(s).\nImmediate treatment: {} gold.\nCurrent gold: {}.",
+            crate::party::get_definition(id).name,
+            destination_name,
+            record.as_ref().map(|r| r.turns_remaining).unwrap_or(0),
+            TREATMENT_COST,
+            state.player.gold
+        );
+        if !is_here {
+            detail.push_str("\n\nTravel to that settlement before paying for immediate treatment.");
+        }
+        tui.show_message("Recovery details", &detail, Some(state))?;
+        let choices = if is_here {
+            vec!["Pay for immediate treatment", "Back"]
+        } else {
+            vec!["Back"]
+        };
+        let selected = tui.select_menu("Recovery details", &choices, Some(state))?;
+        if !is_here || selected != 0 {
+            continue;
+        }
+        let treatment_location = state.current_location.clone();
+        let treatment_result = {
+            let recovery = &mut state.companion_recovery;
+            let companion = state
+                .companions
+                .iter_mut()
+                .find(|companion| companion.id == id);
+            let Some(companion) = companion else {
+                return Err(io::Error::other(
+                    "Recovery record refers to a missing companion.",
+                ));
+            };
+            let result = recovery.apply_treatment_parts(
+                &mut state.player.gold,
+                &mut state.party,
+                companion,
+                id,
+                &treatment_location,
+                world,
+            );
+            result
+        };
+        match treatment_result {
+            Ok(cost) => tui.show_message(
+                "Treatment complete",
+                &format!("{} has recovered. {cost} gold paid; companion is available but has not been automatically added to the party.", crate::party::get_definition(id).name),
+                Some(state),
+            )?,
+            Err(error) => {
+                let title = if matches!(error, RecoveryError::InsufficientGold { .. }) {
+                    "Treatment unaffordable"
+                } else {
+                    "Treatment unavailable"
+                };
+                tui.show_message(title, &error.to_string(), Some(state))?;
+            }
         }
     }
 }
