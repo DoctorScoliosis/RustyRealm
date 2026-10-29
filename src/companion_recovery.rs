@@ -453,7 +453,6 @@ mod tests {
         // the companion from the active party as soon as it processes the knockout.
         assert!(validate_recovery_invariants(&state, &recovery));
     }
-
     #[test]
     fn no_reachable_settlement_is_safe_and_explicit() {
         let mut world = build_initial_world().unwrap();
@@ -515,6 +514,7 @@ mod tests {
         let world = build_initial_world().unwrap();
         let mut state = state_with_companion();
         let id = CompanionId::BranTheShield;
+        let gold_before = state.player.gold;
         state.companions[0].current_hp = 0;
         let mut recovery = RecoveryState::default();
         recovery
@@ -526,16 +526,9 @@ mod tests {
             recovery.apply_treatment(&mut state, id, &location, &world),
             Ok(TREATMENT_COST)
         );
-        assert_eq!(
-            state.companions[0].condition,
-            CompanionCondition::Available
-        );
+        assert_eq!(state.companions[0].condition, CompanionCondition::Available);
         assert_eq!(state.companions[0].current_hp, state.companions[0].max_hp);
-        assert_eq!(
-            state.player.gold,
-            1000 - TREATMENT_COST
-                - crate::party::get_definition(CompanionId::BranTheShield).recruitment_cost
-        );
+        assert_eq!(state.player.gold, gold_before - TREATMENT_COST);
         assert!(recovery.record(id).is_none());
         let location = state.current_location.clone();
         assert!(recovery
@@ -707,7 +700,10 @@ mod tests {
         assert_eq!(state.player.hp, state.player.max_hp);
         assert_eq!(state.current_location, LocationId::from("village_start"));
         assert!(!state.party.contains(CompanionId::BranTheShield));
-        assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
+        assert_eq!(
+            state.companions[0].condition,
+            CompanionCondition::KnockedOut
+        );
         assert_eq!(recovery.expedition_defeat_count, 1);
         assert!(recovery.record(CompanionId::BranTheShield).is_some());
     }
