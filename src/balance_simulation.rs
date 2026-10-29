@@ -501,6 +501,7 @@ mod tests {
             resistance: 0,
         };
         let profiles: Vec<_> = CharacterClass::ALL
+            .into_iter()
             .map(|class| (class, CombatAttributes::derived(class, neutral, zero, zero)))
             .collect();
         for (index, (class, attrs)) in profiles.iter().enumerate() {
