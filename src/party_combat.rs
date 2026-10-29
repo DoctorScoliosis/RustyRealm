@@ -925,7 +925,9 @@ impl Encounter {
                 return Err(EncounterError::WrongAllegiance);
             }
             let ability = get_ability(AbilityId::ShieldWall);
-            let actor = self.combatant(actor_id).ok_or(EncounterError::MissingActor(actor_id))?;
+            let actor = self
+                .combatant(actor_id)
+                .ok_or(EncounterError::MissingActor(actor_id))?;
             if actor.stamina < ability.stamina_cost {
                 return Err(EncounterError::InsufficientStamina);
             }
@@ -1065,9 +1067,8 @@ impl Encounter {
                 .min(target.hp)
         };
         if hit && target.guard_charges > 0 && damage > 0 {
-            damage = damage
-                .saturating_mul(100 - u32::from(target.guard_reduction_pct.min(90)))
-                / 100;
+            damage =
+                damage.saturating_mul(100 - u32::from(target.guard_reduction_pct.min(90))) / 100;
         }
         if let Some(def) = &ability {
             let source = self
@@ -1144,10 +1145,7 @@ impl Encounter {
                 .find(|c| c.id == actor_id)
                 .expect("actor validated");
             let before = actor.hp;
-            actor.hp = actor
-                .hp
-                .saturating_add(requested_healing)
-                .min(actor.max_hp);
+            actor.hp = actor.hp.saturating_add(requested_healing).min(actor.max_hp);
             actor.hp.saturating_sub(before)
         } else {
             0
@@ -1508,10 +1506,7 @@ mod tests {
         assert!(result.damage > 0);
         assert!(result.healing > 0);
         assert_eq!(e.combatant(CombatantId(1)).unwrap().mana, mana_before - 25);
-        assert_eq!(
-            e.combatant(CombatantId(1)).unwrap().hp,
-            30 + result.healing
-        );
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().hp, 30 + result.healing);
     }
 
     #[test]
