@@ -196,15 +196,6 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             tui.show_message("Achievement unlocked", &notice, Some(state))?;
         }
         crate::quests::check_and_refresh_quests(state);
-        let recovered = state.companion_recovery.advance_committed_turn(&mut state.companions);
-        if !recovered.is_empty() {
-            let names = recovered.iter().map(|id| crate::party::get_definition(*id).name).collect::<Vec<_>>().join(", ");
-            tui.show_message(
-                "Companion recovered",
-                &format!("{names} recovered after completing the required main-menu turns. They are available for explicit party selection."),
-                Some(state),
-            )?;
-        }
         if let Err(error) = crate::save::save_game(state) {
             tui.show_message(
                 "Save warning",
@@ -249,6 +240,15 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             }
         }
         state.market_state.advance_turn();
+        let recovered = state.companion_recovery.advance_committed_turn(&mut state.companions);
+        if !recovered.is_empty() {
+            let names = recovered.iter().map(|id| crate::party::get_definition(*id).name).collect::<Vec<_>>().join(", ");
+            tui.show_message(
+                "Companion recovered",
+                &format!("{names} recovered after completing the required main-menu turns. They are available for explicit party selection."),
+                Some(state),
+            )?;
+        }
     }
 }
 
