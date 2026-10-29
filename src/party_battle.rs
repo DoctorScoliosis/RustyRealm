@@ -119,6 +119,30 @@ fn resolve_party_defeat(
     Ok(true)
 }
 
+fn cancel_invalid_pending_telegraph(
+    pending: &mut Option<TelegraphedAction>,
+    encounter: &Encounter,
+    last_log: &mut String,
+) {
+    let invalid = pending.as_ref().is_some_and(|telegraph| {
+        encounter
+            .combatant(telegraph.actor)
+            .is_none_or(|actor| !actor.can_act())
+            || encounter
+                .combatant(telegraph.target)
+                .is_none_or(|target| !target.can_act())
+    });
+    if invalid {
+        if let Some(telegraph) = pending.take() {
+            *last_log = format!(
+                "{} is cancelled because its actor or target can no longer act.",
+                telegraph.name
+            );
+        }
+    }
+}
+
+
 
 fn target_label(encounter: &Encounter, id: CombatantId) -> String {
     encounter
@@ -485,6 +509,7 @@ pub fn run_party_battle(
                 let telegraph = pending_telegraph.take().expect("pending telegraph matched");
                 last_log = format!("{} is interrupted by Stun.", telegraph.name);
             }
+            cancel_invalid_pending_telegraph(&mut pending_telegraph, &encounter, &mut last_log);
             sync_persistent_state(state, &encounter, &world)?;
             if resolve_party_defeat(tui, state, &encounter, &world)? {
                 return Ok(BattleOutcome::Defeated);
@@ -658,6 +683,7 @@ pub fn run_party_battle(
                 action_result.message
             ),
         };
+        cancel_invalid_pending_telegraph(&mut pending_telegraph, &encounter, &mut last_log);
         sync_persistent_state(state, &encounter, &world)?;
         if resolve_party_defeat(tui, state, &encounter, &world)? {
             return Ok(BattleOutcome::Defeated);
