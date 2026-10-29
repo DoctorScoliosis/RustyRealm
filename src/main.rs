@@ -411,15 +411,8 @@ fn region_expedition_menu(
             resource_drain_per_turn: 0,
         })? {
             BattleOutcome::Victory => {
-                state.player.gold = state.player.gold.saturating_add(enemy.gold_reward).min(crate::data::MAX_GOLD);
-                if let Some((item, count)) = enemy.item_reward {
-                    state.player.add_item(item, count);
-                    crate::quests::notify_event(state, &crate::event::GameEvent::ItemCollected { item_type: item, count });
-                }
-                crate::quests::notify_event(state, &crate::event::GameEvent::MonsterDefeated { name: enemy.name.to_string(), is_stronghold: false });
                 tui.show_message("Expedition progress",
-                    &format!("Defeated {}. Received {} gold{}.", enemy.name, enemy.gold_reward,
-                        enemy.item_reward.map(|(item,count)| format!(" and {count} {}", item.name())).unwrap_or_default()),
+                    &format!("Defeated {}. Its loot and quest progress have been recorded.", enemy.name),
                     Some(state))?;
             }
             BattleOutcome::Fled => {
