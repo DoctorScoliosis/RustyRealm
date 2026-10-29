@@ -169,21 +169,35 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     // an older save field reintroduce them into combat.
     for companion in &mut state.companions {
         if companion.current_hp == 0
-            && !matches!(companion.condition, crate::party::CompanionCondition::KnockedOut | crate::party::CompanionCondition::Recovering)
+            && !matches!(
+                companion.condition,
+                crate::party::CompanionCondition::KnockedOut
+                    | crate::party::CompanionCondition::Recovering
+            )
         {
             companion.condition = crate::party::CompanionCondition::KnockedOut;
         }
     }
-    let knocked_out: Vec<_> = state.companions.iter()
-        .filter(|companion| companion.current_hp == 0
-            && state.companion_recovery.record(companion.id).is_none())
+    let knocked_out: Vec<_> = state
+        .companions
+        .iter()
+        .filter(|companion| {
+            companion.current_hp == 0 && state.companion_recovery.record(companion.id).is_none()
+        })
         .map(|companion| companion.id)
         .collect();
     let origin = state.current_location.clone();
     let mut new_records = Vec::new();
     for id in knocked_out {
-        if let Some(companion) = state.companions.iter_mut().find(|companion| companion.id == id) {
-            if let Ok(true) = state.companion_recovery.record_knockout(companion, &world, &origin) {
+        if let Some(companion) = state
+            .companions
+            .iter_mut()
+            .find(|companion| companion.id == id)
+        {
+            if let Ok(true) = state
+                .companion_recovery
+                .record_knockout(companion, &world, &origin)
+            {
                 new_records.push(id);
             }
         }
@@ -267,9 +281,15 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             }
         }
         state.market_state.advance_turn();
-        let recovered = state.companion_recovery.advance_committed_turn(&mut state.companions);
+        let recovered = state
+            .companion_recovery
+            .advance_committed_turn(&mut state.companions);
         if !recovered.is_empty() {
-            let names = recovered.iter().map(|id| crate::party::get_definition(*id).name).collect::<Vec<_>>().join(", ");
+            let names = recovered
+                .iter()
+                .map(|id| crate::party::get_definition(*id).name)
+                .collect::<Vec<_>>()
+                .join(", ");
             tui.show_message(
                 "Companion recovered",
                 &format!("{names} recovered after completing the required main-menu turns. They are available for explicit party selection."),
@@ -500,14 +520,23 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
         let mut labels = Vec::new();
         let mut ids = Vec::new();
         for record in &state.companion_recovery.records {
-            if let Some(companion) = state.companions.iter().find(|c| c.id == record.companion_id) {
-                let destination = record.destination.as_ref()
+            if let Some(companion) = state
+                .companions
+                .iter()
+                .find(|c| c.id == record.companion_id)
+            {
+                let destination = record
+                    .destination
+                    .as_ref()
                     .and_then(|id| world.get_location(id))
                     .map(|location| location.name.as_str())
                     .unwrap_or("No reachable treatment settlement");
                 labels.push(format!(
                     "{} · {} · {} committed turn(s) remaining · treatment {}g",
-                    companion.display_name(), destination, record.turns_remaining, TREATMENT_COST
+                    companion.display_name(),
+                    destination,
+                    record.turns_remaining,
+                    TREATMENT_COST
                 ));
                 ids.push(record.companion_id);
             }
@@ -529,7 +558,8 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
             )?;
             continue;
         };
-        let destination_name = world.get_location(&destination)
+        let destination_name = world
+            .get_location(&destination)
             .map(|loc| loc.name.clone())
             .unwrap_or_else(|| destination.to_string());
         let is_here = state.current_location == destination;
@@ -557,9 +587,14 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
         let treatment_location = state.current_location.clone();
         let treatment_result = {
             let recovery = &mut state.companion_recovery;
-            let companion = state.companions.iter_mut().find(|companion| companion.id == id);
+            let companion = state
+                .companions
+                .iter_mut()
+                .find(|companion| companion.id == id);
             let Some(companion) = companion else {
-                return Err(io::Error::other("Recovery record refers to a missing companion."));
+                return Err(io::Error::other(
+                    "Recovery record refers to a missing companion.",
+                ));
             };
             let result = recovery.apply_treatment_parts(
                 &mut state.player.gold,
