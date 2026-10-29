@@ -412,9 +412,16 @@ mod tests {
 
     fn state_with_companion() -> GameState {
         let mut state = GameState::new(Player::new("tester".into(), String::new()));
-        let cost = PartyManager::recruit(&mut state.companions, CompanionId::BranTheShield, 99, 1000).unwrap();
+        let cost =
+            PartyManager::recruit(&mut state.companions, CompanionId::BranTheShield, 99, 1000)
+                .unwrap();
         state.player.gold -= cost;
-        PartyManager::add_to_party(&mut state.party, &state.companions, CompanionId::BranTheShield).unwrap();
+        PartyManager::add_to_party(
+            &mut state.party,
+            &state.companions,
+            CompanionId::BranTheShield,
+        )
+        .unwrap();
         state
 }
 
@@ -426,12 +433,22 @@ mod tests {
         state.current_location = LocationId::from("whispering_woods");
         let mut recovery = RecoveryState::default();
         let id = CompanionId::BranTheShield;
-        assert!(recovery.record_knockout_by_id(&mut state, id, &world).unwrap());
+        assert!(recovery
+            .record_knockout_by_id(&mut state, id, &world)
+            .unwrap());
         let original = recovery.record(id).unwrap().clone();
-        assert!(!recovery.record_knockout_by_id(&mut state, id, &world).unwrap());
+        assert!(!recovery
+            .record_knockout_by_id(&mut state, id, &world)
+            .unwrap());
         assert_eq!(recovery.record(id), Some(&original));
-        assert_eq!(original.destination, Some(LocationId::from("village_start")));
-        assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
+        assert_eq!(
+            original.destination,
+            Some(LocationId::from("village_start"))
+        );
+        assert_eq!(
+            state.companions[0].condition,
+            CompanionCondition::KnockedOut
+        );
         assert!(!state.party.contains(id));
         // This operation records the state only; the caller's main combat adapter removes
         // the companion from the active party as soon as it processes the knockout.
@@ -441,18 +458,34 @@ mod tests {
     #[test]
     fn no_reachable_settlement_is_safe_and_explicit() {
         let mut world = build_initial_world().unwrap();
-        world.add_location(crate::world::Location::new(
-        "isolated", "Isolated", "No route to a settlement.", LocationCategory::Wilderness
-        )).unwrap();
+        world
+            .add_location(crate::world::Location::new(
+                "isolated",
+                "Isolated",
+                "No route to a settlement.",
+                LocationCategory::Wilderness,
+            ))
+            .unwrap();
         let mut state = state_with_companion();
         let gold_before = state.player.gold;
         state.companions[0].current_hp = 0;
         state.current_location = LocationId::from("isolated");
         let mut recovery = RecoveryState::default();
-        recovery.record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world).unwrap();
-        assert_eq!(recovery.record(CompanionId::BranTheShield).unwrap().destination, None);
+        recovery
+            .record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world)
+            .unwrap();
+        assert_eq!(
+            recovery
+                .record(CompanionId::BranTheShield)
+                .unwrap()
+                .destination,
+            None
+        );
         let location = state.current_location.clone();
-        assert!(matches!(recovery.apply_treatment(&mut state, CompanionId::BranTheShield, &location, &world), Err(RecoveryError::NoTreatmentSettlement)));
+        assert!(matches!(
+            recovery.apply_treatment(&mut state, CompanionId::BranTheShield, &location, &world),
+            Err(RecoveryError::NoTreatmentSettlement)
+        ));
         assert_eq!(state.player.gold, gold_before);
 }
 
@@ -463,11 +496,16 @@ mod tests {
         let id = CompanionId::BranTheShield;
         state.companions[0].current_hp = 0;
         let mut recovery = RecoveryState::default();
-        recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
+        recovery
+            .record_knockout_by_id(&mut state, id, &world)
+            .unwrap();
         state.player.gold = TREATMENT_COST - 1;
         let before = state.clone();
         let location = state.current_location.clone();
-        assert!(matches!(recovery.apply_treatment(&mut state, id, &location, &world), Err(RecoveryError::InsufficientGold { .. })));
+        assert!(matches!(
+            recovery.apply_treatment(&mut state, id, &location, &world),
+            Err(RecoveryError::InsufficientGold { .. })
+        ));
         assert_eq!(state.player.gold, before.player.gold);
         assert_eq!(state.companions[0].current_hp, 0);
         assert_eq!(recovery.record(id).unwrap().turns_remaining, RECOVERY_TURNS);
@@ -483,8 +521,14 @@ mod tests {
         recovery.record_knockout_by_id(&mut state, id, &world).unwrap();
         state.current_location = LocationId::from("village_start");
         let location = state.current_location.clone();
-        assert_eq!(recovery.apply_treatment(&mut state, id, &location, &world), Ok(TREATMENT_COST));
-        assert_eq!(state.companions[0].condition, CompanionCondition::Available);
+        assert_eq!(
+            recovery.apply_treatment(&mut state, id, &location, &world),
+            Ok(TREATMENT_COST)
+        );
+        assert_eq!(
+            state.companions[0].condition,
+            CompanionCondition::Available
+        );
         assert_eq!(state.companions[0].current_hp, state.companions[0].max_hp);
         assert_eq!(
         state.player.gold,
@@ -493,7 +537,9 @@ mod tests {
         );
         assert!(recovery.record(id).is_none());
         let location = state.current_location.clone();
-        assert!(recovery.apply_treatment(&mut state, id, &location, &world).is_err());
+        assert!(recovery
+            .apply_treatment(&mut state, id, &location, &world)
+            .is_err());
         PartyManager::add_to_party(&mut state.party, &state.companions, id).unwrap();
 }
 
@@ -504,12 +550,27 @@ mod tests {
         let mut recovery = RecoveryState::default();
         let world = build_initial_world().unwrap();
         recovery.record_knockout_by_id(&mut state, CompanionId::BranTheShield, &world).unwrap();
-        assert!(recovery.advance_committed_turn(&mut state.companions).is_empty());
-        assert_eq!(recovery.record(CompanionId::BranTheShield).unwrap().turns_remaining, 2);
-        let mut loaded: RecoveryState = serde_json::from_str(&serde_json::to_string(&recovery).unwrap()).unwrap();
+        assert!(recovery
+            .advance_committed_turn(&mut state.companions)
+            .is_empty());
+        assert_eq!(
+            recovery
+                .record(CompanionId::BranTheShield)
+                .unwrap()
+                .turns_remaining,
+            2
+        );
+        let mut loaded: RecoveryState =
+            serde_json::from_str(&serde_json::to_string(&recovery).unwrap()).unwrap();
         assert_eq!(loaded, recovery);
-        assert_eq!(loaded.advance_committed_turn(&mut state.companions), Vec::<CompanionId>::new());
-        assert_eq!(loaded.advance_committed_turn(&mut state.companions), vec![CompanionId::BranTheShield]);
+        assert_eq!(
+            loaded.advance_committed_turn(&mut state.companions),
+            Vec::<CompanionId>::new()
+        );
+        assert_eq!(
+            loaded.advance_committed_turn(&mut state.companions),
+            vec![CompanionId::BranTheShield]
+        );
         assert_eq!(state.companions[0].condition, CompanionCondition::Available);
         assert!(loaded.record(CompanionId::BranTheShield).is_none());
 }
@@ -602,9 +663,14 @@ mod tests {
     #[test]
     fn companion_without_treatment_destination_does_not_recover_from_elapsed_turns() {
         let mut world = build_initial_world().unwrap();
-        world.add_location(crate::world::Location::new(
-        "isolated_recovery", "Isolated recovery", "Disconnected.", LocationCategory::Wilderness
-        )).unwrap();
+        world
+            .add_location(crate::world::Location::new(
+                "isolated_recovery",
+                "Isolated recovery",
+                "Disconnected.",
+                LocationCategory::Wilderness,
+            ))
+            .unwrap();
         let mut state = state_with_companion();
         state.companions[0].current_hp = 0;
         state.current_location = LocationId::from("isolated_recovery");
