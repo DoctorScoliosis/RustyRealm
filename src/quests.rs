@@ -1079,7 +1079,7 @@ mod tests {
         notify_event(
             &mut state,
             &GameEvent::MonsterDefeated {
-                name: "Elite Goblin".into(),
+                name: "Goblin".into(),
                 is_stronghold: false,
             },
         );
