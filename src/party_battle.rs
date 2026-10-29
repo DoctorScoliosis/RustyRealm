@@ -775,7 +775,11 @@ pub fn run_party_battle(
     match encounter.outcome {
         EncounterOutcome::Victory => {
             if let Some(enemy) = crate::adventure::enemy_for_name(config.enemy_name) {
-                state.player.gold = state.player.gold.saturating_add(enemy.gold_reward).min(crate::data::MAX_GOLD);
+                state.player.gold = state
+                    .player
+                    .gold
+                    .saturating_add(enemy.gold_reward)
+                    .min(crate::data::MAX_GOLD);
                 if let Some((item, count)) = enemy.item_reward {
                     state.player.add_item(item, count);
                     crate::quests::notify_event(state, &GameEvent::ItemCollected { item_type: item, count });
