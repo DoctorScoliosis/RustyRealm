@@ -638,15 +638,16 @@ mod tests {
             description: "Lacoyx channels infernal flames!".into(),
             damage: 100,
             damage_type: DamageType::Fire,
+            status_payload: None,
         };
         enemy.telegraphed_attack = Some(attack.clone());
 
-        let (damage, damage_type, next_telegraph, logs) =
-            CombatEngine::generate_enemy_turn(&mut enemy, &player);
-        assert_eq!(damage, attack.damage);
-        assert_eq!(damage_type, attack.damage_type);
-        assert_eq!(next_telegraph, None);
-        assert!(logs.iter().any(|line| line.contains("Infernal Nova")));
+        let intent = CombatEngine::generate_enemy_turn(&mut enemy, &player);
+        assert_eq!(intent.damage, attack.damage);
+        assert_eq!(intent.damage_type, attack.damage_type);
+        assert_eq!(intent.telegraph, None);
+        assert_eq!(intent.status_payload, None);
+        assert!(intent.logs.iter().any(|line| line.contains("Infernal Nova")));
         assert_eq!(enemy.telegraphed_attack, None);
     }
 
