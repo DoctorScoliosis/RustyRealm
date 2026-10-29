@@ -1132,19 +1132,26 @@ impl Encounter {
                 )?;
             }
         }
-        let healing = if hit && ability_id == Some(AbilityId::LifeDrain) {
+        let requested_healing = if hit && ability_id == Some(AbilityId::LifeDrain) {
             damage.saturating_add(1) / 2
         } else {
             0
         };
-        if healing > 0 {
+        let healing = if requested_healing > 0 {
             let actor = self
                 .combatants
                 .iter_mut()
                 .find(|c| c.id == actor_id)
                 .expect("actor validated");
-            actor.hp = actor.hp.saturating_add(healing).min(actor.max_hp);
-        }
+            let before = actor.hp;
+            actor.hp = actor
+                .hp
+                .saturating_add(requested_healing)
+                .min(actor.max_hp);
+            actor.hp.saturating_sub(before)
+        } else {
+            0
+        };
         let target_source = self.combatant(target_id).map(|target| target.source);
         let target_knocked_out = self
             .combatant(target_id)
@@ -1477,6 +1484,91 @@ mod tests {
             .status_effects
             .iter()
             .any(|effect| { effect.kind == StatusEffectKind::Bleed }));
+    }
+
+    #[test]
+    fn life_drain_heals_only_for_damage_dealt_and_respects_resource_cost() {
+        let mut e = encounter();
+        e.set_position(CombatantId(3), RangeBand::Melee).unwrap();
+        e.combatant_mut(CombatantId(1)).unwrap().hp = 30;
+        e.combatant_mut(CombatantId(1)).unwrap().mana = 50;
+        let mana_before = e.combatant(CombatantId(1)).unwrap().mana;
+
+        let result = e
+            .apply_action(
+                CombatAction::UseAbility {
+                    actor: CombatantId(1),
+                    target: CombatantId(3),
+                    ability: AbilityId::LifeDrain,
+                },
+                0,
+                99,
+            )
+            .unwrap();
+        assert!(result.damage > 0);
+        assert!(result.healing > 0);
+        assert_eq!(e.combatant(CombatantId(1)).unwrap().mana, mana_before - 25);
+        assert_eq!(
+            e.combatant(CombatantId(1)).unwrap().hp,
+            30 + result.healing
+        );
+    }
+
+    #[test]
+    fn shield_wall_guards_two_hits_and_charges_stamina() {
+        let mut guarded = encounter();
+        let mut unguarded = encounter();
+        guarded
+            .set_position(CombatantId(3), RangeBand::Melee)
+            .unwrap();
+        unguarded
+            .set_position(CombatantId(3), RangeBand::Melee)
+            .unwrap();
+        let stamina_before = guarded.combatant(CombatantId(1)).unwrap().stamina;
+
+        guarded
+            .apply_action(
+                CombatAction::UseAbility {
+                    actor: CombatantId(1),
+                    target: CombatantId(1),
+                    ability: AbilityId::ShieldWall,
+                },
+                0,
+                99,
+            )
+            .unwrap();
+        assert_eq!(
+            guarded.combatant(CombatantId(1)).unwrap().stamina,
+            stamina_before - 15
+        );
+        assert_eq!(guarded.combatant(CombatantId(1)).unwrap().guard_charges, 2);
+
+        let guarded_before = guarded.combatant(CombatantId(1)).unwrap().hp;
+        let unguarded_before = unguarded.combatant(CombatantId(1)).unwrap().hp;
+        guarded
+            .apply_action(
+                CombatAction::BasicAttack {
+                    actor: CombatantId(3),
+                    target: CombatantId(1),
+                },
+                0,
+                99,
+            )
+            .unwrap();
+        unguarded
+            .apply_action(
+                CombatAction::BasicAttack {
+                    actor: CombatantId(3),
+                    target: CombatantId(1),
+                },
+                0,
+                99,
+            )
+            .unwrap();
+        let guarded_damage = guarded_before - guarded.combatant(CombatantId(1)).unwrap().hp;
+        let unguarded_damage = unguarded_before - unguarded.combatant(CombatantId(1)).unwrap().hp;
+        assert!(guarded_damage < unguarded_damage);
+        assert_eq!(guarded.combatant(CombatantId(1)).unwrap().guard_charges, 1);
     }
 
     #[test]
