@@ -98,57 +98,57 @@ impl RecoveryState {
          world: &World,
      ) -> Result<bool, RecoveryError> {
          let origin = state.current_location.clone();
-         let newly_recorded = {
-             let companion = state.companions.iter_mut().find(|c| c.id == id)
-                 .ok_or(RecoveryError::CompanionNotRecruited(id))?;
-             self.record_knockout(companion, world, &origin)?
-         };
+         let party = &mut state.party;
+         let companions = &mut state.companions;
+         let companion = companions.iter_mut().find(|c| c.id == id)
+             .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+         let newly_recorded = self.record_knockout(companion, world, &origin)?;
          // A knocked-out companion is removed from the active roster so party
          // capacity and subsequent encounter construction stay consistent.
-         let _ = state.party.remove_member(id);
+         let _ = party.remove_member(id);
          Ok(newly_recorded)
      }
 
      pub fn apply_treatment(
-         &mut self,
-         state: &mut GameState,
-         id: CompanionId,
-         at: &LocationId,
-         world: &World,
-     ) -> Result<u32, RecoveryError> {
-         let record_index = self.records.iter().position(|record| record.companion_id == id)
-             .ok_or(RecoveryError::CompanionNotRecoverable(id))?;
-         let record = &self.records[record_index];
-         let destination = record.destination.as_ref().ok_or(RecoveryError::NoTreatmentSettlement)?;
-         if destination != at || destination != &state.current_location {
-             return Err(RecoveryError::NotAtTreatmentSettlement);
-         }
-         let location = world.get_location(destination)
-             .ok_or_else(|| RecoveryError::InvalidSettlement(destination.clone()))?;
-         if location.category != LocationCategory::Settlement {
-             return Err(RecoveryError::InvalidSettlement(destination.clone()));
-         }
-         let companion = state.companions.iter().find(|c| c.id == id)
-             .ok_or(RecoveryError::CompanionNotRecruited(id))?;
-         if !matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering) {
-             return Err(RecoveryError::CompanionNotRecoverable(id));
-         }
-         if state.player.gold < TREATMENT_COST {
-             return Err(RecoveryError::InsufficientGold { required: TREATMENT_COST, available: state.player.gold });
-         }
+        &mut self,
+        state: &mut GameState,
+        id: CompanionId,
+        at: &LocationId,
+        world: &World,
+    ) -> Result<u32, RecoveryError> {
+        let record_index = self.records.iter().position(|record| record.companion_id == id)
+            .ok_or(RecoveryError::CompanionNotRecoverable(id))?;
+        let destination = self.records[record_index].destination.clone()
+            .ok_or(RecoveryError::NoTreatmentSettlement)?;
+        if destination != *at || destination != state.current_location {
+            return Err(RecoveryError::NotAtTreatmentSettlement);
+        }
+        let location = world.get_location(&destination)
+            .ok_or_else(|| RecoveryError::InvalidSettlement(destination.clone()))?;
+        if location.category != LocationCategory::Settlement {
+            return Err(RecoveryError::InvalidSettlement(destination));
+        }
+        let companion = state.companions.iter().find(|c| c.id == id)
+            .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+        if !matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering) {
+            return Err(RecoveryError::CompanionNotRecoverable(id));
+        }
+        if state.player.gold < TREATMENT_COST {
+            return Err(RecoveryError::InsufficientGold { required: TREATMENT_COST, available: state.player.gold });
+        }
 
-         // All eligibility and affordability checks precede the transaction.
-         // Mutations below are infallible and happen exactly once.
-         state.player.gold -= TREATMENT_COST;
-         let companion = state.companions.iter_mut().find(|c| c.id == id).expect("validated companion");
-         companion.fully_restore();
-         companion.condition = CompanionCondition::Available;
-         self.records.remove(record_index);
-         // Remove the companion from the active roster only after recovery, so it
-         // cannot act while knocked out; availability still requires explicit selection.
-         state.party.remove_member(id).ok();
-         Ok(TREATMENT_COST)
-     }
+        // Eligibility and affordability are checked before either resource or
+        // companion state changes. Split borrows of independent state fields.
+        state.player.gold -= TREATMENT_COST;
+        let companions = &mut state.companions;
+        let party = &mut state.party;
+        let companion = companions.iter_mut().find(|c| c.id == id).expect("validated companion");
+        companion.fully_restore();
+        companion.condition = CompanionCondition::Available;
+        self.records.remove(record_index);
+        let _ = party.remove_member(id);
+        Ok(TREATMENT_COST)
+    }
 
      /// Advance once for a committed main-menu action, never for nested menus or reloads.
      pub fn advance_committed_turn(&mut self, companions: &mut [CompanionState]) -> Vec<CompanionId> {
