@@ -483,8 +483,10 @@ pub fn check_regressions(results: &[SimulationMetrics]) -> Vec<RegressionFinding
             if metrics.xp_reward < spec.expected_xp_min || metrics.xp_reward > spec.expected_xp_max
             {
                 findings.push(RegressionFinding::XpOutsideRange {
-                    scenario: metrics.scenario_id.clone(), actual: metrics.xp_reward,
-                    min: spec.expected_xp_min, max: spec.expected_xp_max,
+                    scenario: metrics.scenario_id.clone(),
+                    actual: metrics.xp_reward,
+                    min: spec.expected_xp_min,
+                    max: spec.expected_xp_max,
                 });
             }
         }
