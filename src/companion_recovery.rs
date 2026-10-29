@@ -109,9 +109,12 @@ impl RecoveryState {
          Ok(newly_recorded)
      }
 
-     pub fn apply_treatment(
+     /// Transactional core used by the UI when borrowing GameState fields separately.
+    pub fn apply_treatment_parts(
         &mut self,
-        state: &mut GameState,
+        gold: &mut u32,
+        party: &mut Party,
+        companion: &mut CompanionState,
         id: CompanionId,
         at: &LocationId,
         world: &World,
@@ -120,7 +123,7 @@ impl RecoveryState {
             .ok_or(RecoveryError::CompanionNotRecoverable(id))?;
         let destination = self.records[record_index].destination.clone()
             .ok_or(RecoveryError::NoTreatmentSettlement)?;
-        if destination != *at || destination != state.current_location {
+        if destination != *at {
             return Err(RecoveryError::NotAtTreatmentSettlement);
         }
         let location = world.get_location(&destination)
@@ -128,26 +131,49 @@ impl RecoveryState {
         if location.category != LocationCategory::Settlement {
             return Err(RecoveryError::InvalidSettlement(destination));
         }
-        let companion = state.companions.iter().find(|c| c.id == id)
-            .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+        if companion.id != id {
+            return Err(RecoveryError::CompanionNotRecoverable(id));
+        }
         if !matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering) {
             return Err(RecoveryError::CompanionNotRecoverable(id));
         }
-        if state.player.gold < TREATMENT_COST {
-            return Err(RecoveryError::InsufficientGold { required: TREATMENT_COST, available: state.player.gold });
+        if *gold < TREATMENT_COST {
+            return Err(RecoveryError::InsufficientGold { required: TREATMENT_COST, available: *gold });
         }
 
-        // Eligibility and affordability are checked before either resource or
-        // companion state changes. Split borrows of independent state fields.
-        state.player.gold -= TREATMENT_COST;
-        let companions = &mut state.companions;
-        let party = &mut state.party;
-        let companion = companions.iter_mut().find(|c| c.id == id).expect("validated companion");
+        *gold -= TREATMENT_COST;
         companion.fully_restore();
         companion.condition = CompanionCondition::Available;
         self.records.remove(record_index);
         let _ = party.remove_member(id);
         Ok(TREATMENT_COST)
+    }
+
+    pub fn apply_treatment(
+        &mut self,
+        state: &mut GameState,
+        id: CompanionId,
+        at: &LocationId,
+        world: &World,
+    ) -> Result<u32, RecoveryError> {
+        if at != &state.current_location {
+            return Err(RecoveryError::NotAtTreatmentSettlement);
+        }
+        let destination = self.record(id).and_then(|record| record.destination.as_ref())
+            .ok_or(RecoveryError::NoTreatmentSettlement)?;
+        if destination != at {
+            return Err(RecoveryError::NotAtTreatmentSettlement);
+        }
+        let companion_index = state.companions.iter().position(|c| c.id == id)
+            .ok_or(RecoveryError::CompanionNotRecruited(id))?;
+        self.apply_treatment_parts(
+            &mut state.player.gold,
+            &mut state.party,
+            &mut state.companions[companion_index],
+            id,
+            at,
+            world,
+        )
     }
 
      /// Advance once for a committed main-menu action, never for nested menus or reloads.
