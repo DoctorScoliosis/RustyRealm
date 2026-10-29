@@ -312,6 +312,9 @@ pub struct GameState {
     /// Active party composition (player always occupies one implicit slot).
     #[serde(default)]
     pub party: Party,
+    /// Persisted knockout destinations and recovery progression.
+    #[serde(default)]
+    pub companion_recovery: crate::companion_recovery::RecoveryState,
 }
 
 impl GameState {
@@ -332,6 +335,7 @@ impl GameState {
             mastery_perks: Vec::new(),
             companions: Vec::new(),
             party: Party::new(),
+            companion_recovery: crate::companion_recovery::RecoveryState::default(),
         };
         crate::quests::check_and_refresh_quests(&mut state);
         state
