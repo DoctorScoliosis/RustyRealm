@@ -1,9 +1,9 @@
 //! Persistent companion knockout, rescue, recovery and expedition resolution.
 //!
- //! Recovery uses the world's existing shortest-path travel-cost queries. One recovery
- //! turn is one committed main-menu action (the game already advances the market by
- //! one turn after each main-menu selection); opening and closing nested menus does
- //! not advance recovery.
+//! Recovery uses the world's existing shortest-path travel-cost queries. One recovery
+//! turn is one committed main-menu action (the game already advances the market by
+//! one turn after each main-menu selection); opening and closing nested menus does
+//! not advance recovery.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -12,27 +12,27 @@ use crate::party::{CompanionCondition, CompanionId, CompanionState, Party};
 use crate::state::GameState;
 use crate::world::{LocationId, LocationCategory, World};
 
- pub const RECOVERY_TURNS: u32 = 3;
- pub const TREATMENT_COST: u32 = 50;
+pub const RECOVERY_TURNS: u32 = 3;
+pub const TREATMENT_COST: u32 = 50;
 
- #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
- pub struct CompanionRecoveryRecord {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompanionRecoveryRecord {
      pub companion_id: CompanionId,
      pub destination: Option<LocationId>,
      /// Remaining committed main-menu turns. Menus and save/load do not advance it.
      pub turns_remaining: u32,
- }
+}
 
- #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
- pub struct RecoveryState {
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct RecoveryState {
      #[serde(default)]
      pub records: Vec<CompanionRecoveryRecord>,
      #[serde(default)]
      pub expedition_defeat_count: u64,
- }
+}
 
- #[derive(Debug, Clone, PartialEq, Eq)]
- pub enum RecoveryError {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecoveryError {
      CompanionNotRecruited(CompanionId),
      CompanionNotRecoverable(CompanionId),
      NoTreatmentSettlement,
@@ -41,9 +41,9 @@ use crate::world::{LocationId, LocationCategory, World};
      InvalidSettlement(LocationId),
      DuplicateRecoveryRecord(CompanionId),
      PlayerAlreadyDefeated,
- }
+}
 
- impl fmt::Display for RecoveryError {
+impl fmt::Display for RecoveryError {
      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          match self {
              Self::CompanionNotRecruited(id) => write!(f, "Companion {id} has not been recruited."),
@@ -56,11 +56,11 @@ use crate::world::{LocationId, LocationCategory, World};
              Self::PlayerAlreadyDefeated => f.write_str("The player has no health remaining."),
          }
      }
- }
+}
 
- impl std::error::Error for RecoveryError {}
+impl std::error::Error for RecoveryError {}
 
- impl RecoveryState {
+impl RecoveryState {
      pub fn record(&self, id: CompanionId) -> Option<&CompanionRecoveryRecord> {
          self.records.iter().find(|record| record.companion_id == id)
      }
@@ -251,18 +251,18 @@ use crate::world::{LocationId, LocationCategory, World};
          *self = next_recovery;
          Ok(())
      }
- }
+}
 
- /// Find the nearest treatment-capable settlement; currently every graph settlement
- /// supports the same base treatment service. World::get_nearest_settlement already
- /// minimises summed route travel cost and breaks ties by lexical LocationId.
- pub fn nearest_treatment_settlement(world: &World, origin: &LocationId) -> Option<LocationId> {
+/// Find the nearest treatment-capable settlement; currently every graph settlement
+/// supports the same base treatment service. World::get_nearest_settlement already
+/// minimises summed route travel cost and breaks ties by lexical LocationId.
+pub fn nearest_treatment_settlement(world: &World, origin: &LocationId) -> Option<LocationId> {
      world.get_nearest_settlement(origin)
- }
+}
 
- /// Every recruited companion whose condition and HP allow selection must be in
- /// a compatible state. Knockout is never permanent deletion/death.
- pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState) -> bool {
+/// Every recruited companion whose condition and HP allow selection must be in
+/// a compatible state. Knockout is never permanent deletion/death.
+pub fn validate_recovery_invariants(state: &GameState, recovery: &RecoveryState) -> bool {
      for record in &recovery.records {
          let Some(companion) = state.companions.iter().find(|c| c.id == record.companion_id) else {
              return false;
@@ -279,10 +279,10 @@ use crate::world::{LocationId, LocationCategory, World};
              && (!matches!(companion.condition, CompanionCondition::KnockedOut | CompanionCondition::Recovering)
                  || recovery.record(companion.id).is_some())
      })
- }
+}
 
- #[cfg(test)]
- mod tests {
+#[cfg(test)]
+mod tests {
      use super::*;
      use crate::party::{all_companion_definitions, PartyManager};
      use crate::state::{GameState, Player};
@@ -467,4 +467,4 @@ use crate::world::{LocationId, LocationCategory, World};
          assert_eq!(recovery.expedition_defeat_count, 1);
          assert!(recovery.record(CompanionId::BranTheShield).is_some());
      }
- }
+}
