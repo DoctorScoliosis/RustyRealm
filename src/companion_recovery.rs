@@ -232,7 +232,17 @@ impl RecoveryState {
                  return Err(RecoveryError::CompanionNotRecruited(id));
              }
              let origin = state.current_location.clone();
-             {
+             if knocked_out && !already_recorded {
+                 {
+                     let companion = state.companions.iter_mut().find(|c| c.id == id).expect("validated companion");
+                     companion.current_hp = 0;
+                     companion.condition = CompanionCondition::KnockedOut;
+                     companion.current_stamina = stamina.min(companion.max_stamina);
+                     companion.current_mana = mana.min(companion.max_mana);
+                 }
+                 self.record_knockout_by_id(state, id, world)?;
+                 newly_knocked_out.push(id);
+             } else {
                  let companion = state.companions.iter_mut().find(|c| c.id == id).expect("validated companion");
                  companion.current_hp = hp.min(companion.max_hp);
                  companion.current_stamina = stamina.min(companion.max_stamina);
@@ -240,10 +250,6 @@ impl RecoveryState {
                  if knocked_out {
                      companion.current_hp = 0;
                      companion.condition = CompanionCondition::KnockedOut;
-                     if !already_recorded {
-                         self.record_knockout(companion, world, &origin)?;
-                         newly_knocked_out.push(id);
-                     }
                  }
              }
              if knocked_out {
