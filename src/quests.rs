@@ -433,7 +433,7 @@ fn progress_objective(objective: &QuestObjective, event: &GameEvent, progress: &
         (
             QuestObjective::SpecificMonsterKills { monster_name, .. },
             GameEvent::MonsterDefeated { name, .. },
-        ) if canonical_monster_name(name).eq_ignore_ascii_case(monster_name) => target,
+        ) if canonical_monster_name(name).eq_ignore_ascii_case(monster_name) => 1,
         (
             QuestObjective::PlayerLevel { required_level },
             GameEvent::PlayerLeveledUp { new_level },
