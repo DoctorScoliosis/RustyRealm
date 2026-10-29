@@ -319,6 +319,9 @@ pub struct GameState {
     /// Persisted knockout destinations and recovery progression.
     #[serde(default)]
     pub companion_recovery: crate::companion_recovery::RecoveryState,
+    /// Save-backed content progression for one-time regional rewards and surveys.
+    #[serde(default)]
+    pub region_progress: crate::adventure::RegionProgress,
 }
 
 impl GameState {
@@ -350,6 +353,7 @@ impl GameState {
             companions: Vec::new(),
             party: Party::new(),
             companion_recovery: crate::companion_recovery::RecoveryState::default(),
+            region_progress: crate::adventure::RegionProgress::default(),
         };
         crate::quests::check_and_refresh_quests(&mut state);
         state
