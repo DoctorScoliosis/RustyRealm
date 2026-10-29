@@ -697,9 +697,9 @@ mod tests {
     #[test]
     fn stun_interrupts_a_committed_legacy_telegraph() {
         let mut enemy = Combatant::new_monster("Stronghold Mage", 110, 100);
-        let (chance, attack) =
-            lacoyx_telegraph_for_phase(LacoyxPhase::Phase2InfernalWarlord);
-        assert_eq!(chance, 0.5);
+        let intent =
+            CombatEngine::propose_legacy_enemy_intent("Stronghold Mage", 25, 5, 0);
+        let attack = intent.telegraph.expect("Mage profile telegraphs on a zero roll");
         enemy.telegraphed_attack = Some(attack);
         enemy.apply_status(StatusEffectKind::Stun, 1, 1);
         enemy.tick_status_effects();
