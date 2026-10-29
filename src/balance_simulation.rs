@@ -6,6 +6,7 @@
 //! should include a rationale in the PR that changes the related mechanic.
 
 use crate::data::{get_ability, AbilityId};
+use serde::{Deserialize, Serialize};
 use crate::party_combat::{
     Allegiance, CombatAction, CombatantId, CombatantSource, Encounter, EncounterCombatant,
     EncounterOutcome,
@@ -18,6 +19,20 @@ pub const MAX_SIMULATION_ACTIONS: u32 = 250;
 pub const DEFAULT_RECOVERY_GOLD_ASSUMPTION: u32 = 50;
 pub const GOLD_REWARD_TARGET: (u32, u32) = (20, 5_000);
 pub const XP_REWARD_TARGET: (u32, u32) = (20, 5_000);
+
+/// Multipliers are expressed in basis points: 10_000 means 1.0x.
+pub const NORMAL_MULTIPLIER_BPS: u32 = 10_000;
+pub const WARMUP_ONE_ENEMY_BPS: u32 = 6_500;
+pub const WARMUP_TWO_ENEMY_BPS: u32 = 8_000;
+pub const WARMUP_ONE_REWARD_BPS: u32 = 4_000;
+pub const WARMUP_TWO_REWARD_BPS: u32 = 6_000;
+pub const PRESSURE_STEP_BPS: u32 = 500;
+pub const MAX_PRESSURE_STEPS: u8 = 4;
+pub const MAX_PRESSURE_MULTIPLIER_BPS: u32 = 12_000;
+pub const CASUALTY_RELIEF_ENCOUNTERS: u8 = 2;
+pub const TPK_RECOVERY_GRACE_ENCOUNTERS: u8 = 3;
+pub const TPK_RECOVERY_ENEMY_CAP_BPS: u32 = 8_500;
+pub const TPK_RECOVERY_REWARD_CAP_BPS: u32 = 6_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProgressionBand {
@@ -71,6 +86,168 @@ pub struct PlayerBuild {
     pub mana: u32,
     pub attack: u32,
     pub defence: u32,
+}
+
+/// Outcome used by the adaptive-curve simulator. A fled encounter still consumes
+/// its encounter index, so fleeing cannot repeatedly reclaim warm-up rewards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdaptiveEncounterOutcome {
+    Victory { party_knockouts: u8 },
+    Fled { party_knockouts: u8 },
+    TotalPartyKill,
+}
+
+/// Persistable, encounter-indexed adaptive difficulty history.
+///
+/// This is a simulation model for Section 18; it is not yet wired into live
+/// gameplay or the save schema. Wall-clock time is intentionally not consulted.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AdaptivePressureState {
+    pub completed_encounters: u64,
+    pub pressure_steps: u8,
+    pub casualty_relief_encounters_remaining: u8,
+    pub recovery_grace_encounters_remaining: u8,
+    pub total_party_knockouts: u64,
+    pub total_party_kills: u64,
+    pub last_party_knockout_encounter: Option<u64>,
+    pub last_total_party_kill_encounter: Option<u64>,
+}
+
+impl AdaptivePressureState {
+    /// Parameters for the next encounter. The first two consumed encounters
+    /// are easy and low-reward; later pressure rises only after clean victories.
+    pub fn profile(&self) -> AdaptiveEncounterProfile {
+        let encounter_number = self.completed_encounters.saturating_add(1);
+        let (mut enemy_stat_multiplier_bps, mut reward_multiplier_bps, warmup_stage) =
+            match self.completed_encounters {
+                0 => (WARMUP_ONE_ENEMY_BPS, WARMUP_ONE_REWARD_BPS, Some(1)),
+                1 => (WARMUP_TWO_ENEMY_BPS, WARMUP_TWO_REWARD_BPS, Some(2)),
+                _ => (
+                    (NORMAL_MULTIPLIER_BPS
+                        + u32::from(self.pressure_steps.min(MAX_PRESSURE_STEPS))
+                            * PRESSURE_STEP_BPS)
+                        .min(MAX_PRESSURE_MULTIPLIER_BPS),
+                    NORMAL_MULTIPLIER_BPS,
+                    None,
+                ),
+            };
+
+        let recovery_grace_active = self.recovery_grace_encounters_remaining > 0;
+        if recovery_grace_active {
+            // Recovery grace never stacks multiplicatively with warm-up.
+            enemy_stat_multiplier_bps =
+                enemy_stat_multiplier_bps.min(TPK_RECOVERY_ENEMY_CAP_BPS);
+            reward_multiplier_bps =
+                reward_multiplier_bps.min(TPK_RECOVERY_REWARD_CAP_BPS);
+        }
+
+        AdaptiveEncounterProfile {
+            encounter_number,
+            enemy_stat_multiplier_bps,
+            reward_multiplier_bps,
+            pressure_steps: self.pressure_steps.min(MAX_PRESSURE_STEPS),
+            warmup_stage,
+            recovery_grace_active,
+            casualty_relief_active: self.casualty_relief_encounters_remaining > 0,
+        }
+    }
+
+    /// Records one completed, fled or terminally lost encounter. The index always
+    /// advances, including on a flee; the warm-up therefore cannot be reset by
+    /// leaving an area, dying, or reloading this serialized state.
+    pub fn record_outcome(&mut self, outcome: AdaptiveEncounterOutcome) {
+        let encounter_number = self.completed_encounters.saturating_add(1);
+        let was_warmup = self.completed_encounters < 2;
+        let had_recovery_grace = self.recovery_grace_encounters_remaining > 0;
+        let had_casualty_relief = self.casualty_relief_encounters_remaining > 0;
+
+        self.recovery_grace_encounters_remaining =
+            self.recovery_grace_encounters_remaining.saturating_sub(1);
+        self.casualty_relief_encounters_remaining =
+            self.casualty_relief_encounters_remaining.saturating_sub(1);
+        self.completed_encounters = encounter_number;
+
+        match outcome {
+            AdaptiveEncounterOutcome::Victory { party_knockouts } => {
+                if party_knockouts > 0 {
+                    self.last_party_knockout_encounter = Some(encounter_number);
+                    self.total_party_knockouts = self
+                        .total_party_knockouts
+                        .saturating_add(u64::from(party_knockouts));
+                    self.pressure_steps = self.pressure_steps.saturating_sub(party_knockouts.min(2));
+                    self.casualty_relief_encounters_remaining = CASUALTY_RELIEF_ENCOUNTERS;
+                } else if !was_warmup && !had_recovery_grace && !had_casualty_relief {
+                    self.pressure_steps = self
+                        .pressure_steps
+                        .saturating_add(1)
+                        .min(MAX_PRESSURE_STEPS);
+                }
+            }
+            AdaptiveEncounterOutcome::Fled { party_knockouts } => {
+                if party_knockouts > 0 {
+                    self.last_party_knockout_encounter = Some(encounter_number);
+                    self.total_party_knockouts = self
+                        .total_party_knockouts
+                        .saturating_add(u64::from(party_knockouts));
+                    self.pressure_steps = self.pressure_steps.saturating_sub(party_knockouts.min(2));
+                    self.casualty_relief_encounters_remaining = CASUALTY_RELIEF_ENCOUNTERS;
+                }
+            }
+            AdaptiveEncounterOutcome::TotalPartyKill => {
+                self.last_total_party_kill_encounter = Some(encounter_number);
+                self.total_party_kills = self.total_party_kills.saturating_add(1);
+                self.pressure_steps = 0;
+                self.casualty_relief_encounters_remaining = 0;
+                // A TPK during grace must not continually refresh the timer.
+                if !had_recovery_grace {
+                    self.recovery_grace_encounters_remaining = TPK_RECOVERY_GRACE_ENCOUNTERS;
+                }
+            }
+        }
+    }
+
+    pub fn encounters_since_last_party_knockout(&self) -> Option<u64> {
+        self.last_party_knockout_encounter
+            .map(|encounter| self.completed_encounters.saturating_sub(encounter))
+    }
+
+    pub fn encounters_since_last_total_party_kill(&self) -> Option<u64> {
+        self.last_total_party_kill_encounter
+            .map(|encounter| self.completed_encounters.saturating_sub(encounter))
+    }
+}
+
+/// Frozen modifiers for one encounter, useful for keeping the simulation row
+/// and the state transition under test independently and reproducibly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdaptiveEncounterProfile {
+    pub encounter_number: u64,
+    pub enemy_stat_multiplier_bps: u32,
+    pub reward_multiplier_bps: u32,
+    pub pressure_steps: u8,
+    pub warmup_stage: Option<u8>,
+    pub recovery_grace_active: bool,
+    pub casualty_relief_active: bool,
+}
+
+impl AdaptiveEncounterProfile {
+    pub const fn baseline() -> Self {
+        Self {
+            encounter_number: 0,
+            enemy_stat_multiplier_bps: NORMAL_MULTIPLIER_BPS,
+            reward_multiplier_bps: NORMAL_MULTIPLIER_BPS,
+            pressure_steps: 0,
+            warmup_stage: None,
+            recovery_grace_active: false,
+            casualty_relief_active: false,
+        }
+    }
+}
+
+fn apply_multiplier(value: u32, multiplier_bps: u32) -> u32 {
+    ((u64::from(value) * u64::from(multiplier_bps)) / 10_000)
+        .min(u64::from(u32::MAX)) as u32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,6 +365,9 @@ pub struct SimulationMetrics {
     pub recovery_gold_assumption: u32,
     pub gold_reward: u32,
     pub xp_reward: u32,
+    pub adaptive_profile: AdaptiveEncounterProfile,
+    pub effective_enemy_health: u32,
+    pub effective_enemy_attack: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -237,14 +417,20 @@ fn seed_roll(seed: u64, action: u32, salt: u32) -> u32 {
     (value ^ (value >> 31)) as u32
 }
 
-fn scenario_enemy_health(spec: EncounterSpec, seed: u64) -> u32 {
+fn scenario_enemy_health(spec: EncounterSpec, seed: u64, multiplier_bps: u32) -> u32 {
     let variance = 93 + seed_roll(seed, 0, 1) % 15;
-    (u64::from(spec.base_health) * u64::from(variance) / 100).max(1) as u32
+    let varied = (u64::from(spec.base_health) * u64::from(variance) / 100)
+        .max(1)
+        .min(u64::from(u32::MAX)) as u32;
+    apply_multiplier(varied, multiplier_bps).max(1)
 }
 
-fn scenario_enemy_attack(spec: EncounterSpec, seed: u64) -> u32 {
+fn scenario_enemy_attack(spec: EncounterSpec, seed: u64, multiplier_bps: u32) -> u32 {
     let variance = 93 + seed_roll(seed, 0, 2) % 15;
-    (u64::from(spec.base_attack) * u64::from(variance) / 100).max(1) as u32
+    let varied = (u64::from(spec.base_attack) * u64::from(variance) / 100)
+        .max(1)
+        .min(u64::from(u32::MAX)) as u32;
+    apply_multiplier(varied, multiplier_bps).max(1)
 }
 
 fn enemy_defence(spec: EncounterSpec) -> u32 {
@@ -307,6 +493,18 @@ pub fn simulate_encounter(
     progression: ProgressionBand,
     seed: u64,
 ) -> SimulationMetrics {
+    simulate_encounter_with_profile(spec, progression, seed, AdaptiveEncounterProfile::baseline())
+}
+
+/// Simulates one encounter with the currently selected adaptive profile.
+/// State progression is deliberately explicit: call record_outcome after the
+/// encounter is resolved so callers can model party-wide knockouts and fleeing.
+pub fn simulate_encounter_with_profile(
+    spec: EncounterSpec,
+    progression: ProgressionBand,
+    seed: u64,
+    adaptive_profile: AdaptiveEncounterProfile,
+) -> SimulationMetrics {
     let build = progression.player_build();
     let player_id = CombatantId(1);
     let enemy_id = CombatantId(2);
@@ -322,15 +520,19 @@ pub fn simulate_encounter(
         build.defence,
     );
     hero.defence = build.defence;
+    let effective_enemy_health =
+        scenario_enemy_health(spec, seed, adaptive_profile.enemy_stat_multiplier_bps);
+    let effective_enemy_attack =
+        scenario_enemy_attack(spec, seed, adaptive_profile.enemy_stat_multiplier_bps);
     let enemy = EncounterCombatant::new(
         enemy_id,
         CombatantSource::Enemy,
         spec.enemy_name,
         Allegiance::Enemies,
-        scenario_enemy_health(spec, seed),
+        effective_enemy_health,
         100,
         100,
-        scenario_enemy_attack(spec, seed),
+        effective_enemy_attack,
         enemy_defence(spec),
     );
     let mut encounter = Encounter::new(vec![hero, enemy]).expect("baseline contains an enemy");
@@ -349,6 +551,9 @@ pub fn simulate_encounter(
         recovery_gold_assumption: DEFAULT_RECOVERY_GOLD_ASSUMPTION,
         gold_reward: spec.expected_gold_min,
         xp_reward: spec.expected_xp_min,
+        adaptive_profile,
+        effective_enemy_health,
+        effective_enemy_attack,
     };
     let mut before_actor_turn = PlayerSnapshot {
         hp: build.hp,
@@ -418,6 +623,10 @@ pub fn simulate_encounter(
         metrics.gold_reward = reward.0;
         metrics.xp_reward = reward.1;
     }
+    metrics.gold_reward =
+        apply_multiplier(metrics.gold_reward, adaptive_profile.reward_multiplier_bps);
+    metrics.xp_reward =
+        apply_multiplier(metrics.xp_reward, adaptive_profile.reward_multiplier_bps);
     metrics
 }
 
