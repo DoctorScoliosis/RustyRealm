@@ -257,7 +257,10 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     state.current_location
                 ))
             })?;
-        let title = format!("Final Realm · {current_location_name} · Turn {}", state.world_turn);
+        let title = format!(
+            "Final Realm · {current_location_name} · Turn {}",
+            state.world_turn
+        );
         let choice = tui.select_menu(&title, &options, Some(state))?;
         match choice {
             0 => travel_menu(tui, state, &world)?,
@@ -324,7 +327,10 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
         options.push(if state.player.gold >= 25 && needs_recovery {
             "Inn rest — 25 gold; restore stamina and up to 25 HP (2 turns)".to_string()
         } else if state.player.gold < 25 {
-            format!("[Disabled: requires 25 gold (have {}).] Inn rest — restore stamina and HP", state.player.gold)
+            format!(
+                "[Disabled: requires 25 gold (have {}).] Inn rest — restore stamina and HP",
+                state.player.gold
+            )
         } else {
             "[Disabled: already fully recovered.] Inn rest — restore stamina and HP".to_string()
         });
@@ -345,7 +351,10 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
 
     let refs: Vec<&str> = options.iter().map(String::as_str).collect();
     let choice = tui.select_menu(
-        &format!("Rest at {location_name} · Stamina {}/{} · Turn {}", state.player.stamina, state.player.max_stamina, state.world_turn),
+        &format!(
+            "Rest at {location_name} · Stamina {}/{} · Turn {}",
+            state.player.stamina, state.player.max_stamina, state.world_turn
+        ),
         &refs,
         Some(state),
     )?;
@@ -364,7 +373,11 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
         };
 
     if state.player.gold < gold_cost || state.player.get_item_count(ItemType::Food) < food_cost {
-        tui.show_message("Rest unavailable", "Not enough gold or food for that rest option.", Some(state))?;
+        tui.show_message(
+            "Rest unavailable",
+            "Not enough gold or food for that rest option.",
+            Some(state),
+        )?;
         return Ok(());
     }
 
@@ -376,9 +389,17 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     if full_restore {
         state.player.stamina = state.player.max_stamina;
     } else {
-        state.player.stamina = state.player.stamina.saturating_add(stamina_gain).min(state.player.max_stamina);
+        state.player.stamina = state
+            .player
+            .stamina
+            .saturating_add(stamina_gain)
+            .min(state.player.max_stamina);
     }
-    state.player.hp = state.player.hp.saturating_add(hp_gain).min(state.player.max_hp);
+    state.player.hp = state
+        .player
+        .hp
+        .saturating_add(hp_gain)
+        .min(state.player.max_hp);
 
     let mut recovered = Vec::new();
     for _ in 0..turns {
