@@ -1525,7 +1525,10 @@ mod tests {
             .max()
             .unwrap_or_default();
         assert_eq!(max_width, usize::from(STARTUP_LOGO_WIDTH));
-        assert_eq!(RUSTY_REALM_ASCII_ART.lines().count(), usize::from(STARTUP_LOGO_HEIGHT));
+        assert_eq!(
+            RUSTY_REALM_ASCII_ART.lines().count(),
+            usize::from(STARTUP_LOGO_HEIGHT)
+        );
         assert!(startup_logo_fits(Rect::new(0, 0, 181, 26)));
         assert!(!startup_logo_fits(Rect::new(0, 0, 180, 40)));
         assert!(!startup_logo_fits(Rect::new(0, 0, 200, 25)));
