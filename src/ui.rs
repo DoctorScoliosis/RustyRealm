@@ -220,7 +220,8 @@ impl Tui {
                     .saturating_add(8)
                     .clamp(28, 64)
                     .min(usize::from(area.width)) as u16;
-                let side_by_side = area.width >= account_width.saturating_add(action_width).saturating_add(4);
+                let side_by_side =
+                    area.width >= account_width.saturating_add(action_width).saturating_add(4);
                 let show_logo = startup_logo_fits(area);
                 let logo_height = if show_logo { STARTUP_LOGO_HEIGHT } else { 0 };
                 let title_height = if area.height >= 7 { 3 } else { 1 };
@@ -248,7 +249,9 @@ impl Tui {
                 let panels_height = if side_by_side {
                     account_height
                 } else {
-                    account_height.saturating_add(1).saturating_add(action_height)
+                    account_height
+                        .saturating_add(1)
+                        .saturating_add(action_height)
                 };
                 let total_height = logo_height
                     .saturating_add(if show_logo { 1 } else { 0 })
@@ -256,7 +259,9 @@ impl Tui {
                     .saturating_add(1)
                     .saturating_add(panels_height)
                     .saturating_add(footer_height);
-                let top = area.y.saturating_add(area.height.saturating_sub(total_height) / 2);
+                let top = area
+                    .y
+                    .saturating_add(area.height.saturating_sub(total_height) / 2);
                 let mut y = top;
 
                 if show_logo {
@@ -287,7 +292,9 @@ impl Tui {
                         .saturating_add(action_width)
                         .saturating_add(4)
                         .min(area.width);
-                    let left_x = area.x.saturating_add(area.width.saturating_sub(combined_width) / 2);
+                    let left_x = area
+                        .x
+                        .saturating_add(area.width.saturating_sub(combined_width) / 2);
                     let account_rect = Rect::new(left_x, y, account_width, account_height);
                     let action_rect = Rect::new(
                         left_x.saturating_add(account_width).saturating_add(4),
@@ -317,7 +324,9 @@ impl Tui {
                     );
                 } else {
                     let panel_width = account_width.max(action_width).min(area.width);
-                    let left_x = area.x.saturating_add(area.width.saturating_sub(panel_width) / 2);
+                    let left_x = area
+                        .x
+                        .saturating_add(area.width.saturating_sub(panel_width) / 2);
                     let account_rect = Rect::new(left_x, y, panel_width, account_height);
                     render_account_panel(
                         frame,
@@ -350,7 +359,9 @@ impl Tui {
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(Color::DarkGray))
                     .block(Block::default().borders(Borders::ALL));
-                    let footer_y = top.saturating_add(total_height).saturating_sub(footer_height);
+                    let footer_y = top
+                        .saturating_add(total_height)
+                        .saturating_sub(footer_height);
                     frame.render_widget(
                         footer,
                         Rect::new(area.x, footer_y, area.width, footer_height),
@@ -392,7 +403,9 @@ impl Tui {
                         focus_right = true;
                     }
                 }
-                Event::Mouse(mouse) if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) => {
+                Event::Mouse(mouse)
+                    if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) =>
+                {
                     if !accounts.is_empty() {
                         if let Some(index) = menu_row_at(
                             account_hit_area,
@@ -448,7 +461,8 @@ impl Tui {
                     }
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Down, ..
+                    code: KeyCode::Down,
+                    ..
                 })
                 | Event::Key(KeyEvent {
                     code: KeyCode::Char('j'),
@@ -461,7 +475,8 @@ impl Tui {
                     }
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Enter, ..
+                    code: KeyCode::Enter,
+                    ..
                 }) => {
                     return Ok(if focus_right {
                         AccountLandingChoice::Action(selected_action)
@@ -1077,7 +1092,9 @@ fn render_account_panel(
     hit_area: &mut Rect,
     offset: &mut usize,
 ) {
-    let block = Block::default().title(format!(" {title} ")).borders(Borders::ALL);
+    let block = Block::default()
+        .title(format!(" {title} "))
+        .borders(Borders::ALL);
     *hit_area = block.inner(area);
     if accounts.is_empty() {
         frame.render_widget(block, area);
