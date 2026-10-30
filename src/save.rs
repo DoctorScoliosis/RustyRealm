@@ -346,6 +346,14 @@ pub fn save_game(state: &GameState) -> Result<(), SaveError> {
     save_to_path(state, &path)
 }
 
+
+fn account_requires_password_at(path: &Path) -> Result<bool, SaveError> {
+    match read_save(path)? {
+        ParsedSave::Current(envelope) => Ok(envelope.authentication.is_some()),
+        ParsedSave::Legacy(_) => Err(SaveError::PasswordMigrationRequired),
+    }
+}
+
 fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState, SaveError> {
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
@@ -456,10 +464,7 @@ pub fn account_requires_password(username: &str) -> Result<bool, SaveError> {
             (read_save(&backup)?, true)
         }
     };
-    match parsed {
-        ParsedSave::Current(envelope) => Ok(envelope.authentication.is_some()),
-        ParsedSave::Legacy(_) => Err(SaveError::PasswordMigrationRequired),
-    }
+    account_requires_password_at(&path)
 }
 
 fn migrate_legacy_at(
@@ -565,6 +570,28 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+
+    #[test]
+    fn passwordless_local_accounts_can_be_created_listed_loaded_and_saved() {
+        let directory = test_dir("passwordless");
+        let path = directory.join("localhero.json");
+        let player = Player::new("localhero".into(), String::new());
+        let mut state = GameState::new(player);
+        save_to_path(&state, &path).unwrap();
+
+        assert!(!account_requires_password_at(&path).unwrap());
+        let loaded = load_game_at(&path, "localhero", "").unwrap();
+        assert!(loaded.player.password_hash.is_empty());
+        assert!(load_game_at(&path, "localhero", "unexpected").is_err());
+
+        state.player.gold += 25;
+        save_to_path(&state, &path).unwrap();
+        let reloaded = load_game_at(&path, "localhero", "").unwrap();
+        assert_eq!(reloaded.player.gold, state.player.gold);
+
+        fs::remove_dir_all(directory).unwrap();
     }
 
     fn test_state(username: &str, password: &str) -> GameState {
