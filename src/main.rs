@@ -552,6 +552,22 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     }
 
     let inn_offset = usize::from(in_settlement);
+    let selected_rest_is_unavailable = if in_settlement && choice == 0 {
+        !needs_recovery
+    } else if choice == inn_offset {
+        !needs_recovery || food == 0
+    } else {
+        state.player.stamina >= state.player.max_stamina
+    };
+    if selected_rest_is_unavailable {
+        tui.show_message(
+            "Rest unavailable",
+            "That rest option is currently unavailable. No resources or world time were spent.",
+            Some(state),
+        )?;
+        return Ok(());
+    }
+
     let (stamina_gain, hp_gain, hours, gold_cost, food_cost, full_restore) =
         if in_settlement && choice == 0 {
             (0, 25, crate::calendar::INN_REST_HOURS, 25, 0, true)
