@@ -140,7 +140,6 @@ fn main() -> io::Result<()> {
 }
 
 
-
 fn create_account_flow(tui: &mut Tui) -> io::Result<Option<GameState>> {
     let username = tui.prompt_input("Choose username (no spaces)", false, None)?;
     if username.is_empty() || username.contains(' ') {
