@@ -568,7 +568,6 @@ mod tests {
         path
     }
 
-
     #[test]
     fn passwordless_local_accounts_can_be_saved_and_loaded() {
         let directory = test_dir("passwordless");
