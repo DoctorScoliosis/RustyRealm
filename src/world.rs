@@ -95,10 +95,7 @@ impl Location {
 
     /// Declare the exact services available here. Duplicates are removed so
     /// eligibility checks remain deterministic.
-    pub fn with_services(
-        mut self,
-        services: impl IntoIterator<Item = LocationService>,
-    ) -> Self {
+    pub fn with_services(mut self, services: impl IntoIterator<Item = LocationService>) -> Self {
         for service in services {
             if !self.services.contains(&service) {
                 self.services.push(service);
