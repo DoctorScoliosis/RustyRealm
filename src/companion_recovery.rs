@@ -1,9 +1,7 @@
 //! Persistent companion knockout, rescue, recovery and expedition resolution.
 //!
-//! Recovery uses the world's existing shortest-path travel-cost queries. One recovery
-//! turn is one committed main-menu action (the game already advances the market by
-//! one turn after each main-menu selection); opening and closing nested menus does
-//! not advance recovery.
+//! Recovery uses the world's existing shortest-path travel-cost queries. Recovery
+//! counts down in elapsed in-game hours; opening menus and reloading do not advance it.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -12,14 +10,17 @@ use crate::party::{CompanionCondition, CompanionId, CompanionState, Party};
 use crate::state::GameState;
 use crate::world::{LocationCategory, LocationId, World};
 
-pub const RECOVERY_TURNS: u32 = 3;
+/// Knocked-out companions recover after three elapsed in-game hours.
+pub const RECOVERY_HOURS: u32 = 3;
+/// Legacy constant name retained for callers that still refer to recovery turns.
+pub const RECOVERY_TURNS: u32 = RECOVERY_HOURS;
 pub const TREATMENT_COST: u32 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompanionRecoveryRecord {
     pub companion_id: CompanionId,
     pub destination: Option<LocationId>,
-    /// Remaining committed main-menu turns. Menus and save/load do not advance it.
+    /// Remaining elapsed in-game hours. The field name is retained for save compatibility.
     pub turns_remaining: u32,
 }
 
@@ -99,7 +100,7 @@ impl RecoveryState {
         self.records.push(CompanionRecoveryRecord {
             companion_id: companion.id,
             destination,
-            turns_remaining: RECOVERY_TURNS,
+            turns_remaining: RECOVERY_HOURS,
         });
         self.records
             .sort_by(|left, right| left.companion_id.as_str().cmp(right.companion_id.as_str()));
