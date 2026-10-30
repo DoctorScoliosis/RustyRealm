@@ -266,8 +266,8 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 ))
             })?;
         let title = format!(
-            "Final Realm · {current_location_name} · Turn {}",
-            state.world_turn
+            "Final Realm · {current_location_name} · {}",
+            crate::calendar::format_calendar(state.world_turn)
         );
         let choice = tui.select_menu(&title, &options, Some(state))?;
         match choice {
@@ -302,19 +302,6 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     .map_err(|error| io::Error::other(error.to_string()))?;
                 return Ok(());
             }
-        }
-        let recovered = state.advance_world_turn();
-        if !recovered.is_empty() {
-            let names = recovered
-                .iter()
-                .map(|id| crate::party::get_definition(*id).name)
-                .collect::<Vec<_>>()
-                .join(", ");
-            tui.show_message(
-                "Companion recovered",
-                &format!("{names} recovered after completing the required main-menu turns. They are available for explicit party selection."),
-                Some(state),
-            )?;
         }
     }
 }
@@ -358,9 +345,15 @@ fn interact_with_current_location(
     } else if let Some(landmark) = crate::adventure::landmark_for_location(&location.id) {
         crate::adventure::notify_landmark_interaction(state, landmark.interaction_target);
     }
+    let recovered = state.advance_world_time(crate::calendar::LOCATION_INTERACTION_HOURS);
+    crate::calendar::notify_recovered_companions(tui, state, &recovered)?;
     tui.show_message(
         "Explore",
-        &format!("You inspect {location_name}."),
+        &format!(
+            "You inspect {location_name}. The interaction takes {} in-game hour(s).\n\n{}",
+            crate::calendar::LOCATION_INTERACTION_HOURS,
+            crate::calendar::format_calendar(state.world_turn)
+        ),
         Some(state),
     )
 }
@@ -512,7 +505,7 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     let mut options = Vec::<String>::new();
     if in_settlement {
         options.push(if state.player.gold >= 25 && needs_recovery {
-            "Inn rest — 25 gold; restore stamina and up to 25 HP (2 turns)".to_string()
+            format!("Inn rest — 25 gold; restore stamina and up to 25 HP ({} hours)", crate::calendar::INN_REST_HOURS)
         } else if state.player.gold < 25 {
             format!(
                 "[Disabled: requires 25 gold (have {}).] Inn rest — restore stamina and HP",
@@ -523,14 +516,14 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
         });
     }
     options.push(if food > 0 && needs_recovery {
-        "Camp with food — consume 1 Food; +50 stamina and up to 10 HP (2 turns)".to_string()
+        format!("Camp with food — consume 1 Food; +50 stamina and up to 10 HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
     } else if food == 0 {
         "[Disabled: requires 1 Food.] Camp with food — +50 stamina and up to 10 HP".to_string()
     } else {
         "[Disabled: already fully recovered.] Camp with food — recover stamina and HP".to_string()
     });
     options.push(if state.player.stamina < state.player.max_stamina {
-        "Sleep rough — +20 stamina; no HP recovery (4 turns)".to_string()
+        format!("Sleep rough — +20 stamina; no HP recovery ({} hours)", crate::calendar::ROUGH_SLEEP_HOURS)
     } else {
         "[Disabled: stamina is already full.] Sleep rough — +20 stamina (4 turns)".to_string()
     });
@@ -539,8 +532,8 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     let refs: Vec<&str> = options.iter().map(String::as_str).collect();
     let choice = tui.select_menu(
         &format!(
-            "Rest at {location_name} · Stamina {}/{} · Turn {}",
-            state.player.stamina, state.player.max_stamina, state.world_turn
+            "Rest at {location_name} · Stamina {}/{} · {}",
+            state.player.stamina, state.player.max_stamina, crate::calendar::format_calendar(state.world_turn)
         ),
         &refs,
         Some(state),
@@ -550,13 +543,13 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     }
 
     let inn_offset = usize::from(in_settlement);
-    let (stamina_gain, hp_gain, turns, gold_cost, food_cost, full_restore) =
+    let (stamina_gain, hp_gain, hours, gold_cost, food_cost, full_restore) =
         if in_settlement && choice == 0 {
-            (0, 25, 2, 25, 0, true)
+            (0, 25, crate::calendar::INN_REST_HOURS, 25, 0, true)
         } else if choice == inn_offset {
-            (50, 10, 2, 0, 1, false)
+            (50, 10, crate::calendar::FOOD_CAMP_HOURS, 0, 1, false)
         } else {
-            (20, 0, 4, 0, 0, false)
+            (20, 0, crate::calendar::ROUGH_SLEEP_HOURS, 0, 0, false)
         };
 
     if state.player.gold < gold_cost || state.player.get_item_count(ItemType::Food) < food_cost {
@@ -588,10 +581,8 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
         .saturating_add(hp_gain)
         .min(state.player.max_hp);
 
-    let mut recovered = Vec::new();
-    for _ in 0..turns {
-        recovered.extend(state.advance_world_turn());
-    }
+    let recovered = state.advance_world_time(u64::from(hours));
+    crate::calendar::notify_recovered_companions(tui, state, &recovered)?;
     let names = recovered
         .iter()
         .map(|id| crate::party::get_definition(*id).name)
@@ -604,22 +595,22 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     tui.show_message(
         "Rest complete",
         &format!(
-            "Rested at {location_name}. Stamina: {}/{} · HP: {}/{}. World time advanced by {turns} turns.{note}",
-            state.player.stamina, state.player.max_stamina, state.player.hp, state.player.max_hp
+            "Rested at {location_name}. Stamina: {}/{} · HP: {}/{}. World time advanced by {hours} hours.{note}\n\n{}",
+            state.player.stamina, state.player.max_stamina, state.player.hp, state.player.max_hp,
+            crate::calendar::format_calendar(state.world_turn)
         ),
         Some(state),
     )?;
     Ok(())
 }
 
-/// Applies a single directly connected journey after validating the route,
-/// destination, and positive travel cost. An error leaves the saved location
-/// unchanged.
+/// Applies a directly connected journey after validating its route. The
+/// route's existing cost value is its elapsed travel duration in hours.
 fn apply_travel(
     state: &mut GameState,
     world: &World,
     destination_id: &LocationId,
-) -> Result<u32, &'static str> {
+) -> Result<(u32, Vec<crate::party::CompanionId>), &'static str> {
     let current_id = state.current_location.clone();
     let route = world
         .get_direct_routes(&current_id)
@@ -650,7 +641,8 @@ fn apply_travel(
             location_id: destination.id.clone(),
         },
     );
-    Ok(travel_cost)
+    let recovered = state.advance_world_time(u64::from(travel_cost));
+    Ok((travel_cost, recovered))
 }
 
 fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
@@ -687,7 +679,7 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
 
         let labels: Vec<String> = destinations
             .iter()
-            .map(|(_, name, cost, danger)| format!("{name} · travel cost {cost} · danger {danger}"))
+            .map(|(_, name, hours, danger)| format!("{name} · travel time {hours}h · danger {danger}"))
             .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
@@ -700,11 +692,13 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
 
         let (destination_id, destination_name, _listed_cost, danger_level) = &destinations[choice];
         match apply_travel(state, world, destination_id) {
-            Ok(travel_cost) => {
+            Ok((travel_hours, recovered)) => {
+                crate::calendar::notify_recovered_companions(tui, state, &recovered)?;
                 tui.show_message(
                     "Travel complete",
                     &format!(
-                        "You arrive at {destination_name}.\n\nTravel cost: {travel_cost}\nRoute danger: {danger_level}"
+                        "You arrive at {destination_name}.\n\nTravel time: {travel_hours} hours\nRoute danger: {danger_level}\n\n{}",
+                        crate::calendar::format_calendar(state.world_turn)
                     ),
                     Some(state),
                 )?;
@@ -1418,10 +1412,11 @@ mod travel_tests {
         let mut state = test_state();
         let destination = LocationId::from("abandoned_mill");
 
-        let cost = apply_travel(&mut state, &world, &destination)
+        let (travel_hours, _) = apply_travel(&mut state, &world, &destination)
             .expect("direct route should be traversable");
 
-        assert_eq!(cost, 5);
+        assert_eq!(travel_hours, 5);
+        assert_eq!(state.world_turn, 5);
         assert_eq!(state.current_location, destination);
     }
 
