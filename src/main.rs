@@ -35,7 +35,6 @@ mod ui;
 #[allow(dead_code)]
 mod world;
 
-use crate::character::CharacterClass;
 use crate::checkpoint::CheckpointSession;
 use crate::data::ItemType;
 use crate::state::GameState;
@@ -129,7 +128,7 @@ fn main() -> io::Result<()> {
                 Err(error) => tui.show_message("Login failed", &error.to_string(), None)?,
             }
         } else if choice == accounts.len() {
-            if let Some(mut state) = create_account(&mut tui)? {
+            if let Some(mut state) = create_account_flow(&mut tui)? {
                 main_menu(&mut tui, &mut state)?;
             }
         } else {
@@ -140,6 +139,59 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+
+
+fn create_account_flow(tui: &mut Tui) -> io::Result<Option<GameState>> {
+    let username = tui.prompt_input("Choose username (no spaces)", false, None)?;
+    if username.is_empty() || username.contains(' ') {
+        tui.show_message(
+            "Invalid username",
+            "A username is required, and spaces are not allowed.",
+            None,
+        )?;
+        return Ok(None);
+    }
+
+    let password = tui.prompt_input(
+        "Choose password (leave blank for local-only access)",
+        true,
+        None,
+    )?;
+    if password.is_empty() {
+        tui.show_message(
+            "Passwordless local account",
+            "This account will be accessible to anyone with access to this computer and its local save files. It will not be protected by a password.",
+            None,
+        )?;
+        let confirmation =
+            tui.prompt_input("Type LOCAL to continue without a password", false, None)?;
+        if confirmation != "LOCAL" {
+            tui.show_message(
+                "Account creation cancelled",
+                "Choose a password or explicitly confirm local-only access.",
+                None,
+            )?;
+            return Ok(None);
+        }
+    }
+
+    let class_options = crate::character::CharacterClass::ALL.map(crate::character::CharacterClass::name);
+    let class_choice = tui.select_menu("Choose your character class", &class_options, None)?;
+    let Some(class) = crate::character::CharacterClass::ALL.get(class_choice).copied() else {
+        return Ok(None);
+    };
+
+    match crate::save::create_account_with_class(&username, &password, class) {
+        Ok(state) => {
+            tui.show_message("Account created", "Account created successfully!", Some(&state))?;
+            Ok(Some(state))
+        }
+        Err(error) => {
+            tui.show_message("Account creation failed", &error.to_string(), None)?;
+            Ok(None)
+        }
+    }
+}
 
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
