@@ -654,14 +654,30 @@ pub fn create_account_with_class(
         return Err(SaveError::InvalidUsername);
     }
     let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    create_account_at(&safe_username, password, class, &path)
+}
+
+fn create_account_at(
+    username: &str,
+    password: &str,
+    class: CharacterClass,
+    path: &Path,
+) -> Result<GameState, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
     if path.exists() {
         return Err(SaveError::AccountExists);
     }
-
-    let password_hash = hash_password(password)?;
+    let password_hash = if password.is_empty() {
+        String::new()
+    } else {
+        hash_password(password)?
+    };
     let player = Player::new_with_class(safe_username, password_hash, class);
     let state = GameState::new(player);
-    save_to_path(&state, &path)?;
+    save_to_path(&state, path)?;
     Ok(state)
 }
 
@@ -717,6 +733,19 @@ mod tests {
         assert!(loaded.player.password_hash.is_empty());
         assert!(load_game_at(&path, "localhero", "unexpected").is_err());
 
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn new_passwordless_accounts_are_created_as_local_only() {
+        let directory = test_dir("new-passwordless");
+        let path = directory.join("localnew.json");
+        let state = create_account_at("LocalNew", "", CharacterClass::Ranger, &path).unwrap();
+        assert_eq!(state.player.username, "localnew");
+        assert_eq!(state.player.class, CharacterClass::Ranger);
+        assert!(state.player.password_hash.is_empty());
+        assert!(!account_requires_password_at(&path).unwrap());
+        assert!(load_game_at(&path, "localnew", "").is_ok());
         fs::remove_dir_all(directory).unwrap();
     }
 
