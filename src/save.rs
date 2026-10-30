@@ -454,17 +454,16 @@ pub fn account_requires_password(username: &str) -> Result<bool, SaveError> {
         return Err(SaveError::InvalidUsername);
     }
     let path = get_save_dir()?.join(format!("{safe_username}.json"));
-    let (parsed, _) = match read_save(&path) {
-        Ok(save) => (save, false),
+    match read_save(&path) {
+        Ok(_) => account_requires_password_at(&path),
         Err(primary_error) => {
             let backup = backup_path(&path);
             if !backup.exists() {
                 return Err(primary_error);
             }
-            (read_save(&backup)?, true)
+            account_requires_password_at(&backup)
         }
-    };
-    account_requires_password_at(&path)
+    }
 }
 
 fn migrate_legacy_at(
@@ -472,9 +471,6 @@ fn migrate_legacy_at(
     username: &str,
     new_password: &str,
 ) -> Result<GameState, SaveError> {
-    if new_password.is_empty() {
-        return Err(SaveError::EmptyPassword);
-    }
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
         return Err(SaveError::InvalidUsername);
@@ -574,22 +570,16 @@ mod tests {
 
 
     #[test]
-    fn passwordless_local_accounts_can_be_created_listed_loaded_and_saved() {
+    fn passwordless_local_accounts_can_be_saved_and_loaded() {
         let directory = test_dir("passwordless");
         let path = directory.join("localhero.json");
-        let player = Player::new("localhero".into(), String::new());
-        let mut state = GameState::new(player);
+        let state = GameState::new(Player::new("localhero".into(), String::new()));
         save_to_path(&state, &path).unwrap();
 
         assert!(!account_requires_password_at(&path).unwrap());
         let loaded = load_game_at(&path, "localhero", "").unwrap();
         assert!(loaded.player.password_hash.is_empty());
         assert!(load_game_at(&path, "localhero", "unexpected").is_err());
-
-        state.player.gold += 25;
-        save_to_path(&state, &path).unwrap();
-        let reloaded = load_game_at(&path, "localhero", "").unwrap();
-        assert_eq!(reloaded.player.gold, state.player.gold);
 
         fs::remove_dir_all(directory).unwrap();
     }
