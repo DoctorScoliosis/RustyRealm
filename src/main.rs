@@ -198,10 +198,22 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
         return Ok(None);
     }
 
-    let password = tui.prompt_input("Choose password", true, None)?;
+    let password = tui.prompt_input(
+        "Choose password (leave blank for local-only access)",
+        true,
+        None,
+    )?;
     if password.is_empty() {
-        tui.show_message("Invalid password", "Password cannot be empty.", None)?;
-        return Ok(None);
+        tui.show_message(
+            "Passwordless local account",
+            "This account will be accessible to anyone with access to this computer and its local save files. It will not be protected by a password.",
+            None,
+        )?;
+        let confirmation = tui.prompt_input("Type LOCAL to continue without a password", false, None)?;
+        if confirmation != "LOCAL" {
+            tui.show_message("Account creation cancelled", "Choose a password or explicitly confirm local-only access.", None)?;
+            return Ok(None);
+        }
     }
 
     let class_options = CharacterClass::ALL.map(CharacterClass::name);
