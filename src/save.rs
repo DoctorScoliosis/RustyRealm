@@ -500,9 +500,14 @@ fn migrate_legacy_at(
     }
 
     // Legacy JSON omitted password_hash via #[serde(skip)], so the old password
-    // cannot be verified. The UI must explain this and obtain explicit consent
-    // before calling this function with a newly chosen password.
-    state.player.password_hash = hash_password(new_password)?;
+    // cannot be verified. The UI must explain local ownership implications and
+    // obtain explicit consent before migrating it. An empty value opts out of
+    // password protection on this computer.
+    state.player.password_hash = if new_password.is_empty() {
+        String::new()
+    } else {
+        hash_password(new_password)?
+    };
     state.player.cap_values();
     for companion in &mut state.companions {
         companion.cap_values();
