@@ -171,6 +171,7 @@ mod tests {
         assert!(session.is_dirty(&state).unwrap());
 
         let tavern = location(&[LocationService::Tavern]);
+        state.current_location = tavern.id.clone();
         state.player.password_hash.clear();
         assert!(matches!(
             session.save_at(&state, &tavern),
