@@ -175,12 +175,9 @@ impl Tui {
                 // the full terminal. Long lists still receive a scrollable viewport.
                 let title_height = if area.height >= 7 { 3 } else { 0 };
                 let footer_height = if area.height >= 10 { 2 } else { 0 };
-                let menu_height = options
-                    .len()
-                    .saturating_add(2)
-                    .min(12)
-                    .min(usize::from(area.height.saturating_sub(title_height + footer_height)))
-                    as u16;
+                let menu_height = options.len().saturating_add(2).min(12).min(usize::from(
+                    area.height.saturating_sub(title_height + footer_height),
+                )) as u16;
                 let content_height = area.height.saturating_sub(title_height + footer_height);
                 let menu_width = options
                     .iter()
