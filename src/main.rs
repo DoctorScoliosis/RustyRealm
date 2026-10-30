@@ -573,6 +573,29 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
                     .collect::<Vec<_>>()
                     .join(", ")
             };
+            let outstanding_recovery = if state.companion_recovery.records.is_empty() {
+                "None.".to_string()
+            } else {
+                state
+                    .companion_recovery
+                    .records
+                    .iter()
+                    .map(|record| {
+                        let name = crate::party::get_definition(record.companion_id).name;
+                        match record.destination.as_ref().and_then(|id| world.get_location(id)) {
+                            Some(location) => format!(
+                                "{name}: {} elapsed hour(s) remaining at {}",
+                                record.turns_remaining, location.name
+                            ),
+                            None => format!(
+                                "{name}: awaiting a reachable healer; recovery timer paused at {} hour(s)",
+                                record.turns_remaining
+                            ),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
             let plan = outcome.plan;
             let cost = format!("{} gold and {} Food", plan.gold_cost, plan.food_cost);
             tui.show_message(
@@ -588,7 +611,10 @@ Mana: {}/{} → {}/{}
 
 Companions recovered: {recovered}
 
-Knockout records requiring a treatment destination were advanced only by the elapsed hours; records without a reachable healer remain intact.
+Outstanding companion recovery:
+{outstanding_recovery}
+
+Rest never replaces immediate treatment or erases a knockout record without a reachable healer.
 
 {}",
                     plan.kind.label(),
