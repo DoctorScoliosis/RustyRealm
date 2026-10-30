@@ -32,6 +32,7 @@ pub enum SaveError {
     AccountExists,
     EmptyPassword,
     UsernameMismatch,
+    ConfirmationMismatch,
 }
 
 impl fmt::Display for SaveError {
@@ -66,6 +67,9 @@ impl fmt::Display for SaveError {
             SaveError::EmptyPassword => write!(f, "Password cannot be empty."),
             SaveError::UsernameMismatch => {
                 write!(f, "The save username does not match the requested account.")
+            }
+            SaveError::ConfirmationMismatch => {
+                write!(f, "The typed account name did not match; the account was not deleted.")
             }
         }
     }
@@ -316,15 +320,11 @@ fn save_to_path(state: &GameState, path: &Path) -> Result<(), SaveError> {
     }
 
     let password_hash = state.player.password_hash.trim();
-    if password_hash.is_empty() {
-        return Err(SaveError::InvalidPasswordHash);
-    }
-
     let checksum = compute_checksum(&safe_state)?;
     let envelope = SaveEnvelope {
         version: CURRENT_SAVE_VERSION,
         checksum,
-        authentication: Some(AuthMetadata {
+        authentication: (!password_hash.is_empty()).then(|| AuthMetadata {
             password_hash: password_hash.to_owned(),
         }),
         data: safe_state,
@@ -348,6 +348,13 @@ pub fn save_game(state: &GameState) -> Result<(), SaveError> {
         sanitize_username(&state.player.username)
     ));
     save_to_path(state, &path)
+}
+
+fn account_requires_password_at(path: &Path) -> Result<bool, SaveError> {
+    match read_save(path)? {
+        ParsedSave::Current(envelope) => Ok(envelope.authentication.is_some()),
+        ParsedSave::Legacy(_) => Err(SaveError::PasswordMigrationRequired),
+    }
 }
 
 fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState, SaveError> {
@@ -382,15 +389,15 @@ fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState
             if sanitize_username(&envelope.data.player.username) != safe_username {
                 return Err(SaveError::UsernameMismatch);
             }
-            let auth = envelope
-                .authentication
-                .ok_or(SaveError::PasswordMigrationRequired)?;
-            if !verify_password(password, &auth.password_hash)? {
+            let mut state = envelope.data;
+            if let Some(auth) = envelope.authentication {
+                if !verify_password(password, &auth.password_hash)? {
+                    return Err(SaveError::AuthenticationFailed);
+                }
+                state.player.password_hash = auth.password_hash;
+            } else if !password.is_empty() {
                 return Err(SaveError::AuthenticationFailed);
             }
-
-            let mut state = envelope.data;
-            state.player.password_hash = auth.password_hash;
             state
         }
     };
@@ -410,6 +417,114 @@ fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState
     Ok(state)
 }
 
+fn read_save_with_backup(path: &Path) -> Result<(ParsedSave, bool), SaveError> {
+    match read_save(path) {
+        Ok(save) => Ok((save, false)),
+        Err(error) if matches!(&error, SaveError::UnsupportedVersion(_)) => Err(error),
+        Err(primary_error) => {
+            let backup = backup_path(path);
+            if !backup.exists() {
+                return Err(primary_error);
+            }
+            match read_save(&backup) {
+                Ok(save) => Ok((save, true)),
+                Err(_) => Err(primary_error),
+            }
+        }
+    }
+}
+
+/// Read a local account's displayable game data without authorising gameplay.
+/// The preview is not a login: password verification still happens in load_game.
+pub fn preview_local_account(username: &str) -> Result<GameState, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    preview_account_at(&path, &safe_username)
+}
+
+fn preview_account_at(path: &Path, username: &str) -> Result<GameState, SaveError> {
+    let (parsed, _) = read_save_with_backup(path)?;
+    let mut state = match parsed {
+        ParsedSave::Legacy(state) => state,
+        ParsedSave::Current(envelope) => envelope.data,
+    };
+    if sanitize_username(&state.player.username) != sanitize_username(username) {
+        return Err(SaveError::UsernameMismatch);
+    }
+    state.player.password_hash.clear();
+    state.player.cap_values();
+    for companion in &mut state.companions {
+        companion.cap_values();
+    }
+    Ok(state)
+}
+
+/// Delete both the active local save and its recovery backup. Password-protected
+/// accounts require their existing password; passwordless/legacy accounts
+/// require the exact account name as a local confirmation.
+pub fn delete_local_account(
+    username: &str,
+    password: &str,
+    confirmation: &str,
+) -> Result<(), SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    delete_account_at(&path, &safe_username, password, confirmation)
+}
+
+fn delete_account_at(
+    path: &Path,
+    username: &str,
+    password: &str,
+    confirmation: &str,
+) -> Result<(), SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    if confirmation != safe_username {
+        return Err(SaveError::ConfirmationMismatch);
+    }
+    let (parsed, _) = read_save_with_backup(path)?;
+    let saved_username = match &parsed {
+        ParsedSave::Legacy(state) => state.player.username.as_str(),
+        ParsedSave::Current(envelope) => envelope.data.player.username.as_str(),
+    };
+    if sanitize_username(saved_username) != safe_username {
+        return Err(SaveError::UsernameMismatch);
+    }
+    if let ParsedSave::Current(envelope) = parsed {
+        match envelope.authentication {
+            Some(auth) => {
+                if !verify_password(password, &auth.password_hash)? {
+                    return Err(SaveError::AuthenticationFailed);
+                }
+            }
+            None if !password.is_empty() => return Err(SaveError::AuthenticationFailed),
+            None => {}
+        }
+    } else if !password.is_empty() {
+        // A legacy save has no verifiable password hash, so only the typed
+        // account-name confirmation can be used before explicit migration.
+        return Err(SaveError::PasswordMigrationRequired);
+    }
+
+    for candidate in [path.to_path_buf(), backup_path(path)] {
+        match fs::remove_file(&candidate) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(SaveError::Io(error)),
+        }
+    }
+    Ok(())
+}
+
 pub fn load_game(username: &str, password: &str) -> Result<GameState, SaveError> {
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
@@ -419,14 +534,55 @@ pub fn load_game(username: &str, password: &str) -> Result<GameState, SaveError>
     load_game_at(&path, &safe_username, password)
 }
 
+/// Return the names of valid local save files, newest modified first.
+fn list_accounts_in(directory: &Path) -> Result<Vec<String>, SaveError> {
+    let mut accounts = Vec::new();
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(username) = path.file_stem().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if sanitize_username(username) != username {
+            continue;
+        }
+        if read_save(&path).is_ok() || read_save(&backup_path(&path)).is_ok() {
+            let modified = entry.metadata()?.modified().unwrap_or(UNIX_EPOCH);
+            accounts.push((username.to_owned(), modified));
+        }
+    }
+    accounts.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    Ok(accounts.into_iter().map(|(username, _)| username).collect())
+}
+
+pub fn list_local_accounts() -> Result<Vec<String>, SaveError> {
+    list_accounts_in(&get_save_dir()?)
+}
+pub fn account_requires_password(username: &str) -> Result<bool, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    match read_save(&path) {
+        Ok(_) => account_requires_password_at(&path),
+        Err(primary_error) => {
+            let backup = backup_path(&path);
+            if !backup.exists() {
+                return Err(primary_error);
+            }
+            account_requires_password_at(&backup)
+        }
+    }
+}
 fn migrate_legacy_at(
     path: &Path,
     username: &str,
     new_password: &str,
 ) -> Result<GameState, SaveError> {
-    if new_password.is_empty() {
-        return Err(SaveError::EmptyPassword);
-    }
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
         return Err(SaveError::InvalidUsername);
@@ -457,9 +613,14 @@ fn migrate_legacy_at(
     }
 
     // Legacy JSON omitted password_hash via #[serde(skip)], so the old password
-    // cannot be verified. The UI must explain this and obtain explicit consent
-    // before calling this function with a newly chosen password.
-    state.player.password_hash = hash_password(new_password)?;
+    // cannot be verified. The UI must explain local ownership implications and
+    // obtain explicit consent before migrating it. An empty value opts out of
+    // password protection on this computer.
+    state.player.password_hash = if new_password.is_empty() {
+        String::new()
+    } else {
+        hash_password(new_password)?
+    };
     state.player.cap_values();
     for companion in &mut state.companions {
         companion.cap_values();
@@ -492,19 +653,31 @@ pub fn create_account_with_class(
     if safe_username.is_empty() {
         return Err(SaveError::InvalidUsername);
     }
-    if password.is_empty() {
-        return Err(SaveError::EmptyPassword);
-    }
-
     let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    create_account_at(&safe_username, password, class, &path)
+}
+
+fn create_account_at(
+    username: &str,
+    password: &str,
+    class: CharacterClass,
+    path: &Path,
+) -> Result<GameState, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
     if path.exists() {
         return Err(SaveError::AccountExists);
     }
-
-    let password_hash = hash_password(password)?;
+    let password_hash = if password.is_empty() {
+        String::new()
+    } else {
+        hash_password(password)?
+    };
     let player = Player::new_with_class(safe_username, password_hash, class);
     let state = GameState::new(player);
-    save_to_path(&state, &path)?;
+    save_to_path(&state, path)?;
     Ok(state)
 }
 
@@ -526,6 +699,117 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn local_account_listing_includes_valid_saves_and_ignores_backups_and_corrupt_files() {
+        let directory = test_dir("account-list");
+        let valid_path = directory.join("zeta.json");
+        let backup_path = directory.join("zeta.bak");
+        let corrupt_path = directory.join("corrupt.json");
+        save_to_path(
+            &GameState::new(Player::new("zeta".into(), String::new())),
+            &valid_path,
+        )
+        .unwrap();
+        fs::write(&backup_path, b"backup").unwrap();
+        fs::write(&corrupt_path, b"not json").unwrap();
+
+        let valid = list_accounts_in(&directory).unwrap();
+        assert_eq!(valid, vec!["zeta".to_string()]);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn passwordless_local_accounts_can_be_saved_and_loaded() {
+        let directory = test_dir("passwordless");
+        let path = directory.join("localhero.json");
+        let state = GameState::new(Player::new("localhero".into(), String::new()));
+        save_to_path(&state, &path).unwrap();
+
+        assert!(!account_requires_password_at(&path).unwrap());
+        let loaded = load_game_at(&path, "localhero", "").unwrap();
+        assert!(loaded.player.password_hash.is_empty());
+        assert!(load_game_at(&path, "localhero", "unexpected").is_err());
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn new_passwordless_accounts_are_created_as_local_only() {
+        let directory = test_dir("new-passwordless");
+        let path = directory.join("localnew.json");
+        let state = create_account_at("LocalNew", "", CharacterClass::Ranger, &path).unwrap();
+        assert_eq!(state.player.username, "localnew");
+        assert_eq!(state.player.class, CharacterClass::Ranger);
+        assert!(state.player.password_hash.is_empty());
+        assert!(!account_requires_password_at(&path).unwrap());
+        assert!(load_game_at(&path, "localnew", "").is_ok());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn account_preview_reads_valid_data_without_authenticating_gameplay() {
+        let directory = test_dir("preview");
+        let path = directory.join("previewhero.json");
+        let mut state = test_state("previewhero", "secret");
+        state.player.gold = 777;
+        save_to_path(&state, &path).unwrap();
+
+        let preview = preview_account_at(&path, "previewhero").unwrap();
+        assert_eq!(preview.player.gold, 777);
+        assert!(preview.player.password_hash.is_empty());
+        assert!(load_game_at(&path, "previewhero", "wrong").is_err());
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn protected_account_deletion_requires_password_and_exact_name() {
+        let directory = test_dir("delete-protected");
+        let path = directory.join("deletehero.json");
+        let state = test_state("deletehero", "secret");
+        save_to_path(&state, &path).unwrap();
+        let mut updated = state.clone();
+        updated.player.gold += 1;
+        save_to_path(&updated, &path).unwrap();
+        let backup = backup_path(&path);
+        assert!(backup.exists());
+
+        assert!(matches!(
+            delete_account_at(&path, "deletehero", "wrong", "deletehero"),
+            Err(SaveError::AuthenticationFailed)
+        ));
+        assert!(path.exists());
+        assert!(backup.exists());
+        assert!(matches!(
+            delete_account_at(&path, "deletehero", "secret", "other"),
+            Err(SaveError::ConfirmationMismatch)
+        ));
+        assert!(path.exists());
+
+        delete_account_at(&path, "deletehero", "secret", "deletehero").unwrap();
+        assert!(!path.exists());
+        assert!(!backup.exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn passwordless_account_deletion_requires_exact_name_confirmation() {
+        let directory = test_dir("delete-passwordless");
+        let path = directory.join("localhero.json");
+        let state = GameState::new(Player::new("localhero".into(), String::new()));
+        save_to_path(&state, &path).unwrap();
+
+        assert!(matches!(
+            delete_account_at(&path, "localhero", "", "wrong"),
+            Err(SaveError::ConfirmationMismatch)
+        ));
+        assert!(path.exists());
+        delete_account_at(&path, "localhero", "", "localhero").unwrap();
+        assert!(!path.exists());
+        fs::remove_dir_all(directory).unwrap();
     }
 
     fn test_state(username: &str, password: &str) -> GameState {
@@ -955,12 +1239,15 @@ mod tests {
         save_to_path(&valid, &path).unwrap();
         let before = fs::read(&path).unwrap();
 
-        let invalid = GameState::new(Player::new("failed".into(), String::new()));
-        assert!(matches!(
-            save_to_path(&invalid, &path),
-            Err(SaveError::InvalidPasswordHash)
-        ));
-        assert_eq!(fs::read(&path).unwrap(), before);
+        let mut changed = valid.clone();
+        changed.player.gold += 1;
+        assert!(save_to_path(&changed, &path).is_ok());
+        assert_ne!(fs::read(&path).unwrap(), before);
+
+        let passwordless = GameState::new(Player::new("passwordless".into(), String::new()));
+        let passwordless_path = dir.join("passwordless.json");
+        assert!(save_to_path(&passwordless, &passwordless_path).is_ok());
+        assert!(load_game_at(&passwordless_path, "passwordless", "").is_ok());
 
         let _ = fs::remove_dir_all(dir);
     }

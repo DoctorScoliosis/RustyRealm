@@ -51,6 +51,31 @@ enum InputMode {
     Lines,
 }
 
+const RUSTY_REALM_ASCII_ART: &str = r#"      ▄▄▄▄▄                ▄▓▄▄          ▄▄▄▄▄          ▄▄▀▀▀████░░▒▓▄       ▄▄     ▄        ▄▄▄▄▄        ▄▄▀▀▀████░░▒▓▄     ▄▄▄▄▄▄▄          ▄                ▄▄▄▄▄▄▄       
+  ▄▄███░░▒▒▓▓▄       ▄█▀   ▐▒▓▓▄     ▄▄███░░▒▒▓▄▌      ▀       ▄ ███▒▓▌   ▄▓▓▒▒░   ▓▓█   ▄▄███░░▒▒▓▓▄    ▀  ▄     ▀███▒▓▌  ▄█▀▀▀█░░▒▓▓▄      █▓▓             ▄█▀▀▀█░░▒▓▓▄    
+▄▀▀ ▄   ▀ ░▒▓▓▌    ▄▒▓      █▒▓▓▄  ▄▀▀ ▄   ▀ ░▒▓▌             ▐▒▓ ▀██▒▓  ▐▓▓▒░ ▀   ▓░▒ ▄▀▀ ▄   ▀ ░▒▓▓▌     ▐▒▓      ▀██▒▓ ▀▄  ▄   ▀ ░▒▓▓▄    ▒░▓            ▀▄  ▄   █ ░▒▓▓▄  
+ ▀ ▐▓▓   ▐█░▒▓    ▐░░▌      ▐░░▒▓   ▀ ▐▓▓    ▀░▀              ▐░░   ░     ▓▒░█▌    ░░▌  ▀ ▐▓▓   ▐█░▒▓      ▐░░        ░      ▐▒▓    ▀█░▒▓▌   ▐░░               ▐▒▓  ▐███░▒▓▌ 
+   ▐▒░  ▄█░▒▀     ▐░░        ██░▒▌    ▐▒░    ▄▄▄▄▄            ▐░░  ▀       ▀▒░█▄   ░░▌    ▐▒░  ▄█░▒▀       ▐░░  ▄    ▀       ▐░░  ▄   ▀█░░   ▐░░               ▐░░   █▀ ▀█░░ 
+    ░▌▄▀▀▀▄▄▄▄     ▒█        ███░▌     ▀  ▄██░▒▓▓▒░▄           ▒▌            ▀▀▀█▄ ▐▒      ░▌▄▀▀▀▄▄▄▄       ▒▌ ▐▒▌           ▐░░ ▐▒▌   ▐█░▌   ▒▌    ▀▄▄        ▐░░   █   ▐█░▌
+    ▓▌   ▀▀█░▒▓▄   ▐▓▌      ▐██░█▌      ▄█▀▀   ▀▀░▒▓▄          ▓▌         ▄▄▄    ▀▀▐▓      ▓▌   ▀▀█░▒▓▄     ▓▌  ▀    ▀▄       ▒▌  ▀      █    ▓▌      ▀▒▓▄      ▒▌   ▒     █ 
+    █      ▐█░▒▓▌   ▀█▄     ██░██                ▐░▒▓▌         █        ▐▒░█▌      ▐█      █      ▐█░▒▓▌    █         ▒▓▄     ▓▌        ▐▌    █       ▐░▒▓▌     ▓▌   ░    ▐▌ 
+    ▓      ▐█░▒▓▌  ▄  ▀█▀ ▄████       ▀▄        ▄█░▒▓          ▐        ▓▒░██      ▀       ▓      ▐█░▒▓▌    ▐       ▄█░▒▓     █         █   ▄ ▐     ▄▄██░▒▌     █         █  
+    ▐      █░▒▓░    ▀█▄▄▄████▀▀         ▀█▄▄▄▄███░▒▀                    ░▓▒░██▄▄▄▄█▀       ▐      █░▒▓░   ▀▄▄   ▄▄▄█░█░░▀     ▐        ▄▀    █▄▄▄▄████ ░█▀      ▐        ▄▀    
+            ▀▀▀       ▀▀▀▀▀                ▀▀▀▀▀▀                        ▀▀▀▀▀▀▀▀▀                 ▀▀▀       ▀▀▀▀▀▀▀▀▀                ▀         ▀▀▀▀▀▀▀▀                ▀"#;
+
+const STARTUP_LOGO_WIDTH: u16 = 175;
+const STARTUP_LOGO_HEIGHT: u16 = 11;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccountLandingChoice {
+    Account(usize),
+    Action(usize),
+}
+
+fn startup_logo_fits(area: Rect) -> bool {
+    area.width >= STARTUP_LOGO_WIDTH + 6 && area.height >= 26
+}
+
 pub struct Tui {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     _guard: Option<TerminalGuard>,
@@ -77,11 +102,18 @@ impl Tui {
                 println!("  {}. {}", index + 1, line);
             }
             let prompt = format!(
-                "Type an option number or exact label (1-{}), then press Enter: ",
+                "Type an option number or exact label (1-{}), or 0 to go back: ",
                 options.len()
             );
             let raw = read_line_prompt(&prompt)?;
             let choice = raw.trim();
+            if choice == "0" {
+                if let Some(back_index) = back_option_index(options) {
+                    return Ok(back_index);
+                }
+                println!("There is no back option on this screen.");
+                continue;
+            }
             let selected = choice
                 .parse::<usize>()
                 .ok()
@@ -140,6 +172,337 @@ impl Tui {
         })
     }
 
+    /// Two-panel local account landing screen. The left panel lists saved
+    /// accounts and the right panel contains account-management actions.
+    pub fn select_account_landing(
+        &mut self,
+        title: &str,
+        accounts: &[String],
+        actions: &[&str],
+    ) -> io::Result<AccountLandingChoice> {
+        if self.input_mode == InputMode::Lines {
+            let mut labels: Vec<String> = accounts
+                .iter()
+                .map(|account| format!("Account: {account}"))
+                .collect();
+            labels.extend(actions.iter().map(|action| (*action).to_string()));
+            let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+            let choice = self.select_menu_lines(title, &refs)?;
+            return Ok(if choice < accounts.len() {
+                AccountLandingChoice::Account(choice)
+            } else {
+                AccountLandingChoice::Action(choice - accounts.len())
+            });
+        }
+        if actions.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the account landing screen requires at least one action",
+            ));
+        }
+
+        let mut selected_account = 0usize;
+        let mut selected_action = 0usize;
+        let mut focus_right = accounts.is_empty();
+        loop {
+            let mut account_hit_area = Rect::default();
+            let mut action_hit_area = Rect::default();
+            let mut account_offset = 0usize;
+            let mut action_offset = 0usize;
+
+            self.render_screen(None, |frame, area, _| {
+                let account_width = accounts
+                    .iter()
+                    .map(|account| account.chars().count())
+                    .max()
+                    .unwrap_or(20)
+                    .saturating_add(8)
+                    .clamp(28, 64)
+                    .min(usize::from(area.width)) as u16;
+                let action_width = actions
+                    .iter()
+                    .map(|action| action.chars().count())
+                    .max()
+                    .unwrap_or(16)
+                    .saturating_add(8)
+                    .clamp(28, 64)
+                    .min(usize::from(area.width)) as u16;
+                let side_by_side =
+                    area.width >= account_width.saturating_add(action_width).saturating_add(4);
+                let show_logo = startup_logo_fits(area);
+                let logo_height = if show_logo { STARTUP_LOGO_HEIGHT } else { 0 };
+                let title_height = if area.height >= 7 { 3 } else { 1 };
+                let footer_height = if area.height >= 8 { 2 } else { 0 };
+                let account_natural_height = accounts.len().saturating_add(2).clamp(4, 12) as u16;
+                let action_natural_height = actions.len().saturating_add(2).clamp(4, 12) as u16;
+                let chrome_height = logo_height
+                    .saturating_add(if show_logo { 1 } else { 0 })
+                    .saturating_add(title_height)
+                    .saturating_add(1)
+                    .saturating_add(footer_height);
+                let panel_budget = area.height.saturating_sub(chrome_height).max(1);
+                let (account_height, action_height) = if side_by_side {
+                    let height = account_natural_height
+                        .max(action_natural_height)
+                        .min(panel_budget);
+                    (height, height)
+                } else {
+                    let each = panel_budget.saturating_sub(1) / 2;
+                    (
+                        account_natural_height.min(each.max(1)),
+                        action_natural_height.min(each.max(1)),
+                    )
+                };
+                let panels_height = if side_by_side {
+                    account_height
+                } else {
+                    account_height
+                        .saturating_add(1)
+                        .saturating_add(action_height)
+                };
+                let total_height = logo_height
+                    .saturating_add(if show_logo { 1 } else { 0 })
+                    .saturating_add(title_height)
+                    .saturating_add(1)
+                    .saturating_add(panels_height)
+                    .saturating_add(footer_height);
+                let top = area
+                    .y
+                    .saturating_add(area.height.saturating_sub(total_height) / 2);
+                let mut y = top;
+
+                if show_logo {
+                    let logo_area = Rect::new(area.x, y, area.width, logo_height);
+                    frame.render_widget(
+                        Paragraph::new(RUSTY_REALM_ASCII_ART)
+                            .alignment(Alignment::Center)
+                            .style(Style::default().fg(Color::Gray)),
+                        logo_area,
+                    );
+                    y = y.saturating_add(logo_height).saturating_add(1);
+                }
+
+                let title_area = Rect::new(area.x, y, area.width, title_height.min(area.height));
+                let heading = Paragraph::new(title)
+                    .alignment(Alignment::Center)
+                    .style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .block(Block::default().borders(Borders::ALL));
+                frame.render_widget(heading, title_area);
+                y = y.saturating_add(title_height).saturating_add(1);
+
+                if side_by_side {
+                    let combined_width = account_width
+                        .saturating_add(action_width)
+                        .saturating_add(4)
+                        .min(area.width);
+                    let left_x = area
+                        .x
+                        .saturating_add(area.width.saturating_sub(combined_width) / 2);
+                    let account_rect = Rect::new(left_x, y, account_width, account_height);
+                    let action_rect = Rect::new(
+                        left_x.saturating_add(account_width).saturating_add(4),
+                        y,
+                        action_width,
+                        action_height,
+                    );
+                    render_account_panel(
+                        frame,
+                        account_rect,
+                        "Active Accounts",
+                        accounts,
+                        selected_account,
+                        !focus_right,
+                        &mut account_hit_area,
+                        &mut account_offset,
+                    );
+                    render_action_panel(
+                        frame,
+                        action_rect,
+                        "Options",
+                        actions,
+                        selected_action,
+                        focus_right,
+                        &mut action_hit_area,
+                        &mut action_offset,
+                    );
+                } else {
+                    let panel_width = account_width.max(action_width).min(area.width);
+                    let left_x = area
+                        .x
+                        .saturating_add(area.width.saturating_sub(panel_width) / 2);
+                    let account_rect = Rect::new(left_x, y, panel_width, account_height);
+                    render_account_panel(
+                        frame,
+                        account_rect,
+                        "Active Accounts",
+                        accounts,
+                        selected_account,
+                        !focus_right,
+                        &mut account_hit_area,
+                        &mut account_offset,
+                    );
+                    y = y.saturating_add(account_height).saturating_add(1);
+                    let action_rect = Rect::new(left_x, y, panel_width, action_height);
+                    render_action_panel(
+                        frame,
+                        action_rect,
+                        "Options",
+                        actions,
+                        selected_action,
+                        focus_right,
+                        &mut action_hit_area,
+                        &mut action_offset,
+                    );
+                }
+
+                if footer_height > 0 {
+                    let footer = Paragraph::new(
+                        "Tab / ← / →: switch panel  ·  ↑ / ↓: select  ·  Enter: open  ·  Esc: exit",
+                    )
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(Color::DarkGray))
+                    .block(Block::default().borders(Borders::ALL));
+                    let footer_y = top
+                        .saturating_add(total_height)
+                        .saturating_sub(footer_height);
+                    frame.render_widget(
+                        footer,
+                        Rect::new(area.x, footer_y, area.width, footer_height),
+                    );
+                }
+            })?;
+
+            let input_event = match event::read() {
+                Ok(event) => event,
+                Err(_) if self.input_mode == InputMode::Events => {
+                    self.switch_to_line_input();
+                    return self.select_account_landing(title, accounts, actions);
+                }
+                Err(error) => return Err(error),
+            };
+            match input_event {
+                Event::Resize(_, _) => continue,
+                Event::Mouse(mouse) if matches!(mouse.kind, MouseEventKind::Moved) => {
+                    if !accounts.is_empty() {
+                        if let Some(index) = menu_row_at(
+                            account_hit_area,
+                            accounts.len(),
+                            account_offset,
+                            mouse.column,
+                            mouse.row,
+                        ) {
+                            selected_account = index;
+                            focus_right = false;
+                        }
+                    }
+                    if let Some(index) = menu_row_at(
+                        action_hit_area,
+                        actions.len(),
+                        action_offset,
+                        mouse.column,
+                        mouse.row,
+                    ) {
+                        selected_action = index;
+                        focus_right = true;
+                    }
+                }
+                Event::Mouse(mouse)
+                    if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) =>
+                {
+                    if !accounts.is_empty() {
+                        if let Some(index) = menu_row_at(
+                            account_hit_area,
+                            accounts.len(),
+                            account_offset,
+                            mouse.column,
+                            mouse.row,
+                        ) {
+                            selected_account = index;
+                            return Ok(AccountLandingChoice::Account(index));
+                        }
+                    }
+                    if let Some(index) = menu_row_at(
+                        action_hit_area,
+                        actions.len(),
+                        action_offset,
+                        mouse.column,
+                        mouse.row,
+                    ) {
+                        selected_action = index;
+                        return Ok(AccountLandingChoice::Action(index));
+                    }
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Tab | KeyCode::Left | KeyCode::Right,
+                    ..
+                }) => {
+                    focus_right = if accounts.is_empty() {
+                        true
+                    } else {
+                        !focus_right
+                    };
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Up, ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('k'),
+                    ..
+                }) => {
+                    if focus_right {
+                        selected_action = if selected_action == 0 {
+                            actions.len() - 1
+                        } else {
+                            selected_action - 1
+                        };
+                    } else if !accounts.is_empty() {
+                        selected_account = if selected_account == 0 {
+                            accounts.len() - 1
+                        } else {
+                            selected_account - 1
+                        };
+                    }
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                })
+                | Event::Key(KeyEvent {
+                    code: KeyCode::Char('j'),
+                    ..
+                }) => {
+                    if focus_right {
+                        selected_action = (selected_action + 1) % actions.len();
+                    } else if !accounts.is_empty() {
+                        selected_account = (selected_account + 1) % accounts.len();
+                    }
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                }) => {
+                    return Ok(if focus_right {
+                        AccountLandingChoice::Action(selected_action)
+                    } else {
+                        AccountLandingChoice::Account(selected_account)
+                    });
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Esc, ..
+                }) => {
+                    // Escape navigates from the actions panel back to the
+                    // account list. Exiting remains an explicit Enter action.
+                    focus_right = accounts.is_empty();
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Draw a fresh frame using the terminal's current dimensions.
     pub fn render_screen<F>(&mut self, state: Option<&GameState>, render_main: F) -> io::Result<()>
     where
@@ -171,14 +534,27 @@ impl Tui {
             let mut menu_region = Rect::default();
             let mut menu_offset = 0usize;
             self.render_screen(state, |frame, area, game_state| {
+                // Menus should follow their contents instead of stretching across
+                // the full terminal. Long lists still receive a scrollable viewport.
                 let title_height = if area.height >= 7 { 3 } else { 0 };
                 let footer_height = if area.height >= 10 { 2 } else { 0 };
+                let menu_height = options.len().saturating_add(2).min(12).min(usize::from(
+                    area.height.saturating_sub(title_height + footer_height),
+                )) as u16;
                 let content_height = area.height.saturating_sub(title_height + footer_height);
+                let menu_width = options
+                    .iter()
+                    .map(|option| menu_option_parts(option).1.chars().count())
+                    .max()
+                    .unwrap_or(12)
+                    .saturating_add(8)
+                    .clamp(24, 64)
+                    .min(usize::from(area.width)) as u16;
                 let mut constraints = Vec::new();
                 if title_height > 0 {
                     constraints.push(Constraint::Length(title_height));
                 }
-                constraints.push(Constraint::Length(content_height));
+                constraints.push(Constraint::Length(menu_height.min(content_height)));
                 if footer_height > 0 {
                     constraints.push(Constraint::Length(footer_height));
                 }
@@ -201,6 +577,7 @@ impl Tui {
                     index += 1;
                 }
 
+                let menu_area = centered_rect_absolute(menu_width, menu_height, chunks[index]);
                 let visible_options: Vec<ListItem<'_>> = options
                     .iter()
                     .enumerate()
@@ -301,8 +678,8 @@ impl Tui {
                         " Options "
                     })
                     .borders(Borders::ALL)
-                    .inner(chunks[index]);
-                frame.render_stateful_widget(list, chunks[index], &mut list_state);
+                    .inner(menu_area);
+                frame.render_stateful_widget(list, menu_area, &mut list_state);
                 menu_offset = list_state.offset();
                 index += 1;
 
@@ -402,19 +779,11 @@ impl Tui {
                 Event::Key(KeyEvent {
                     code: KeyCode::Esc, ..
                 }) => {
-                    let back_index = options
-                        .iter()
-                        .position(|option| {
-                            let label = option.to_ascii_lowercase();
-                            label.contains("back")
-                                || label.contains("exit")
-                                || label.contains("leave")
-                                || label.contains("return")
-                                || label.contains("flee")
-                                || label.contains("cancel")
-                        })
-                        .unwrap_or(options.len() - 1);
-                    return Ok(back_index);
+                    // Escape may only activate an explicit navigation action.
+                    // It must never confirm an arbitrary final menu item.
+                    if let Some(back_index) = back_option_index(options) {
+                        return Ok(back_index);
+                    }
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char(c),
@@ -460,7 +829,12 @@ impl Tui {
         let mut input = String::new();
         loop {
             self.render_screen(state, |frame, area, game_state| {
-                let popup = centered_rect(88, 35, area);
+                let popup_width = prompt.chars().count().saturating_add(12).clamp(32, 72);
+                let popup = centered_rect_absolute(
+                    popup_width.min(usize::from(area.width)) as u16,
+                    5.min(area.height),
+                    area,
+                );
                 frame.render_widget(Clear, popup);
                 let block = Block::default()
                     .title(format!(" {} ", prompt))
@@ -548,7 +922,27 @@ impl Tui {
         let mut scroll = 0u16;
         loop {
             self.render_screen(state, |frame, area, game_state| {
-                let popup = centered_rect(92, 82, area);
+                let message_width = message
+                    .lines()
+                    .map(|line| line.chars().count())
+                    .max()
+                    .unwrap_or(24)
+                    .saturating_add(6)
+                    .clamp(40, 88);
+                let wrapped_lines = message
+                    .lines()
+                    .map(|line| {
+                        let width = message_width.saturating_sub(4).max(1);
+                        line.chars().count().div_ceil(width)
+                    })
+                    .sum::<usize>()
+                    .max(1);
+                let message_height = wrapped_lines.saturating_add(6).clamp(8, 24);
+                let popup = centered_rect_absolute(
+                    message_width.min(usize::from(area.width)) as u16,
+                    message_height.min(usize::from(area.height)) as u16,
+                    area,
+                );
                 frame.render_widget(Clear, popup);
                 let block = Block::default()
                     .title(format!(" {} ", title))
@@ -689,6 +1083,99 @@ impl Tui {
             }
         }
     }
+}
+
+fn render_account_panel(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    title: &str,
+    accounts: &[String],
+    selected: usize,
+    focused: bool,
+    hit_area: &mut Rect,
+    offset: &mut usize,
+) {
+    let block = Block::default()
+        .title(format!(" {title} "))
+        .borders(Borders::ALL);
+    *hit_area = block.inner(area);
+    if accounts.is_empty() {
+        frame.render_widget(block, area);
+        frame.render_widget(
+            Paragraph::new("No local accounts yet")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::DarkGray)),
+            *hit_area,
+        );
+        *offset = 0;
+        return;
+    }
+    let items: Vec<ListItem<'_>> = accounts
+        .iter()
+        .map(|account| ListItem::new(Line::from(account.as_str())))
+        .collect();
+    let mut state = ListState::default();
+    state.select(Some(selected.min(accounts.len().saturating_sub(1))));
+    let list = List::new(items)
+        .block(block)
+        .highlight_style(if focused {
+            Style::default()
+                .fg(Color::Black)
+                .bg(theme_color(None))
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(theme_color(None))
+                .add_modifier(Modifier::BOLD)
+        })
+        .highlight_symbol(if focused { "▶ " } else { "  " });
+    frame.render_stateful_widget(list, area, &mut state);
+    *offset = state.offset();
+}
+
+fn render_action_panel(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    title: &str,
+    actions: &[&str],
+    selected: usize,
+    focused: bool,
+    hit_area: &mut Rect,
+    offset: &mut usize,
+) {
+    let block = Block::default()
+        .title(format!(" {title} "))
+        .borders(Borders::ALL);
+    *hit_area = block.inner(area);
+    let items: Vec<ListItem<'_>> = actions
+        .iter()
+        .map(|action| ListItem::new(Line::from(*action)))
+        .collect();
+    let mut state = ListState::default();
+    state.select(Some(selected.min(actions.len().saturating_sub(1))));
+    let list = List::new(items)
+        .block(block)
+        .highlight_style(if focused {
+            Style::default()
+                .fg(Color::Black)
+                .bg(theme_color(None))
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(theme_color(None))
+                .add_modifier(Modifier::BOLD)
+        })
+        .highlight_symbol(if focused { "▶ " } else { "  " });
+    frame.render_stateful_widget(list, area, &mut state);
+    *offset = state.offset();
+}
+
+fn back_option_index(options: &[&str]) -> Option<usize> {
+    options.iter().position(|option| {
+        let (_, label, _) = menu_option_parts(option);
+        let label = label.to_ascii_lowercase();
+        label.contains("back") || label.contains("return") || label.contains("cancel")
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -953,6 +1440,17 @@ fn render_compact_header(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
     );
 }
 
+fn centered_rect_absolute(width: u16, height: u16, area: Rect) -> Rect {
+    let width = width.max(1).min(area.width);
+    let height = height.max(1).min(area.height);
+    Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    )
+}
+
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let percent_x = percent_x.clamp(1, 100);
     let percent_y = percent_y.clamp(1, 100);
@@ -1031,6 +1529,23 @@ mod tests {
         }
     }
     #[test]
+    fn original_startup_banner_is_exactly_sized_and_only_shown_on_large_terminals() {
+        let max_width = RUSTY_REALM_ASCII_ART
+            .lines()
+            .map(|line| line.chars().count())
+            .max()
+            .unwrap_or_default();
+        assert_eq!(max_width, usize::from(STARTUP_LOGO_WIDTH));
+        assert_eq!(
+            RUSTY_REALM_ASCII_ART.lines().count(),
+            usize::from(STARTUP_LOGO_HEIGHT)
+        );
+        assert!(startup_logo_fits(Rect::new(0, 0, 181, 26)));
+        assert!(!startup_logo_fits(Rect::new(0, 0, 180, 40)));
+        assert!(!startup_logo_fits(Rect::new(0, 0, 200, 25)));
+    }
+
+    #[test]
     fn line_input_mode_can_be_forced_and_is_selected_for_non_terminal_stdin() {
         assert!(should_use_line_input(Some("text"), true));
         assert!(should_use_line_input(Some("line"), true));
@@ -1067,6 +1582,17 @@ mod tests {
             menu_option_reason("[Disabled: no legal target.] Heavy Strike"),
             Some(("Heavy Strike", "no legal target."))
         );
+    }
+
+    #[test]
+    fn escape_only_uses_an_explicit_back_or_cancel_action() {
+        assert_eq!(
+            back_option_index(&["Enter account", "Back to accounts"]),
+            Some(1)
+        );
+        assert_eq!(back_option_index(&["Delete account", "Cancel"]), Some(1));
+        assert_eq!(back_option_index(&["Delete account", "Confirm"]), None);
+        assert_eq!(back_option_index(&["Exit"]), None);
     }
 
     #[test]
