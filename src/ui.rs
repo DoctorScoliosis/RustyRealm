@@ -1590,10 +1590,7 @@ mod tests {
             back_option_index(&["Enter account", "Back to accounts"]),
             Some(1)
         );
-        assert_eq!(
-            back_option_index(&["Delete account", "Cancel"]),
-            Some(1)
-        );
+        assert_eq!(back_option_index(&["Delete account", "Cancel"]), Some(1));
         assert_eq!(back_option_index(&["Delete account", "Confirm"]), None);
         assert_eq!(back_option_index(&["Exit"]), None);
     }
