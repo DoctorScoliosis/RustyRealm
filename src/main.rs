@@ -73,6 +73,256 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+
+fn enter_local_account(tui: &mut Tui, username: &str) -> io::Result<Option<GameState>> {
+    let preview = match crate::save::preview_local_account(username) {
+        Ok(state) => state,
+        Err(error) => {
+            tui.show_message("Account preview unavailable", &error.to_string(), None)?;
+            return Ok(None);
+        }
+    };
+    let auth = crate::save::account_requires_password(username);
+    let auth_label = match &auth {
+        Ok(true) => "Password protected",
+        Ok(false) => "Local-only · no password",
+        Err(crate::save::SaveError::PasswordMigrationRequired) => "Legacy save · migration required",
+        Err(_) => "Authentication status unavailable",
+    };
+    tui.show_message(
+        "Account overview",
+        &format_account_preview(username, &preview, auth_label),
+        None,
+    )?;
+    if tui.select_menu(
+        &format!("Enter {username}?"),
+        &["Enter account", "Back to accounts"],
+        None,
+    )? != 0 {
+        return Ok(None);
+    }
+
+    match auth {
+        Ok(true) => {
+            let password = tui.prompt_input("Password", true, None)?;
+            match crate::save::load_game(username, &password) {
+                Ok(state) => Ok(Some(state)),
+                Err(error) => {
+                    tui.show_message("Login failed", &error.to_string(), None)?;
+                    Ok(None)
+                }
+            }
+        }
+        Ok(false) => match crate::save::load_game(username, "") {
+            Ok(state) => Ok(Some(state)),
+            Err(error) => {
+                tui.show_message("Account could not be opened", &error.to_string(), None)?;
+                Ok(None)
+            }
+        },
+        Err(crate::save::SaveError::PasswordMigrationRequired) => {
+            migrate_legacy_account(tui, username)
+        }
+        Err(error) => {
+            tui.show_message("Account unavailable", &error.to_string(), None)?;
+            Ok(None)
+        }
+    }
+}
+
+fn format_account_preview(username: &str, state: &GameState, authentication: &str) -> String {
+    let location = build_initial_world()
+        .ok()
+        .and_then(|world| {
+            world
+                .get_location(&state.current_location)
+                .map(|location| location.name.clone())
+        })
+        .unwrap_or_else(|| state.current_location.as_str().to_string());
+    let mut lines = vec![
+        format!("Account: {username}"),
+        format!("Access: {authentication}"),
+        String::new(),
+        "CHARACTER".to_string(),
+        format!(
+            "{} · {} · Combat level {}",
+            state.player.username,
+            state.player.class.name(),
+            state.player.combat_level
+        ),
+        format!(
+            "HP {}/{}  ·  Stamina {}/{}  ·  Mana {}/{}",
+            state.player.hp,
+            state.player.max_hp,
+            state.player.stamina,
+            state.player.max_stamina,
+            state.player.mana,
+            state.player.max_mana
+        ),
+        format!(
+            "XP {}  ·  Gold {}  ·  Kills {}",
+            state.player.xp, state.player.gold, state.player.lifetime_kills
+        ),
+        format!(
+            "Weapon: {}  ·  Armour: {}  ·  Skill level: {}",
+            state.player.weapon.name(),
+            state.player.armour.name(),
+            state.player.skills.total_level()
+        ),
+        format!("Location: {location}"),
+        format!("World time: {}", crate::calendar::format_calendar(state.world_turn)),
+        String::new(),
+        format!(
+            "ACTIVE PARTY · {}/{} slots",
+            1 + state.party.companion_count(),
+            state.party.size_limit()
+        ),
+        format!(
+            "{} · {} · Lv {} · HP {}/{}",
+            state.player.username,
+            state.player.class.name(),
+            state.player.combat_level,
+            state.player.hp,
+            state.player.max_hp
+        ),
+    ];
+    for id in state.party.members() {
+        if let Some(member) = state.companions.iter().find(|member| member.id == *id) {
+            lines.push(format!(
+                "{} · Lv {} · HP {}/{} · ATK {} · DEF {} · {}",
+                member.display_name(),
+                member.level,
+                member.current_hp,
+                member.max_hp,
+                member.attack,
+                member.defence,
+                member.condition.name()
+            ));
+        } else {
+            lines.push(format!("{id} · companion record unavailable"));
+        }
+    }
+    if state.party.companion_count() == 0 {
+        lines.push("No companions currently in the active party.".into());
+    }
+    lines.join("\n")
+}
+
+fn migrate_legacy_account(tui: &mut Tui, username: &str) -> io::Result<Option<GameState>> {
+    tui.show_message(
+        "Legacy account migration",
+        "This save predates password-hash persistence, so its old password cannot be verified. You can set a new password or explicitly migrate it to local-only access. Cancelling leaves the save unchanged.",
+        None,
+    )?;
+    if tui.prompt_input("Type YES to migrate this local save", false, None)? != "YES" {
+        return Ok(None);
+    }
+    let password = tui.prompt_input(
+        "New password (leave blank for local-only access)",
+        true,
+        None,
+    )?;
+    if password.is_empty() {
+        tui.show_message(
+            "Passwordless local save",
+            "The migrated account will be accessible to anyone with access to this computer and its local save files.",
+            None,
+        )?;
+        if tui.prompt_input("Type LOCAL to continue without a password", false, None)? != "LOCAL" {
+            return Ok(None);
+        }
+    }
+    let confirmation = tui.prompt_input(
+        "Confirm password (leave blank if passwordless)",
+        true,
+        None,
+    )?;
+    if password != confirmation {
+        tui.show_message(
+            "Migration cancelled",
+            "Passwords did not match. The save has not been changed.",
+            None,
+        )?;
+        return Ok(None);
+    }
+    match crate::save::migrate_legacy_save(username, &password) {
+        Ok(state) => {
+            tui.show_message("Migration complete", "The local save was migrated successfully.", Some(&state))?;
+            Ok(Some(state))
+        }
+        Err(error) => {
+            tui.show_message("Migration failed", &error.to_string(), None)?;
+            Ok(None)
+        }
+    }
+}
+
+fn manage_local_accounts(tui: &mut Tui) -> io::Result<()> {
+    loop {
+        let accounts = match crate::save::list_local_accounts() {
+            Ok(accounts) => accounts,
+            Err(error) => {
+                tui.show_message("Account storage unavailable", &error.to_string(), None)?;
+                return Ok(());
+            }
+        };
+        if accounts.is_empty() {
+            tui.show_message("Manage accounts", "There are no local accounts to manage.", None)?;
+            return Ok(());
+        }
+        let mut options = accounts.clone();
+        options.push("Back to startup".into());
+        let refs: Vec<&str> = options.iter().map(String::as_str).collect();
+        let choice = tui.select_menu("Manage local accounts · Select to delete", &refs, None)?;
+        if choice >= accounts.len() {
+            return Ok(());
+        }
+        let username = &accounts[choice];
+        let password_required = match crate::save::account_requires_password(username) {
+            Ok(required) => required,
+            Err(crate::save::SaveError::PasswordMigrationRequired) => {
+                tui.show_message(
+                    "Legacy account",
+                    "This save has no verifiable password hash. Deletion can only be confirmed by typing the exact account name.",
+                    None,
+                )?;
+                false
+            }
+            Err(error) => {
+                tui.show_message("Account unavailable", &error.to_string(), None)?;
+                continue;
+            }
+        };
+        tui.show_message(
+            "Permanently delete account?",
+            &format!(
+                "This permanently removes {username} and its recovery backup. This cannot be undone.{}",
+                if password_required {
+                    "\n\nThe current account password is required to authorise deletion."
+                } else {
+                    "\n\nThis account has no verifiable password; exact account-name confirmation is required."
+                }
+            ),
+            None,
+        )?;
+        let password = if password_required {
+            tui.prompt_input("Account password", true, None)?
+        } else {
+            String::new()
+        };
+        let confirmation =
+            tui.prompt_input(&format!("Type {username} to permanently delete"), false, None)?;
+        match crate::save::delete_local_account(username, &password, &confirmation) {
+            Ok(()) => tui.show_message(
+                "Account deleted",
+                &format!("{username} and its local backup were deleted."),
+                None,
+            )?,
+            Err(error) => tui.show_message("Deletion cancelled", &error.to_string(), None)?,
+        }
+    }
+}
+
 fn create_account_flow(tui: &mut Tui) -> io::Result<Option<GameState>> {
     let username = tui.prompt_input("Choose username (no spaces)", false, None)?;
     if username.is_empty() || username.contains(' ') {
