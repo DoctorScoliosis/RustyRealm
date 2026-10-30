@@ -1140,7 +1140,9 @@ fn render_action_panel(
     hit_area: &mut Rect,
     offset: &mut usize,
 ) {
-    let block = Block::default().title(format!(" {title} ")).borders(Borders::ALL);
+    let block = Block::default()
+        .title(format!(" {title} "))
+        .borders(Borders::ALL);
     *hit_area = block.inner(area);
     let items: Vec<ListItem<'_>> = actions
         .iter()
