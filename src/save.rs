@@ -32,6 +32,7 @@ pub enum SaveError {
     AccountExists,
     EmptyPassword,
     UsernameMismatch,
+    ConfirmationMismatch,
 }
 
 impl fmt::Display for SaveError {
@@ -66,6 +67,9 @@ impl fmt::Display for SaveError {
             SaveError::EmptyPassword => write!(f, "Password cannot be empty."),
             SaveError::UsernameMismatch => {
                 write!(f, "The save username does not match the requested account.")
+            }
+            SaveError::ConfirmationMismatch => {
+                write!(f, "The typed account name did not match; the account was not deleted.")
             }
         }
     }
@@ -411,6 +415,114 @@ fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState
     }
 
     Ok(state)
+}
+
+fn read_save_with_backup(path: &Path) -> Result<(ParsedSave, bool), SaveError> {
+    match read_save(path) {
+        Ok(save) => Ok((save, false)),
+        Err(error) if matches!(&error, SaveError::UnsupportedVersion(_)) => Err(error),
+        Err(primary_error) => {
+            let backup = backup_path(path);
+            if !backup.exists() {
+                return Err(primary_error);
+            }
+            match read_save(&backup) {
+                Ok(save) => Ok((save, true)),
+                Err(_) => Err(primary_error),
+            }
+        }
+    }
+}
+
+/// Read a local account's displayable game data without authorising gameplay.
+/// The preview is not a login: password verification still happens in load_game.
+pub fn preview_local_account(username: &str) -> Result<GameState, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    preview_account_at(&path, &safe_username)
+}
+
+fn preview_account_at(path: &Path, username: &str) -> Result<GameState, SaveError> {
+    let (parsed, _) = read_save_with_backup(path)?;
+    let mut state = match parsed {
+        ParsedSave::Legacy(state) => state,
+        ParsedSave::Current(envelope) => envelope.data,
+    };
+    if sanitize_username(&state.player.username) != sanitize_username(username) {
+        return Err(SaveError::UsernameMismatch);
+    }
+    state.player.password_hash.clear();
+    state.player.cap_values();
+    for companion in &mut state.companions {
+        companion.cap_values();
+    }
+    Ok(state)
+}
+
+/// Delete both the active local save and its recovery backup. Password-protected
+/// accounts require their existing password; passwordless/legacy accounts
+/// require the exact account name as a local confirmation.
+pub fn delete_local_account(
+    username: &str,
+    password: &str,
+    confirmation: &str,
+) -> Result<(), SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    delete_account_at(&path, &safe_username, password, confirmation)
+}
+
+fn delete_account_at(
+    path: &Path,
+    username: &str,
+    password: &str,
+    confirmation: &str,
+) -> Result<(), SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    if confirmation != safe_username {
+        return Err(SaveError::ConfirmationMismatch);
+    }
+    let (parsed, _) = read_save_with_backup(path)?;
+    let saved_username = match &parsed {
+        ParsedSave::Legacy(state) => state.player.username.as_str(),
+        ParsedSave::Current(envelope) => envelope.data.player.username.as_str(),
+    };
+    if sanitize_username(saved_username) != safe_username {
+        return Err(SaveError::UsernameMismatch);
+    }
+    if let ParsedSave::Current(envelope) = parsed {
+        match envelope.authentication {
+            Some(auth) => {
+                if !verify_password(password, &auth.password_hash)? {
+                    return Err(SaveError::AuthenticationFailed);
+                }
+            }
+            None if !password.is_empty() => return Err(SaveError::AuthenticationFailed),
+            None => {}
+        }
+    } else if !password.is_empty() {
+        // A legacy save has no verifiable password hash, so only the typed
+        // account-name confirmation can be used before explicit migration.
+        return Err(SaveError::PasswordMigrationRequired);
+    }
+
+    for candidate in [path.to_path_buf(), backup_path(path)] {
+        match fs::remove_file(&candidate) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(SaveError::Io(error)),
+        }
+    }
+    Ok(())
 }
 
 pub fn load_game(username: &str, password: &str) -> Result<GameState, SaveError> {
