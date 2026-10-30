@@ -24,13 +24,13 @@ A future location can combine any subset of these services without relying on it
 
 | Rest choice | Eligibility | Duration | Cost | Recovery |
 |---|---|---:|---:|---|
-| Short rest | Tavern, Guildhouse or Bed | 2 hours | Free | +20% max HP, +30% max stamina, +20% max mana |
+| Short rest | Tavern, Guildhouse or Bed | 2 hours | Free | +15% max HP, +15% max stamina, +15% max mana |
 | Long rest | Bed | 8 hours | 25 gold | Restore HP, stamina and mana to maximum |
-| Field camp | Explicit FieldCamp service | 3 hours | 1 Food | +10% max HP, +20% max stamina, +10% max mana |
+| Field camp | Explicit FieldCamp service | 3 hours | 1 Food | +10% max HP, +15% max stamina, +10% max mana |
 
 Percentages are calculated from maximum resource capacity, rounded down to whole points, with a minimum gain of one point when a resource is below maximum. Gains are capped at the corresponding maximum. The plan is calculated before any cost or state mutation.
 
-The balance intent is to make the short rest a modest safe-haven reset, while the long rest is the dependable and time-efficient full recovery. Repeating short rests has a lower recovery-per-hour return than the long rest and cannot fully restore any resource in one sitting. Field camping remains available at selected outdoor landmarks and wilderness locations, but consumes supplies, takes longer than a short rest and restores materially less. It does not gain the security or efficiency of a bed. There is no random ambush system in this slice, so camping does not fabricate a combat roll or encounter.
+The balance intent is to make the short rest a modest safe-haven reset, while the long rest is the dependable and time-efficient full recovery. Repeating short rests is deliberately less time-efficient than the long rest: after four short rests (eight hours), a badly depleted character still will not be fully restored. The long rest's cost buys a complete reset in one predictable block. Field camping remains available at selected outdoor landmarks and wilderness locations, but consumes supplies, takes longer than a short rest and restores materially less. It does not gain the security or efficiency of a bed. There is no random ambush system in this slice, so camping does not fabricate a combat roll or encounter.
 
 A rest that cannot improve any resource is unavailable. Insufficient gold or Food, a missing service, an unknown location, a forbidden execution context, or an exhausted world clock all reject the transaction without charging resources or advancing time. Selecting Back is a strict no-op.
 
