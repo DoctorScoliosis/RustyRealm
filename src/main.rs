@@ -351,16 +351,15 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     }
 }
 
-
 fn nearest_checkpoint_step(state: &GameState, world: &World) -> Option<LocationId> {
     let current = &state.current_location;
     let target = world
         .get_reachable_destinations(current)
         .into_iter()
         .filter(|reachable| {
-            world.get_location(&reachable.location_id).is_some_and(|location| {
-                crate::checkpoint::is_checkpoint_location(location)
-            })
+            world
+                .get_location(&reachable.location_id)
+                .is_some_and(|location| crate::checkpoint::is_checkpoint_location(location))
         })
         .min_by(|left, right| {
             left.total_travel_cost
@@ -454,7 +453,8 @@ fn handle_logout(
 
     let current_location = world.get_location(&state.current_location);
     let can_save_here = current_location.is_some_and(crate::checkpoint::is_checkpoint_location);
-    let can_travel_to_checkpoint = !can_save_here && nearest_checkpoint_step(state, world).is_some();
+    let can_travel_to_checkpoint =
+        !can_save_here && nearest_checkpoint_step(state, world).is_some();
 
     let mut choices = vec!["Return to game"];
     let save_index = if can_save_here {

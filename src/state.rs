@@ -196,11 +196,7 @@ impl Player {
 
     /// Create a player with a durable starting class. The legacy constructor
     /// remains available and defaults to Warrior.
-    pub fn new_with_class(
-        username: String,
-        password_hash: String,
-        class: CharacterClass,
-    ) -> Self {
+    pub fn new_with_class(username: String, password_hash: String, class: CharacterClass) -> Self {
         let mut player = Self::new(username, password_hash);
         player.class = class;
         player
@@ -210,11 +206,11 @@ impl Player {
     /// familiarity with the equipped weapon family. Equipment remains legal
     /// regardless of class.
     pub fn effective_weapon_damage(&self) -> u32 {
-        let bonus = u32::from(self.class.weapon_proficiency_pct(self.weapon.profile().family));
-        self.weapon
-            .max_damage()
-            .saturating_mul(100 + bonus)
-            / 100
+        let bonus = u32::from(
+            self.class
+                .weapon_proficiency_pct(self.weapon.profile().family),
+        );
+        self.weapon.max_damage().saturating_mul(100 + bonus) / 100
     }
 
     pub fn level_up_combat(&mut self) {
@@ -224,10 +220,9 @@ impl Player {
             self.xp_until_next += self.orig_xp_threshold;
             self.max_hp += 25;
             self.hp = self.max_hp;
-            let gained_attribute = self.attributes.add_weighted_point(
-                self.class,
-                &mut self.attribute_growth_accumulator,
-            );
+            let gained_attribute = self
+                .attributes
+                .add_weighted_point(self.class, &mut self.attribute_growth_accumulator);
             if gained_attribute == Some(2) {
                 // Constitution strengthens both health capacity and endurance.
                 self.max_hp = self.max_hp.saturating_add(5);

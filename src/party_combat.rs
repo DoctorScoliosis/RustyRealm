@@ -47,19 +47,44 @@ impl CharacterClass {
     pub const fn definition(self) -> ClassDefinition {
         match self {
             Self::Warrior => ClassDefinition {
-                speed: -5, accuracy: 0, evasion: -5, power: 5, resistance: 10, critical: 0,
+                speed: -5,
+                accuracy: 0,
+                evasion: -5,
+                power: 5,
+                resistance: 10,
+                critical: 0,
             },
             Self::Barbarian => ClassDefinition {
-                speed: -8, accuracy: -2, evasion: -4, power: 10, resistance: 2, critical: 3,
+                speed: -8,
+                accuracy: -2,
+                evasion: -4,
+                power: 10,
+                resistance: 2,
+                critical: 3,
             },
             Self::Ranger => ClassDefinition {
-                speed: 5, accuracy: 10, evasion: 0, power: 0, resistance: 0, critical: 0,
+                speed: 5,
+                accuracy: 10,
+                evasion: 0,
+                power: 0,
+                resistance: 0,
+                critical: 0,
             },
             Self::Mage => ClassDefinition {
-                speed: 0, accuracy: 0, evasion: -2, power: 8, resistance: 5, critical: 0,
+                speed: 0,
+                accuracy: 0,
+                evasion: -2,
+                power: 8,
+                resistance: 5,
+                critical: 0,
             },
             Self::Rogue => ClassDefinition {
-                speed: 10, accuracy: 0, evasion: 10, power: -3, resistance: -5, critical: 10,
+                speed: 10,
+                accuracy: 0,
+                evasion: 10,
+                power: -3,
+                resistance: -5,
+                critical: 10,
             },
         }
     }
@@ -95,7 +120,13 @@ impl Default for CombatAttributes {
 impl CombatAttributes {
     /// A neutral additive source; Default (50) remains for legacy combatants.
     pub const fn zero() -> Self {
-        Self { speed: 0, accuracy: 0, evasion: 0, power: 0, resistance: 0 }
+        Self {
+            speed: 0,
+            accuracy: 0,
+            evasion: 0,
+            power: 0,
+            resistance: 0,
+        }
     }
 
     /// Convert primary RPG attributes (1..=20) into derived combat values.
@@ -1745,23 +1776,13 @@ mod tests {
         );
 
         let neutral = CombatAttributes::zero();
-        let warrior = CombatAttributes::derived(
-            CharacterClass::Warrior,
-            base,
-            neutral,
-            neutral,
-        );
+        let warrior = CombatAttributes::derived(CharacterClass::Warrior, base, neutral, neutral);
         assert_eq!(warrior.speed, 45);
         assert_eq!(warrior.power, 55);
         assert_eq!(warrior.resistance, 60);
 
         let mage_base = CombatAttributes::from_primary(&primary, CharacterClass::Mage);
-        let mage = CombatAttributes::derived(
-            CharacterClass::Mage,
-            mage_base,
-            neutral,
-            neutral,
-        );
+        let mage = CombatAttributes::derived(CharacterClass::Mage, mage_base, neutral, neutral);
         assert_eq!(mage.power, 58);
         assert_eq!(mage.resistance, 55);
     }

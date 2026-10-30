@@ -16,12 +16,18 @@ pub enum CharacterClass {
 }
 
 impl Default for CharacterClass {
-    fn default() -> Self { Self::Warrior }
+    fn default() -> Self {
+        Self::Warrior
+    }
 }
 
 impl CharacterClass {
     pub const ALL: [Self; 5] = [
-        Self::Warrior, Self::Barbarian, Self::Mage, Self::Ranger, Self::Rogue,
+        Self::Warrior,
+        Self::Barbarian,
+        Self::Mage,
+        Self::Ranger,
+        Self::Rogue,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -113,8 +119,14 @@ impl PrimaryAttributes {
     pub const MAX: u8 = 20;
 
     pub const fn values(self) -> [u8; 6] {
-        [self.strength, self.dexterity, self.constitution,
-         self.intelligence, self.wisdom, self.charisma]
+        [
+            self.strength,
+            self.dexterity,
+            self.constitution,
+            self.intelligence,
+            self.wisdom,
+            self.charisma,
+        ]
     }
 
     pub fn total(self) -> u16 {
@@ -145,12 +157,13 @@ impl PrimaryAttributes {
             .filter(|index| values[*index] < Self::MAX)
             .map(|index| i32::from(weights[index]))
             .sum();
-        if total_weight == 0 { return None; }
+        if total_weight == 0 {
+            return None;
+        }
 
         for index in 0..6 {
             if values[index] < Self::MAX {
-                accumulator[index] =
-                    accumulator[index].saturating_add(i32::from(weights[index]));
+                accumulator[index] = accumulator[index].saturating_add(i32::from(weights[index]));
             } else {
                 accumulator[index] = 0;
             }
@@ -159,7 +172,9 @@ impl PrimaryAttributes {
         // Strict greater-than keeps ties in the documented attribute order.
         let mut selected: Option<usize> = None;
         for index in 0..6 {
-            if values[index] >= Self::MAX { continue; }
+            if values[index] >= Self::MAX {
+                continue;
+            }
             if selected.is_none_or(|best| accumulator[index] > accumulator[best]) {
                 selected = Some(index);
             }
@@ -187,7 +202,14 @@ mod tests {
     #[test]
     fn every_class_weight_set_totals_one_hundred() {
         for class in CharacterClass::ALL {
-            assert_eq!(class.growth_weights().into_iter().map(u16::from).sum::<u16>(), 100);
+            assert_eq!(
+                class
+                    .growth_weights()
+                    .into_iter()
+                    .map(u16::from)
+                    .sum::<u16>(),
+                100
+            );
         }
     }
 
@@ -208,7 +230,10 @@ mod tests {
 
     #[test]
     fn capped_attributes_redistribute_the_next_point() {
-        let mut attributes = PrimaryAttributes { strength: 20, ..PrimaryAttributes::default() };
+        let mut attributes = PrimaryAttributes {
+            strength: 20,
+            ..PrimaryAttributes::default()
+        };
         let before = attributes.total();
         let mut accumulator = [0; 6];
         let selected = attributes.add_weighted_point(CharacterClass::Warrior, &mut accumulator);
@@ -264,6 +289,9 @@ mod tests {
                 assert!(class.weapon_proficiency_pct(family) <= 12);
             }
         }
-        assert_eq!(CharacterClass::Mage.weapon_proficiency_pct(WeaponFamily::Mace), 0);
+        assert_eq!(
+            CharacterClass::Mage.weapon_proficiency_pct(WeaponFamily::Mace),
+            0
+        );
     }
 }

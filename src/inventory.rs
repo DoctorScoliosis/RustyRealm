@@ -28,7 +28,10 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
             format!(
                 "Weapon proficiency: {} (+{}% damage)",
                 state.player.weapon.family().name(),
-                state.player.class.weapon_proficiency_pct(state.player.weapon.family())
+                state
+                    .player
+                    .class
+                    .weapon_proficiency_pct(state.player.weapon.family())
             ),
             format!("Gold: {}", state.player.gold),
             format!("EXP: {}", state.player.xp),

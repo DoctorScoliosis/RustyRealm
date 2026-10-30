@@ -22,10 +22,12 @@ pub enum CheckpointError {
 impl fmt::Display for CheckpointError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::IneligibleLocation =>
-                f.write_str("A gameplay checkpoint can only be saved at a tavern or guildhouse."),
-            Self::LocationMismatch =>
-                f.write_str("The checkpoint location must be the player's current location."),
+            Self::IneligibleLocation => {
+                f.write_str("A gameplay checkpoint can only be saved at a tavern or guildhouse.")
+            }
+            Self::LocationMismatch => {
+                f.write_str("The checkpoint location must be the player's current location.")
+            }
             Self::Save(error) => write!(f, "{error}"),
         }
     }
@@ -43,7 +45,9 @@ pub struct CheckpointSession {
 
 impl CheckpointSession {
     pub fn new(state: &GameState) -> Result<Self, SaveError> {
-        Ok(Self { last_saved_fingerprint: save::checkpoint_fingerprint(state)? })
+        Ok(Self {
+            last_saved_fingerprint: save::checkpoint_fingerprint(state)?,
+        })
     }
 
     pub fn is_dirty(&self, state: &GameState) -> Result<bool, SaveError> {
@@ -89,16 +93,27 @@ mod tests {
     }
 
     fn location(services: &[LocationService]) -> Location {
-        Location::new("test_location", "Test Location", "Test", LocationCategory::Settlement)
-            .with_services(services.iter().copied())
+        Location::new(
+            "test_location",
+            "Test Location",
+            "Test",
+            LocationCategory::Settlement,
+        )
+        .with_services(services.iter().copied())
     }
 
     #[test]
     fn only_explicit_taverns_and_guildhouses_are_checkpoint_locations() {
-        assert!(is_checkpoint_location(&location(&[LocationService::Tavern])));
-        assert!(is_checkpoint_location(&location(&[LocationService::Guildhouse])));
+        assert!(is_checkpoint_location(&location(&[
+            LocationService::Tavern
+        ])));
+        assert!(is_checkpoint_location(&location(&[
+            LocationService::Guildhouse
+        ])));
         assert!(!is_checkpoint_location(&location(&[LocationService::Bed])));
-        assert!(!is_checkpoint_location(&location(&[LocationService::FieldCamp])));
+        assert!(!is_checkpoint_location(&location(&[
+            LocationService::FieldCamp
+        ])));
         assert!(!is_checkpoint_location(&location(&[])));
     }
 
@@ -115,15 +130,15 @@ mod tests {
 
     #[test]
     fn checkpoint_write_rejects_a_safe_location_other_than_the_current_location() {
-        let mut state = state();
-        let session = CheckpointSession::new(&state).unwrap();
+        let state = state();
+        let mut session = CheckpointSession::new(&state).unwrap();
         let tavern = Location::new(
             "another_tavern",
             "Another Tavern",
             "Tavern",
             LocationCategory::Settlement,
-        ).with_services([LocationService::Tavern]);
-        let mut session = session;
+        )
+        .with_services([LocationService::Tavern]);
         assert!(matches!(
             session.save_at(&state, &tavern),
             Err(CheckpointError::LocationMismatch)
@@ -137,7 +152,9 @@ mod tests {
         let mut session = CheckpointSession::new(&state).unwrap();
         state.player.gold += 5;
         assert!(session.is_dirty(&state).unwrap());
-        session.commit_with(&state, |_| Ok::<(), SaveError>(())).unwrap();
+        session
+            .commit_with(&state, |_| Ok::<(), SaveError>(()))
+            .unwrap();
         assert!(!session.is_dirty(&state).unwrap());
     }
 
@@ -155,7 +172,10 @@ mod tests {
 
         let tavern = location(&[LocationService::Tavern]);
         state.player.password_hash.clear();
-        assert!(matches!(session.save_at(&state, &tavern), Err(CheckpointError::Save(_))));
+        assert!(matches!(
+            session.save_at(&state, &tavern),
+            Err(CheckpointError::Save(_))
+        ));
         assert!(session.is_dirty(&state).unwrap());
     }
 }

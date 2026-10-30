@@ -20,8 +20,16 @@ pub enum WeaponFamily {
 
 impl WeaponFamily {
     pub const ALL: [Self; 10] = [
-        Self::Unarmed, Self::Sword, Self::Mace, Self::Axe, Self::Dagger,
-        Self::Spear, Self::Bow, Self::Staff, Self::Wand, Self::Heavy,
+        Self::Unarmed,
+        Self::Sword,
+        Self::Mace,
+        Self::Axe,
+        Self::Dagger,
+        Self::Spear,
+        Self::Bow,
+        Self::Staff,
+        Self::Wand,
+        Self::Heavy,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -84,7 +92,10 @@ impl WeaponTier {
     }
 
     pub const fn profile(self) -> WeaponProfile {
-        WeaponProfile { family: self.family(), tier: self }
+        WeaponProfile {
+            family: self.family(),
+            tier: self,
+        }
     }
 
     pub fn max_damage(&self) -> u32 {

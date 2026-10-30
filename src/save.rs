@@ -572,7 +572,10 @@ mod tests {
         let mut reloaded_growth = loaded.clone();
         original_growth.player.level_up_combat();
         reloaded_growth.player.level_up_combat();
-        assert_eq!(reloaded_growth.player.attributes, original_growth.player.attributes);
+        assert_eq!(
+            reloaded_growth.player.attributes,
+            original_growth.player.attributes
+        );
         assert_eq!(
             reloaded_growth.player.attribute_growth_accumulator,
             original_growth.player.attribute_growth_accumulator
@@ -845,8 +848,14 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("lifetime_kills");
-        document["data"]["player"].as_object_mut().unwrap().remove("class");
-        document["data"]["player"].as_object_mut().unwrap().remove("attributes");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("class");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("attributes");
         document["data"]["player"]
             .as_object_mut()
             .unwrap()
