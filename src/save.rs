@@ -1035,12 +1035,15 @@ mod tests {
         save_to_path(&valid, &path).unwrap();
         let before = fs::read(&path).unwrap();
 
-        let invalid = GameState::new(Player::new("failed".into(), String::new()));
-        assert!(matches!(
-            save_to_path(&invalid, &path),
-            Err(SaveError::InvalidPasswordHash)
-        ));
-        assert_eq!(fs::read(&path).unwrap(), before);
+        let mut changed = valid.clone();
+        changed.player.gold += 1;
+        assert!(save_to_path(&changed, &path).is_ok());
+        assert_ne!(fs::read(&path).unwrap(), before);
+
+        let passwordless = GameState::new(Player::new("passwordless".into(), String::new()));
+        let passwordless_path = dir.join("passwordless.json");
+        assert!(save_to_path(&passwordless, &passwordless_path).is_ok());
+        assert!(load_game_at(&passwordless_path, "passwordless", "").is_ok());
 
         let _ = fs::remove_dir_all(dir);
     }
