@@ -17,6 +17,7 @@ mod party_battle;
 mod party_combat;
 mod quests;
 mod realm_progression;
+mod rest;
 mod save;
 mod shops;
 mod skill_checks;
@@ -490,143 +491,148 @@ fn region_expedition_menu(tui: &mut Tui, state: &mut GameState, world: &World) -
 }
 
 /// Rest trades resources and world time for stamina recovery.
+/// Present safe-haven and field-camp rest choices. All state changes are
+/// delegated to the domain rest module so costs, recovery and elapsed time are
+/// validated and committed together.
 fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
-    let location = world.get_location(&state.current_location);
-    let in_settlement = location
-        .map(|place| place.category == LocationCategory::Settlement)
-        .unwrap_or(false);
-    let location_name = location
-        .map(|place| place.name.as_str())
-        .unwrap_or("Unknown location");
-    let food = state.player.get_item_count(ItemType::Food);
-    let needs_recovery =
-        state.player.stamina < state.player.max_stamina || state.player.hp < state.player.max_hp;
+    use crate::rest::{
+        execute_rest, plan_rest, RestAction, RestContext, RestExecution, RestKind,
+    };
 
-    let mut options = Vec::<String>::new();
-    if in_settlement {
-        options.push(if state.player.gold >= 25 && needs_recovery {
-            format!("Inn rest — 25 gold; restore stamina and up to 25 HP ({} hours)", crate::calendar::INN_REST_HOURS)
-        } else if state.player.gold < 25 {
-            format!(
-                "[Disabled: requires 25 gold (have {}).] Inn rest — restore stamina and HP ({} hours)",
-                state.player.gold,
-                crate::calendar::INN_REST_HOURS
-            )
-        } else {
-            format!("[Disabled: already fully recovered.] Inn rest — restore stamina and HP ({} hours)", crate::calendar::INN_REST_HOURS)
-        });
+    let Some(location) = world.get_location(&state.current_location) else {
+        tui.show_message(
+            "Rest unavailable",
+            "The current location is not known to this world. No resources or time were spent.",
+            Some(state),
+        )?;
+        return Ok(());
+    };
+    let location_name = location.name.clone();
+    let choices = [
+        (RestAction::ShortRest, RestKind::Short),
+        (RestAction::LongRest, RestKind::Long),
+        (RestAction::FieldCamp, RestKind::FieldCamp),
+    ];
+    let mut labels = Vec::with_capacity(choices.len() + 1);
+    for (_, kind) in choices {
+        let label = match plan_rest(
+            &state.player,
+            location,
+            kind,
+            RestContext::MainMenu,
+        ) {
+            Ok(plan) => {
+                let recovery = plan.recovery();
+                let cost = if plan.gold_cost > 0 {
+                    format!("{} gold", plan.gold_cost)
+                } else if plan.food_cost > 0 {
+                    format!("{} Food", plan.food_cost)
+                } else {
+                    "free".to_string()
+                };
+                format!(
+                    "{} · {}h · {} · HP +{} · stamina +{} · mana +{}",
+                    kind.label(),
+                    plan.hours,
+                    cost,
+                    recovery.hp,
+                    recovery.stamina,
+                    recovery.mana
+                )
+            }
+            Err(error) => format!("[Unavailable: {}] {}", error, kind.label()),
+        };
+        labels.push(label);
     }
-    options.push(if food > 0 && needs_recovery {
-        format!("Camp with food — consume 1 Food; +50 stamina and up to 10 HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
-    } else if food == 0 {
-        format!("[Disabled: requires 1 Food.] Camp with food — +50 stamina and up to 10 HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
-    } else {
-        format!("[Disabled: already fully recovered.] Camp with food — recover stamina and HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
-    });
-    options.push(if state.player.stamina < state.player.max_stamina {
-        format!(
-            "Sleep rough — +20 stamina; no HP recovery ({} hours)",
-            crate::calendar::ROUGH_SLEEP_HOURS
-        )
-    } else {
-        format!(
-            "[Disabled: stamina is already full.] Sleep rough — +20 stamina ({} hours)",
-            crate::calendar::ROUGH_SLEEP_HOURS
-        )
-    });
-    options.push("Back".to_string());
+    labels.push("Back".to_string());
 
-    let refs: Vec<&str> = options.iter().map(String::as_str).collect();
+    let options: Vec<&str> = labels.iter().map(String::as_str).collect();
     let choice = tui.select_menu(
         &format!(
-            "Rest at {location_name} · Stamina {}/{} · {}",
+            "Rest at {location_name} · HP {}/{} · Stamina {}/{} · Mana {}/{} · {}",
+            state.player.hp,
+            state.player.max_hp,
             state.player.stamina,
             state.player.max_stamina,
+            state.player.mana,
+            state.player.max_mana,
             crate::calendar::format_calendar(state.world_turn)
         ),
-        &refs,
+        &options,
         Some(state),
     )?;
-    if choice >= options.len() - 1 {
+    if choice >= choices.len() {
+        // Choosing Back is a strict no-op: no cost, recovery or clock mutation.
+        let _ = execute_rest(
+            state,
+            world,
+            RestAction::Cancel,
+            RestContext::MainMenu,
+        );
         return Ok(());
     }
 
-    let inn_offset = usize::from(in_settlement);
-    let selected_rest_is_unavailable = if in_settlement && choice == 0 {
-        !needs_recovery
-    } else if choice == inn_offset {
-        !needs_recovery || food == 0
-    } else {
-        state.player.stamina >= state.player.max_stamina
-    };
-    if selected_rest_is_unavailable {
-        tui.show_message(
+    match execute_rest(state, world, choices[choice].0, RestContext::MainMenu) {
+        Ok(RestExecution::Cancelled) => Ok(()),
+        Ok(RestExecution::Completed(outcome)) => {
+            let recovered = if outcome.recovered_companions.is_empty() {
+                "None completed recovery during this rest.".to_string()
+            } else {
+                outcome
+                    .recovered_companions
+                    .iter()
+                    .map(|id| crate::party::get_definition(*id).name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let plan = outcome.plan;
+            let cost = format!(
+                "{} gold and {} Food",
+                plan.gold_cost, plan.food_cost
+            );
+            tui.show_message(
+                "Rest complete",
+                &format!(
+                    "{} at {location_name}.
+Cost: {cost}.
+Time consumed: {} in-game hour(s).
+
+HP: {}/{} → {}/{}
+Stamina: {}/{} → {}/{}
+Mana: {}/{} → {}/{}
+
+Companions recovered: {recovered}
+
+Knockout records requiring a treatment destination were advanced only by the elapsed hours; records without a reachable healer remain intact.
+
+{}",
+                    plan.kind.label(),
+                    plan.hours,
+                    plan.before.hp,
+                    state.player.max_hp,
+                    plan.after.hp,
+                    state.player.max_hp,
+                    plan.before.stamina,
+                    state.player.max_stamina,
+                    plan.after.stamina,
+                    state.player.max_stamina,
+                    plan.before.mana,
+                    state.player.max_mana,
+                    plan.after.mana,
+                    state.player.max_mana,
+                    crate::calendar::format_calendar(state.world_turn)
+                ),
+                Some(state),
+            )
+        }
+        Err(error) => tui.show_message(
             "Rest unavailable",
-            "That rest option is currently unavailable. No resources or world time were spent.",
+            &format!("{error}
+
+No resources or world time were spent."),
             Some(state),
-        )?;
-        return Ok(());
-    }
-
-    let (stamina_gain, hp_gain, hours, gold_cost, food_cost, full_restore) =
-        if in_settlement && choice == 0 {
-            (0, 25, crate::calendar::INN_REST_HOURS, 25, 0, true)
-        } else if choice == inn_offset {
-            (50, 10, crate::calendar::FOOD_CAMP_HOURS, 0, 1, false)
-        } else {
-            (20, 0, crate::calendar::ROUGH_SLEEP_HOURS, 0, 0, false)
-        };
-
-    if state.player.gold < gold_cost || state.player.get_item_count(ItemType::Food) < food_cost {
-        tui.show_message(
-            "Rest unavailable",
-            "Not enough gold or food for that rest option.",
-            Some(state),
-        )?;
-        return Ok(());
-    }
-
-    state.player.gold -= gold_cost;
-    if food_cost > 0 {
-        let removed = state.player.remove_item(ItemType::Food, food_cost);
-        debug_assert!(removed, "validated rest food must exist");
-    }
-    if full_restore {
-        state.player.stamina = state.player.max_stamina;
-    } else {
-        state.player.stamina = state
-            .player
-            .stamina
-            .saturating_add(stamina_gain)
-            .min(state.player.max_stamina);
-    }
-    state.player.hp = state
-        .player
-        .hp
-        .saturating_add(hp_gain)
-        .min(state.player.max_hp);
-
-    let recovered = state.advance_world_time(u64::from(hours));
-    crate::calendar::notify_recovered_companions(tui, state, &recovered)?;
-    let names = recovered
-        .iter()
-        .map(|id| crate::party::get_definition(*id).name)
-        .collect::<Vec<_>>();
-    let note = if names.is_empty() {
-        String::new()
-    } else {
-        format!("\nCompanion recovery completed: {}.", names.join(", "))
-    };
-    tui.show_message(
-        "Rest complete",
-        &format!(
-            "Rested at {location_name}. Stamina: {}/{} · HP: {}/{}. World time advanced by {hours} hours.{note}\n\n{}",
-            state.player.stamina, state.player.max_stamina, state.player.hp, state.player.max_hp,
-            crate::calendar::format_calendar(state.world_turn)
         ),
-        Some(state),
-    )?;
-    Ok(())
+    }
 }
 
 /// Applies a directly connected journey after validating its route. The
@@ -877,9 +883,9 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
                     .as_ref()
                     .and_then(|id| world.get_location(id))
                     .map(|location| location.name.as_str())
-                    .unwrap_or("No reachable treatment settlement");
+                    .unwrap_or("No reachable healer / treatment facility");
                 labels.push(format!(
-                    "{} · {} · {} committed turn(s) remaining · treatment {}g",
+                    "{} · {} · {} elapsed hour(s) remaining · treatment {}g",
                     companion.display_name(),
                     destination,
                     record.turns_remaining,
@@ -900,7 +906,7 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
         let Some(destination) = destination else {
             tui.show_message(
                 "Treatment unavailable",
-                "No reachable settlement was found when the companion was knocked out. Their state is preserved; no teleport or payment has been applied.",
+                "No reachable location with a healer service was found when the companion was knocked out. Their knockout record and unavailable state are preserved; neither resting nor camping can bypass the missing treatment route.",
                 Some(state),
             )?;
             continue;
@@ -911,7 +917,7 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
             .unwrap_or_else(|| destination.to_string());
         let is_here = state.current_location == destination;
         let mut detail = format!(
-            "{} is being treated at {}.\nRecovery requirement: {} committed main-menu turn(s).\nImmediate treatment: {} gold.\nCurrent gold: {}.",
+            "{} is being treated at {}.\nRecovery requirement: {} elapsed in-game hour(s).\nImmediate treatment: {} gold.\nCurrent gold: {}.",
             crate::party::get_definition(id).name,
             destination_name,
             record.as_ref().map(|r| r.turns_remaining).unwrap_or(0),
@@ -919,7 +925,7 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
             state.player.gold
         );
         if !is_here {
-            detail.push_str("\n\nTravel to that settlement before paying for immediate treatment.");
+            detail.push_str("\n\nTravel to that treatment location before paying for immediate treatment.");
         }
         tui.show_message("Recovery details", &detail, Some(state))?;
         let choices = if is_here {
