@@ -2,6 +2,7 @@ mod achievements;
 mod adventure;
 mod balance_simulation;
 mod bank;
+mod calendar;
 mod combat;
 mod combat_engine;
 mod companion_recovery;
