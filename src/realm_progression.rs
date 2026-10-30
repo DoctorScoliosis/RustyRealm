@@ -950,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_region_and_quest_evidence_reconstructs_only_oakhaven() {
+    fn legacy_evidence_reconstructs_prior_completion_and_current_entry_discovery() {
         let mut state = fresh_state();
         state.current_location = LocationId::from("thornveil_entry");
         state.player.quests_completed.push(REGION_QUEST_ID.into());
@@ -964,7 +964,9 @@ mod tests {
         let oakhaven = progress_for(&state, "oakhaven").unwrap();
         assert!(oakhaven.discovered);
         assert!(oakhaven.completed);
-        assert!(!progress_for(&state, "thornveil_wilds").is_some_and(|progress| progress.completed));
+        let thornveil = progress_for(&state, "thornveil_wilds").unwrap();
+        assert!(thornveil.discovered);
+        assert!(!thornveil.completed);
     }
 
     #[test]
