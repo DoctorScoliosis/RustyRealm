@@ -495,9 +495,7 @@ fn region_expedition_menu(tui: &mut Tui, state: &mut GameState, world: &World) -
 /// delegated to the domain rest module so costs, recovery and elapsed time are
 /// validated and committed together.
 fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
-    use crate::rest::{
-        execute_rest, plan_rest, RestAction, RestContext, RestExecution, RestKind,
-    };
+    use crate::rest::{execute_rest, plan_rest, RestAction, RestContext, RestExecution, RestKind};
 
     let Some(location) = world.get_location(&state.current_location) else {
         tui.show_message(
@@ -515,12 +513,7 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     ];
     let mut labels = Vec::with_capacity(choices.len() + 1);
     for (_, kind) in choices {
-        let label = match plan_rest(
-            &state.player,
-            location,
-            kind,
-            RestContext::MainMenu,
-        ) {
+        let label = match plan_rest(&state.player, location, kind, RestContext::MainMenu) {
             Ok(plan) => {
                 let recovery = plan.recovery();
                 let cost = if plan.gold_cost > 0 {
@@ -563,12 +556,7 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     )?;
     if choice >= choices.len() {
         // Choosing Back is a strict no-op: no cost, recovery or clock mutation.
-        let _ = execute_rest(
-            state,
-            world,
-            RestAction::Cancel,
-            RestContext::MainMenu,
-        );
+        let _ = execute_rest(state, world, RestAction::Cancel, RestContext::MainMenu);
         return Ok(());
     }
 
@@ -586,10 +574,7 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
                     .join(", ")
             };
             let plan = outcome.plan;
-            let cost = format!(
-                "{} gold and {} Food",
-                plan.gold_cost, plan.food_cost
-            );
+            let cost = format!("{} gold and {} Food", plan.gold_cost, plan.food_cost);
             tui.show_message(
                 "Rest complete",
                 &format!(
@@ -627,9 +612,11 @@ Knockout records requiring a treatment destination were advanced only by the ela
         }
         Err(error) => tui.show_message(
             "Rest unavailable",
-            &format!("{error}
+            &format!(
+                "{error}
 
-No resources or world time were spent."),
+No resources or world time were spent."
+            ),
             Some(state),
         ),
     }
@@ -925,7 +912,9 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
             state.player.gold
         );
         if !is_here {
-            detail.push_str("\n\nTravel to that treatment location before paying for immediate treatment.");
+            detail.push_str(
+                "\n\nTravel to that treatment location before paying for immediate treatment.",
+            );
         }
         tui.show_message("Recovery details", &detail, Some(state))?;
         let choices = if is_here {
