@@ -730,7 +730,10 @@ mod tests {
         reconcile_from_saved_evidence(&mut state);
 
         assert!(!stronghold_gate_status(&state).unlocked);
-        assert!(state.campaign_progress.realms.is_empty());
+        let oakhaven = progress_for(&state, "oakhaven").unwrap();
+        assert!(oakhaven.discovered);
+        assert!(!oakhaven.completed);
+        assert_eq!(state.campaign_progress.realms.len(), 1);
         assert!(!state.player.quests_completed.contains(&REGION_QUEST_ID.to_string()));
     }
 
@@ -873,7 +876,9 @@ mod tests {
         for realm in REALMS {
             mark_realm_complete(&mut state, realm);
         }
-        assert!(evaluate_gate_with_registry(&state, &[REALMS, &[OPTIONAL_REALM]].concat()).unlocked);
+        let mut registry = REALMS.to_vec();
+        registry.push(OPTIONAL_REALM);
+        assert!(evaluate_gate_with_registry(&state, &registry).unlocked);
     }
 
     #[test]
