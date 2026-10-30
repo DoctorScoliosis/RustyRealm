@@ -508,24 +508,25 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
             format!("Inn rest — 25 gold; restore stamina and up to 25 HP ({} hours)", crate::calendar::INN_REST_HOURS)
         } else if state.player.gold < 25 {
             format!(
-                "[Disabled: requires 25 gold (have {}).] Inn rest — restore stamina and HP",
-                state.player.gold
+                "[Disabled: requires 25 gold (have {}).] Inn rest — restore stamina and HP ({} hours)",
+                state.player.gold,
+                crate::calendar::INN_REST_HOURS
             )
         } else {
-            "[Disabled: already fully recovered.] Inn rest — restore stamina and HP".to_string()
+            format!("[Disabled: already fully recovered.] Inn rest — restore stamina and HP ({} hours)", crate::calendar::INN_REST_HOURS)
         });
     }
     options.push(if food > 0 && needs_recovery {
         format!("Camp with food — consume 1 Food; +50 stamina and up to 10 HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
     } else if food == 0 {
-        "[Disabled: requires 1 Food.] Camp with food — +50 stamina and up to 10 HP".to_string()
+        format!("[Disabled: requires 1 Food.] Camp with food — +50 stamina and up to 10 HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
     } else {
-        "[Disabled: already fully recovered.] Camp with food — recover stamina and HP".to_string()
+        format!("[Disabled: already fully recovered.] Camp with food — recover stamina and HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
     });
     options.push(if state.player.stamina < state.player.max_stamina {
         format!("Sleep rough — +20 stamina; no HP recovery ({} hours)", crate::calendar::ROUGH_SLEEP_HOURS)
     } else {
-        "[Disabled: stamina is already full.] Sleep rough — +20 stamina (4 turns)".to_string()
+        format!("[Disabled: stamina is already full.] Sleep rough — +20 stamina ({} hours)", crate::calendar::ROUGH_SLEEP_HOURS)
     });
     options.push("Back".to_string());
 
