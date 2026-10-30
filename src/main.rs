@@ -68,30 +68,46 @@ fn main() -> io::Result<()> {
                         "This save predates password-hash persistence. The old password cannot be verified. You may migrate it by setting a new password, or leave it blank for local-only access. Cancelling leaves the save unchanged.",
                         None,
                     )?;
-                    let consent = tui.prompt_input("Type YES to migrate this local save", false, None)?;
+                    let consent =
+                        tui.prompt_input("Type YES to migrate this local save", false, None)?;
                     if consent != "YES" {
                         continue;
                     }
-                    let new_password = tui.prompt_input("New password (leave blank for local-only access)", true, None)?;
+                    let new_password = tui.prompt_input(
+                        "New password (leave blank for local-only access)",
+                        true,
+                        None,
+                    )?;
                     if new_password.is_empty() {
                         tui.show_message(
                             "Passwordless local save",
                             "The migrated account will be accessible to anyone with access to this computer and its local save files.",
                             None,
                         )?;
-                        let confirm_local = tui.prompt_input("Type LOCAL to continue without a password", false, None)?;
+                        let confirm_local =
+                            tui.prompt_input("Type LOCAL to continue without a password", false, None)?;
                         if confirm_local != "LOCAL" {
                             continue;
                         }
                     }
-                    let confirmation = tui.prompt_input("Confirm password (leave blank if passwordless)", true, None)?;
+                    let confirmation = tui.prompt_input(
+                        "Confirm password (leave blank if passwordless)",
+                        true,
+                        None,
+                    )?;
                     if new_password != confirmation {
-                        tui.show_message("Migration cancelled", "Passwords did not match. The save has not been changed.", None)?;
+                        tui.show_message(
+                            "Migration cancelled",
+                            "Passwords did not match. The save has not been changed.",
+                            None,
+                        )?;
                         continue;
                     }
                     match crate::save::migrate_legacy_save(username, &new_password) {
                         Ok(mut state) => main_menu(&mut tui, &mut state)?,
-                        Err(error) => tui.show_message("Migration failed", &error.to_string(), None)?,
+                        Err(error) => {
+                            tui.show_message("Migration failed", &error.to_string(), None)?
+                        }
                     }
                     continue;
                 }
