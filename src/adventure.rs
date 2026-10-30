@@ -337,6 +337,12 @@ pub fn claim_encounter_clear_reward(
         .region_progress
         .cleared_encounters
         .push(encounter_id.to_string());
+    crate::quests::notify_event(
+        state,
+        &GameEvent::EncounterCleared {
+            encounter_id: encounter_id.to_string(),
+        },
+    );
     Ok((encounter.reward_gold, encounter.reward_xp))
 }
 
