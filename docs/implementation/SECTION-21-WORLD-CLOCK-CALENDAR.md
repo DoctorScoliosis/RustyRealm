@@ -65,5 +65,5 @@ No calendar fields are added to the save. Existing \`world_turn\` values map det
 Acceptance coverage includes the epoch, midnight/month/season/year boundaries, custom names, normal and overnight hour windows, zero-duration no-op, market decay over elapsed hours, companion recovery over elapsed hours, serde round-trip/legacy defaults and saturation at clock overflow. Travel integration verifies the existing route value advances the clock by that many hours.
 
 ## Section 22 handoff
+Section 22 has now implemented location service tags, safe-haven short/long rests and explicit field camping. It continues to use `advance_world_time`; no parallel clock or persisted status timer was introduced.
 
-Section 22 should route all short/long rests through \`advance_world_time\` rather than adding another clock or manually mutating calendar state. The current rest choices and their selected durations are retained as the initial balance baseline; service eligibility and recovery benefits remain Section 22 work.
