@@ -85,6 +85,7 @@ impl Location {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Route {
     pub destination_id: LocationId,
+    /// Elapsed in-game travel hours for this directed route.
     pub travel_cost: u32,
     pub danger_level: u32,
 }
