@@ -322,6 +322,9 @@ pub struct GameState {
     /// Save-backed content progression for one-time regional rewards and surveys.
     #[serde(default)]
     pub region_progress: crate::adventure::RegionProgress,
+    /// Persistent discovery, objective, completion and mastery state for the campaign.
+    #[serde(default)]
+    pub campaign_progress: crate::realm_progression::CampaignProgress,
 }
 
 impl GameState {
@@ -354,6 +357,7 @@ impl GameState {
             party: Party::new(),
             companion_recovery: crate::companion_recovery::RecoveryState::default(),
             region_progress: crate::adventure::RegionProgress::default(),
+            campaign_progress: crate::realm_progression::CampaignProgress::default(),
         };
         crate::quests::check_and_refresh_quests(&mut state);
         state
