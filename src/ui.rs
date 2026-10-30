@@ -63,7 +63,7 @@ const RUSTY_REALM_ASCII_ART: &str = r#"      ▄▄▄▄▄                ▄�
     ▐      █░▒▓░    ▀█▄▄▄████▀▀         ▀█▄▄▄▄███░▒▀                    ░▓▒░██▄▄▄▄█▀       ▐      █░▒▓░   ▀▄▄   ▄▄▄█░█░░▀     ▐        ▄▀    █▄▄▄▄████ ░█▀      ▐        ▄▀    
             ▀▀▀       ▀▀▀▀▀                ▀▀▀▀▀▀                        ▀▀▀▀▀▀▀▀▀                 ▀▀▀       ▀▀▀▀▀▀▀▀▀                ▀         ▀▀▀▀▀▀▀▀                ▀"#;
 
-const STARTUP_LOGO_WIDTH: u16 = 173;
+const STARTUP_LOGO_WIDTH: u16 = 175;
 const STARTUP_LOGO_HEIGHT: u16 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
