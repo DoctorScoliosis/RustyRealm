@@ -38,12 +38,13 @@ mod world;
 use crate::checkpoint::CheckpointSession;
 use crate::data::ItemType;
 use crate::state::GameState;
-use crate::ui::Tui;
+use crate::ui::{AccountLandingChoice, Tui};
 use crate::world::{build_initial_world, LocationId, World};
 use std::io;
 
 fn main() -> io::Result<()> {
     let mut tui = Tui::new()?;
+    const ACTIONS: [&str; 3] = ["Create new account", "Manage accounts", "Exit"];
     loop {
         let accounts = match crate::save::list_local_accounts() {
             Ok(accounts) => accounts,
@@ -52,90 +53,23 @@ fn main() -> io::Result<()> {
                 Vec::new()
             }
         };
-        let mut options: Vec<String> = accounts.iter().cloned().collect();
-        options.push("Create new account".into());
-        options.push("Exit".into());
-        let option_refs: Vec<&str> = options.iter().map(String::as_str).collect();
-        let choice = tui.select_menu("Rusty Realm · Local Accounts", &option_refs, None)?;
-        if choice < accounts.len() {
-            let username = &accounts[choice];
-            let password_required = match crate::save::account_requires_password(username) {
-                Ok(required) => required,
-                Err(crate::save::SaveError::PasswordMigrationRequired) => {
-                    tui.show_message(
-                        "Legacy account",
-                        "This save predates password-hash persistence. The old password cannot be verified. You may migrate it by setting a new password, or leave it blank for local-only access. Cancelling leaves the save unchanged.",
-                        None,
-                    )?;
-                    let consent =
-                        tui.prompt_input("Type YES to migrate this local save", false, None)?;
-                    if consent != "YES" {
-                        continue;
+        match tui.select_account_landing("Rusty Realm", &accounts, &ACTIONS)? {
+            AccountLandingChoice::Account(index) => {
+                if let Some(username) = accounts.get(index) {
+                    if let Some(mut state) = enter_local_account(&mut tui, username)? {
+                        main_menu(&mut tui, &mut state)?;
                     }
-                    let new_password = tui.prompt_input(
-                        "New password (leave blank for local-only access)",
-                        true,
-                        None,
-                    )?;
-                    if new_password.is_empty() {
-                        tui.show_message(
-                            "Passwordless local save",
-                            "The migrated account will be accessible to anyone with access to this computer and its local save files.",
-                            None,
-                        )?;
-                        let confirm_local = tui.prompt_input(
-                            "Type LOCAL to continue without a password",
-                            false,
-                            None,
-                        )?;
-                        if confirm_local != "LOCAL" {
-                            continue;
-                        }
-                    }
-                    let confirmation = tui.prompt_input(
-                        "Confirm password (leave blank if passwordless)",
-                        true,
-                        None,
-                    )?;
-                    if new_password != confirmation {
-                        tui.show_message(
-                            "Migration cancelled",
-                            "Passwords did not match. The save has not been changed.",
-                            None,
-                        )?;
-                        continue;
-                    }
-                    match crate::save::migrate_legacy_save(username, &new_password) {
-                        Ok(mut state) => main_menu(&mut tui, &mut state)?,
-                        Err(error) => {
-                            tui.show_message("Migration failed", &error.to_string(), None)?
-                        }
-                    }
-                    continue;
                 }
-                Err(error) => {
-                    tui.show_message("Account unavailable", &error.to_string(), None)?;
-                    continue;
+            }
+            AccountLandingChoice::Action(0) => {
+                if let Some(mut state) = create_account_flow(&mut tui)? {
+                    main_menu(&mut tui, &mut state)?;
                 }
-            };
-            let password = if password_required {
-                tui.prompt_input("Password", true, None)?
-            } else {
-                String::new()
-            };
-            match crate::save::load_game(username, &password) {
-                Ok(mut state) => main_menu(&mut tui, &mut state)?,
-                Err(error) => tui.show_message("Login failed", &error.to_string(), None)?,
             }
-        } else if choice == accounts.len() {
-            if let Some(mut state) = create_account_flow(&mut tui)? {
-                main_menu(&mut tui, &mut state)?;
-            }
-        } else {
-            break;
+            AccountLandingChoice::Action(1) => manage_local_accounts(&mut tui)?,
+            AccountLandingChoice::Action(_) => break,
         }
     }
-    // Tui's RAII guard restores raw mode, the cursor, and the previous screen.
     Ok(())
 }
 
