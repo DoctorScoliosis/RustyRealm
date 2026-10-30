@@ -48,6 +48,19 @@ pub enum GameEvent {
     PrerequisiteQuestCompleted {
         quest_id: String,
     },
+    QuestStageCompleted {
+        quest_id: String,
+        stage_id: String,
+    },
+    /// Emitted only after the complete encounter roster has been defeated.
+    EncounterCleared {
+        encounter_id: String,
+    },
+    /// Stable, realm-scoped task ID for content-specific progression milestones.
+    RealmTaskCompleted {
+        realm_id: String,
+        task_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
