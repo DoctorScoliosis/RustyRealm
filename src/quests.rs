@@ -278,7 +278,9 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
     while let Some(current_event) = pending.pop() {
         crate::realm_progression::record_event(state, &current_event);
         crate::companion_discovery::record_event(state, &current_event);
-        pending.extend(crate::companion_discovery::discovery_events_for(&current_event));
+        pending.extend(crate::companion_discovery::discovery_events_for(
+            &current_event,
+        ));
 
         // Stage gates are evaluated against an immutable state snapshot before
         // any objective progress is mutated for this event.
@@ -761,13 +763,20 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                                     "locked"
                                 };
                                 let access_note = if current == Some(index) {
-                                    stage.access_gate.as_ref().and_then(|gate| {
-                                        let result = crate::access::evaluate_access_gate(state, gate);
-                                        (!result.allowed).then(|| format!(
-                                            " · access blocked: {}",
-                                            result.summary().replace('\n', " ")
-                                        ))
-                                    }).unwrap_or_default()
+                                    stage
+                                        .access_gate
+                                        .as_ref()
+                                        .and_then(|gate| {
+                                            let result =
+                                                crate::access::evaluate_access_gate(state, gate);
+                                            (!result.allowed).then(|| {
+                                                format!(
+                                                    " · access blocked: {}",
+                                                    result.summary().replace('\n', " ")
+                                                )
+                                            })
+                                        })
+                                        .unwrap_or_default()
                                 } else {
                                     String::new()
                                 };
@@ -1374,20 +1383,28 @@ mod tests {
             false,
         ));
 
-        notify_event(&mut state, &GameEvent::MonsterDefeated {
-            name: "Goblin".into(),
-            is_stronghold: false,
-        });
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
         assert_eq!(state.active_quests[0].stages[0].objectives[0].progress, 0);
 
-        notify_event(&mut state, &GameEvent::LocationReached {
-            location_id: LocationId::from("village_start"),
-        });
-        notify_event(&mut state, &GameEvent::MonsterDefeated {
-            name: "Goblin".into(),
-            is_stronghold: false,
-        });
+        notify_event(
+            &mut state,
+            &GameEvent::LocationReached {
+                location_id: LocationId::from("village_start"),
+            },
+        );
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
         assert!(state.active_quests[0].stages[0].is_completed);
     }
-
 }

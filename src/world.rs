@@ -301,18 +301,24 @@ impl World {
     ) -> Result<(), WorldError> {
         self.validate_new_route(first_id, second_id, travel_cost)?;
         self.validate_new_route(second_id, first_id, travel_cost)?;
-        self.routes.entry(first_id.clone()).or_default().push(Route {
-            destination_id: second_id.clone(),
-            travel_cost,
-            danger_level,
-            access_gate: Some(gate.clone()),
-        });
-        self.routes.entry(second_id.clone()).or_default().push(Route {
-            destination_id: first_id.clone(),
-            travel_cost,
-            danger_level,
-            access_gate: Some(gate),
-        });
+        self.routes
+            .entry(first_id.clone())
+            .or_default()
+            .push(Route {
+                destination_id: second_id.clone(),
+                travel_cost,
+                danger_level,
+                access_gate: Some(gate.clone()),
+            });
+        self.routes
+            .entry(second_id.clone())
+            .or_default()
+            .push(Route {
+                destination_id: first_id.clone(),
+                travel_cost,
+                danger_level,
+                access_gate: Some(gate),
+            });
         Ok(())
     }
 

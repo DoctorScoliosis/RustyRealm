@@ -40,7 +40,7 @@ use crate::checkpoint::CheckpointSession;
 use crate::data::ItemType;
 use crate::state::GameState;
 use crate::ui::Tui;
-use crate::world::{build_initial_world, LocationCategory, LocationId, World};
+use crate::world::{build_initial_world, LocationId, World};
 use std::io;
 
 fn main() -> io::Result<()> {
@@ -877,7 +877,9 @@ fn apply_travel(
         .get_direct_routes(&current_id)
         .iter()
         .find(|route| &route.destination_id == destination_id)
-        .ok_or_else(|| "That destination is not directly connected to your current location.".to_string())?;
+        .ok_or_else(|| {
+            "That destination is not directly connected to your current location.".to_string()
+        })?;
     if route.travel_cost == 0 {
         return Err("This route has an invalid travel cost.".into());
     }
@@ -953,7 +955,12 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
         let current_name = world
             .get_location(&state.current_location)
             .map(|location| location.name.clone())
-            .ok_or_else(|| io::Error::other(format!("Unknown current location '{}'.", state.current_location)))?;
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "Unknown current location '{}'.",
+                    state.current_location
+                ))
+            })?;
         let destinations = travel_destinations(state, world);
         if destinations.is_empty() {
             tui.show_message(
@@ -970,7 +977,10 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
                 let locked = if destination.access.allowed {
                     String::new()
                 } else {
-                    format!(" · LOCKED — {}", destination.access.summary().replace('\n', " "))
+                    format!(
+                        " · LOCKED — {}",
+                        destination.access.summary().replace('\n', " ")
+                    )
                 };
                 format!(
                     "{} · travel time {}h · danger {}{}",
@@ -980,7 +990,11 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
             .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
-        let choice = tui.select_menu(&format!("Travel from {current_name}"), &options, Some(state))?;
+        let choice = tui.select_menu(
+            &format!("Travel from {current_name}"),
+            &options,
+            Some(state),
+        )?;
         if choice >= destinations.len() {
             return Ok(());
         }
@@ -1135,12 +1149,10 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
         let mut labels = Vec::new();
         let mut ids = Vec::new();
         for record in &state.companion_recovery.records {
-            if let Some(companion) = state
-                .companions
-                .iter()
-                .find(|c| c.id == record.companion_id
-                    && crate::companion_discovery::is_discovered(state, c.id))
-            {
+            if let Some(companion) = state.companions.iter().find(|c| {
+                c.id == record.companion_id
+                    && crate::companion_discovery::is_discovered(state, c.id)
+            }) {
                 let destination = record
                     .destination
                     .as_ref()
@@ -1541,9 +1553,11 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 let available: Vec<_> = state
                     .companions
                     .iter()
-                    .filter(|c| crate::companion_discovery::is_discovered(state, c.id)
-                        && c.can_join_party()
-                        && !state.party.contains(c.id))
+                    .filter(|c| {
+                        crate::companion_discovery::is_discovered(state, c.id)
+                            && c.can_join_party()
+                            && !state.party.contains(c.id)
+                    })
                     .collect();
                 if available.is_empty() {
                     tui.show_message(
@@ -1755,6 +1769,15 @@ mod travel_tests {
     }
 }
 
+#[cfg(test)]
+mod access_travel_tests {
+    use super::*;
+    use crate::state::Player;
+
+    fn test_state() -> GameState {
+        GameState::new(Player::new("access-travel-test".into(), "test-hash".into()))
+    }
+
     #[test]
     fn hidden_location_is_hidden_and_direct_travel_is_rejected_until_unlocked() {
         use crate::access::{AccessGate, AccessRequirement};
@@ -1849,3 +1872,5 @@ mod travel_tests {
         assert_eq!(state.current_location, to);
     }
 
+
+}

@@ -131,7 +131,10 @@ mod tests {
             &crate::party::get_definition(CompanionId::BranTheShield),
         ));
         reconcile_legacy_discoveries(&mut state);
-        assert_eq!(state.discovered_companions, vec![CompanionId::BranTheShield]);
+        assert_eq!(
+            state.discovered_companions,
+            vec![CompanionId::BranTheShield]
+        );
         assert_eq!(discovered_definitions(&state).len(), 1);
     }
 
