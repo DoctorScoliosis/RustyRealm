@@ -1,5 +1,53 @@
 use serde::{Deserialize, Serialize};
 
+/// Weapon family is independent of quality/tier. Current inventory entries keep
+/// their historical WeaponTier IDs and resolve to the family implied by their
+/// established display identity; future item definitions can use every family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WeaponFamily {
+    Unarmed,
+    Sword,
+    Mace,
+    Axe,
+    Dagger,
+    Spear,
+    Bow,
+    Staff,
+    Wand,
+    Heavy,
+}
+
+impl WeaponFamily {
+    pub const ALL: [Self; 10] = [
+        Self::Unarmed,
+        Self::Sword,
+        Self::Mace,
+        Self::Axe,
+        Self::Dagger,
+        Self::Spear,
+        Self::Bow,
+        Self::Staff,
+        Self::Wand,
+        Self::Heavy,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Unarmed => "Unarmed",
+            Self::Sword => "Sword",
+            Self::Mace => "Mace",
+            Self::Axe => "Axe",
+            Self::Dagger => "Dagger",
+            Self::Spear => "Spear",
+            Self::Bow => "Bow",
+            Self::Staff => "Staff",
+            Self::Wand => "Wand",
+            Self::Heavy => "Heavy weapon",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WeaponTier {
     BareHands,
@@ -22,7 +70,34 @@ pub enum WeaponTier {
     Spectral,
 }
 
+/// A structured view of a weapon's independent family and legacy quality
+/// tier. Existing save files continue to store the stable WeaponTier variant;
+/// new content can define the family separately from its quality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeaponProfile {
+    pub family: WeaponFamily,
+    pub tier: WeaponTier,
+}
+
 impl WeaponTier {
+    /// Resolve the family from the established item identity without changing
+    /// tier variants, prices, or existing inventory/save representations.
+    pub const fn family(self) -> WeaponFamily {
+        match self {
+            Self::BareHands => WeaponFamily::Unarmed,
+            Self::Omega => WeaponFamily::Mace,
+            Self::Chaotic => WeaponFamily::Spear,
+            _ => WeaponFamily::Sword,
+        }
+    }
+
+    pub const fn profile(self) -> WeaponProfile {
+        WeaponProfile {
+            family: self.family(),
+            tier: self,
+        }
+    }
+
     pub fn max_damage(&self) -> u32 {
         match self {
             WeaponTier::BareHands => 50,

@@ -109,6 +109,9 @@ pub struct QuestStage {
     pub objectives: Vec<QuestObjectiveState>,
     #[serde(default)]
     pub is_completed: bool,
+    /// Optional prerequisites for the stage. Legacy stages default to open.
+    #[serde(default)]
+    pub access_gate: Option<crate::access::AccessGate>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -273,7 +276,28 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
 
     let mut pending = vec![event.clone()];
     while let Some(current_event) = pending.pop() {
+        crate::realm_progression::record_event(state, &current_event);
+        crate::companion_discovery::record_event(state, &current_event);
+        pending.extend(crate::companion_discovery::discovery_events_for(
+            &current_event,
+        ));
+
+        // Stage gates are evaluated against an immutable state snapshot before
+        // any objective progress is mutated for this event.
+        let accessible_quests: std::collections::HashSet<String> = state
+            .active_quests
+            .iter()
+            .filter_map(|quest| {
+                let current_stage = quest.stages.iter().find(|stage| !stage.is_completed);
+                let allowed = current_stage
+                    .and_then(|stage| stage.access_gate.as_ref())
+                    .is_none_or(|gate| crate::access::evaluate_access_gate(state, gate).allowed);
+                allowed.then(|| quest.id.clone())
+            })
+            .collect();
+
         let mut newly_completed = Vec::new();
+        let mut newly_completed_stages = Vec::new();
         let mut bonus_rewards = Vec::new();
 
         for quest in &mut state.active_quests {
@@ -289,6 +313,9 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
                 continue;
             }
 
+            if !accessible_quests.contains(&quest.id) {
+                continue;
+            }
             let Some(stage_index) = quest.stages.iter().position(|stage| !stage.is_completed)
             else {
                 if !quest.is_completed {
@@ -298,6 +325,7 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
                 continue;
             };
             let stage = &mut quest.stages[stage_index];
+            let was_stage_completed = stage.is_completed;
 
             for objective_state in &mut stage.objectives {
                 if objective_state.is_completed {
@@ -324,6 +352,9 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
             {
                 stage.is_completed = true;
             }
+            if !was_stage_completed && stage.is_completed {
+                newly_completed_stages.push((quest.id.clone(), stage.id.clone()));
+            }
             let mandatory_total = stage
                 .objectives
                 .iter()
@@ -348,6 +379,9 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
         }
         for quest_id in newly_completed {
             pending.push(GameEvent::PrerequisiteQuestCompleted { quest_id });
+        }
+        for (quest_id, stage_id) in newly_completed_stages {
+            pending.push(GameEvent::QuestStageCompleted { quest_id, stage_id });
         }
     }
 }
@@ -688,6 +722,7 @@ fn grant_reward(state: &mut GameState, reward: &QuestReward) {
 pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
         check_and_refresh_quests(state);
+        crate::realm_progression::reconcile_from_saved_evidence(state);
         let now = Utc::now().timestamp().max(0) as u64;
         let world_event_text = if state.active_world_event.is_active(now) {
             format!(
@@ -727,6 +762,24 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                                 } else {
                                     "locked"
                                 };
+                                let access_note = if current == Some(index) {
+                                    stage
+                                        .access_gate
+                                        .as_ref()
+                                        .and_then(|gate| {
+                                            let result =
+                                                crate::access::evaluate_access_gate(state, gate);
+                                            (!result.allowed).then(|| {
+                                                format!(
+                                                    " · access blocked: {}",
+                                                    result.summary().replace('\n', " ")
+                                                )
+                                            })
+                                        })
+                                        .unwrap_or_default()
+                                } else {
+                                    String::new()
+                                };
                                 let goals = stage
                                     .objectives
                                     .iter()
@@ -748,9 +801,10 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                                     .collect::<Vec<_>>()
                                     .join("\n");
                                 format!(
-                                    "  Stage {} — {} [{stage_status}]\n{}",
+                                    "  Stage {} — {} [{stage_status}]{}\n{}",
                                     index + 1,
                                     stage.title,
+                                    access_note,
                                     goals
                                 )
                             })
@@ -771,9 +825,10 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 .collect::<Vec<_>>()
                 .join("\n")
         };
+        let campaign_text = crate::realm_progression::quest_hall_summary(state);
         let content = format!(
-            "World event\n{}\n\nLifetime monsters defeated: {}\n\nQuests\n{}\n\nDaily quests refresh automatically every 24 hours.",
-            world_event_text, state.player.lifetime_kills, quest_text
+            "World event\n{}\n\nLifetime monsters defeated: {}\n\nQuests\n{}\n\n{}\n\nDaily quests refresh automatically every 24 hours.",
+            world_event_text, state.player.lifetime_kills, quest_text, campaign_text
         );
         tui.show_text("Quest Hall", &content, Some(state))?;
 
@@ -1073,6 +1128,7 @@ mod tests {
                 id: "first".into(),
                 title: "Gather and defend".into(),
                 is_completed: false,
+                access_gate: None,
                 objectives: vec![
                     objective(
                         QuestObjective::SpecificMonsterKills {
@@ -1151,6 +1207,7 @@ mod tests {
                     id: "first".into(),
                     title: "Defeat".into(),
                     is_completed: false,
+                    access_gate: None,
                     objectives: vec![objective(
                         QuestObjective::SpecificMonsterKills {
                             monster_name: "Goblin".into(),
@@ -1164,6 +1221,7 @@ mod tests {
                     id: "second".into(),
                     title: "Arrive".into(),
                     is_completed: false,
+                    access_gate: None,
                     objectives: vec![objective(
                         QuestObjective::ReachLocation {
                             location_id: LocationId::from("abandoned_mill"),
@@ -1213,6 +1271,7 @@ mod tests {
                 id: "stage".into(),
                 title: "Main objective".into(),
                 is_completed: false,
+                access_gate: None,
                 objectives: vec![
                     objective(
                         QuestObjective::SpecificMonsterKills {
@@ -1291,5 +1350,57 @@ mod tests {
             .iter()
             .any(|quest| quest.id.ends_with("_1")));
         assert!(state.active_world_event.is_active(86_402));
+    }
+
+    #[test]
+    fn a_blocked_stage_does_not_progress_until_its_access_gate_passes() {
+        let mut state = new_state();
+        state.active_quests.clear();
+        state.active_quests.push(make_composite_quest(
+            "gated_stage_quest",
+            "Gated stage",
+            "Raise Wisdom before progressing.",
+            vec![QuestStage {
+                id: "after_discovery".into(),
+                title: "Defeat a goblin".into(),
+                is_completed: false,
+                access_gate: Some(crate::access::AccessGate {
+                    all_of: vec![crate::access::AccessRequirement::AttributeAtLeast {
+                        attribute: crate::access::AttributeKind::Wisdom,
+                        minimum: 15,
+                    }],
+                    ..crate::access::AccessGate::default()
+                }),
+                objectives: vec![objective(
+                    QuestObjective::SpecificMonsterKills {
+                        monster_name: "Goblin".into(),
+                        required: 1,
+                    },
+                    false,
+                    None,
+                )],
+            }],
+            QuestReward::Gold(0),
+            false,
+        ));
+
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
+        assert_eq!(state.active_quests[0].stages[0].objectives[0].progress, 0);
+
+        state.player.attributes.wisdom = 15;
+        notify_event(
+            &mut state,
+            &GameEvent::MonsterDefeated {
+                name: "Goblin".into(),
+                is_stronghold: false,
+            },
+        );
+        assert!(state.active_quests[0].stages[0].is_completed);
     }
 }

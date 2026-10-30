@@ -86,6 +86,7 @@ pub struct MarketState {
     pub net_trades: HashMap<ItemType, i32>,
     #[serde(default)]
     pub global_net_trades: i32,
+    /// Elapsed in-game hours since the last market-pressure decay step (0–4).
     #[serde(default)]
     turns_since_decay: u8,
 }
@@ -116,8 +117,8 @@ impl MarketState {
             .clamp(-MAX_RECORDED_TRADE_VOLUME, MAX_RECORDED_TRADE_VOLUME);
     }
 
-    /// Recover by one point of pressure. The main menu advances this every few
-    /// actions rather than every menu loop, so a single trade remains observable.
+    /// Recover by one point of pressure. The calendar applies this once per
+    /// five elapsed in-game hours, independent of how many menus were opened.
     pub fn decay_volatility(&mut self) {
         for volume in self.net_trades.values_mut() {
             if *volume > 0 {
@@ -135,12 +136,41 @@ impl MarketState {
         }
     }
 
-    pub fn advance_turn(&mut self) {
-        self.turns_since_decay = self.turns_since_decay.saturating_add(1);
-        if self.turns_since_decay >= TURNS_PER_VOLATILITY_DECAY {
-            self.turns_since_decay = 0;
-            self.decay_volatility();
+    /// Advance market pressure for an arbitrary elapsed number of world hours.
+    /// Batched decay is equivalent to calling advance_turn once per hour, while
+    /// avoiding a potentially enormous loop after a long simulated rest.
+    pub fn advance_turns(&mut self, turns: u64) {
+        if turns == 0 {
+            return;
         }
+
+        let elapsed = u128::from(self.turns_since_decay.min(TURNS_PER_VOLATILITY_DECAY - 1))
+            + u128::from(turns);
+        let decay_steps = elapsed / u128::from(TURNS_PER_VOLATILITY_DECAY);
+        self.turns_since_decay = (elapsed % u128::from(TURNS_PER_VOLATILITY_DECAY)) as u8;
+        if decay_steps == 0 {
+            return;
+        }
+
+        let steps = i32::try_from(decay_steps.min(i32::MAX as u128)).unwrap_or(i32::MAX);
+        for volume in self.net_trades.values_mut() {
+            if *volume > 0 {
+                *volume = volume.saturating_sub(steps).max(0);
+            } else if *volume < 0 {
+                *volume = volume.saturating_add(steps).min(0);
+            }
+        }
+        self.net_trades.retain(|_, volume| *volume != 0);
+
+        if self.global_net_trades > 0 {
+            self.global_net_trades = self.global_net_trades.saturating_sub(steps).max(0);
+        } else if self.global_net_trades < 0 {
+            self.global_net_trades = self.global_net_trades.saturating_add(steps).min(0);
+        }
+    }
+
+    pub fn advance_turn(&mut self) {
+        self.advance_turns(1);
     }
 }
 

@@ -1,25 +1,26 @@
 //! Persistent companion knockout, rescue, recovery and expedition resolution.
 //!
-//! Recovery uses the world's existing shortest-path travel-cost queries. One recovery
-//! turn is one committed main-menu action (the game already advances the market by
-//! one turn after each main-menu selection); opening and closing nested menus does
-//! not advance recovery.
+//! Recovery uses the world's existing shortest-path travel-cost queries. Recovery
+//! counts down in elapsed in-game hours; opening menus and reloading do not advance it.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::party::{CompanionCondition, CompanionId, CompanionState, Party};
 use crate::state::GameState;
-use crate::world::{LocationCategory, LocationId, World};
+use crate::world::{LocationCategory, LocationId, LocationService, World};
 
-pub const RECOVERY_TURNS: u32 = 3;
+/// Knocked-out companions recover after three elapsed in-game hours.
+pub const RECOVERY_HOURS: u32 = 3;
+/// Legacy constant name retained for callers that still refer to recovery turns.
+pub const RECOVERY_TURNS: u32 = RECOVERY_HOURS;
 pub const TREATMENT_COST: u32 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompanionRecoveryRecord {
     pub companion_id: CompanionId,
     pub destination: Option<LocationId>,
-    /// Remaining committed main-menu turns. Menus and save/load do not advance it.
+    /// Remaining elapsed in-game hours. The field name is retained for save compatibility.
     pub turns_remaining: u32,
 }
 
@@ -53,16 +54,16 @@ impl fmt::Display for RecoveryError {
                 write!(f, "Companion {id} is not awaiting recovery.")
             }
             Self::NoTreatmentSettlement => f.write_str(
-                "No reachable settlement can provide treatment. The companion remains safe but unavailable until a route or settlement becomes available.",
+                "No reachable healer or treatment location can provide care. The companion remains safe but unavailable until a valid healer route becomes available.",
             ),
             Self::NotAtTreatmentSettlement => f.write_str(
-                "Travel to the companion's recorded treatment settlement before paying for immediate treatment.",
+                "Travel to the companion's recorded healer/treatment location before paying for immediate treatment.",
             ),
             Self::InsufficientGold { required, available } => {
                 write!(f, "Treatment costs {required} gold, but only {available} is available.")
             }
             Self::InvalidSettlement(id) => {
-                write!(f, "Location {id} is not a treatment-capable settlement.")
+                write!(f, "Location {id} does not provide the required healer/treatment service.")
             }
             Self::DuplicateRecoveryRecord(id) => {
                 write!(f, "Companion {id} already has a recovery record.")
@@ -93,13 +94,13 @@ impl RecoveryState {
             companion.condition = CompanionCondition::KnockedOut;
             return Ok(false);
         }
-        let destination = world.get_nearest_settlement(origin);
+        let destination = world.get_nearest_treatment_location(origin);
         companion.current_hp = 0;
         companion.condition = CompanionCondition::KnockedOut;
         self.records.push(CompanionRecoveryRecord {
             companion_id: companion.id,
             destination,
-            turns_remaining: RECOVERY_TURNS,
+            turns_remaining: RECOVERY_HOURS,
         });
         self.records
             .sort_by(|left, right| left.companion_id.as_str().cmp(right.companion_id.as_str()));
@@ -158,7 +159,7 @@ impl RecoveryState {
         let location = world
             .get_location(&destination)
             .ok_or_else(|| RecoveryError::InvalidSettlement(destination.clone()))?;
-        if location.category != LocationCategory::Settlement {
+        if !location.has_service(LocationService::Healer) {
             return Err(RecoveryError::InvalidSettlement(destination));
         }
         if companion.id != id {
@@ -217,18 +218,21 @@ impl RecoveryState {
         )
     }
 
-    /// Advance once for a committed main-menu action, never for nested menus or reloads.
-    pub fn advance_committed_turn(
+    /// Advance recovery by elapsed world hours. A record without a treatment
+    /// destination never counts down, preserving the existing rescue safeguard.
+    pub fn advance_committed_turns(
         &mut self,
         companions: &mut [CompanionState],
+        turns: u64,
     ) -> Vec<CompanionId> {
-        let mut recovered = Vec::new();
+        if turns == 0 {
+            return Vec::new();
+        }
+
+        let elapsed = u32::try_from(turns).unwrap_or(u32::MAX);
         for record in &mut self.records {
-            // Without a reachable treatment settlement, neither time nor payment
-            // may silently complete rescue. A future world graph can be re-evaluated
-            // explicitly without losing the original safe recovery record.
-            if record.destination.is_some() && record.turns_remaining > 0 {
-                record.turns_remaining -= 1;
+            if record.destination.is_some() {
+                record.turns_remaining = record.turns_remaining.saturating_sub(elapsed);
             }
         }
         let completed: Vec<CompanionId> = self
@@ -237,6 +241,7 @@ impl RecoveryState {
             .filter(|record| record.destination.is_some() && record.turns_remaining == 0)
             .map(|record| record.companion_id)
             .collect();
+        let mut recovered = Vec::new();
         for id in &completed {
             if let Some(companion) = companions.iter_mut().find(|c| c.id == *id) {
                 if matches!(
@@ -251,6 +256,14 @@ impl RecoveryState {
         }
         self.records.retain(|record| record.turns_remaining > 0);
         recovered
+    }
+
+    /// Backward-compatible one-hour recovery advancement.
+    pub fn advance_committed_turn(
+        &mut self,
+        companions: &mut [CompanionState],
+    ) -> Vec<CompanionId> {
+        self.advance_committed_turns(companions, 1)
     }
 
     /// Synchronise a completed party-combat encounter back into persistent player

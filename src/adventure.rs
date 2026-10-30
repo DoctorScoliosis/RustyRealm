@@ -216,6 +216,7 @@ pub fn region_quest_definition() -> Quest {
                 id: "find_the_route".into(),
                 title: "Find the Old Road".into(),
                 is_completed: false,
+                access_gate: None,
                 objectives: vec![
                     objective(QuestObjective::ReachLocation {
                         location_id: LocationId::from("standing_stones"),
@@ -230,6 +231,7 @@ pub fn region_quest_definition() -> Quest {
                 id: "clear_the_ruins".into(),
                 title: "Clear the Ruins".into(),
                 is_completed: false,
+                access_gate: None,
                 objectives: vec![
                     objective(QuestObjective::ReachLocation {
                         location_id: LocationId::from("sunken_ruins"),
@@ -244,6 +246,7 @@ pub fn region_quest_definition() -> Quest {
                 id: "bring_supplies_home".into(),
                 title: "Recover Village Supplies".into(),
                 is_completed: false,
+                access_gate: None,
                 objectives: vec![
                     objective(QuestObjective::GatherResource {
                         item_type: ItemType::Logs,
@@ -337,6 +340,12 @@ pub fn claim_encounter_clear_reward(
         .region_progress
         .cleared_encounters
         .push(encounter_id.to_string());
+    crate::quests::notify_event(
+        state,
+        &GameEvent::EncounterCleared {
+            encounter_id: encounter_id.to_string(),
+        },
+    );
     Ok((encounter.reward_gold, encounter.reward_xp))
 }
 

@@ -5,6 +5,7 @@
 //! are additive; equipment/mastery inputs are applied once and then clamped.
 //! Position uses encounter-owned range bands, not grid coordinates.
 
+use crate::character::PrimaryAttributes;
 use crate::data::{get_ability, AbilityId};
 use crate::party::{CompanionId, CompanionState, Party};
 use crate::state::Player;
@@ -40,24 +41,9 @@ pub enum CombatantCondition {
     KnockedOut,
     Removed,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CharacterClass {
-    Warrior,
-    Ranger,
-    Mage,
-    Rogue,
-}
+pub use crate::character::CharacterClass;
 
 impl CharacterClass {
-    pub const ALL: [Self; 4] = [Self::Warrior, Self::Ranger, Self::Mage, Self::Rogue];
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Warrior => "Warrior",
-            Self::Ranger => "Ranger",
-            Self::Mage => "Mage",
-            Self::Rogue => "Rogue",
-        }
-    }
     pub const fn definition(self) -> ClassDefinition {
         match self {
             Self::Warrior => ClassDefinition {
@@ -67,6 +53,14 @@ impl CharacterClass {
                 power: 5,
                 resistance: 10,
                 critical: 0,
+            },
+            Self::Barbarian => ClassDefinition {
+                speed: -8,
+                accuracy: -2,
+                evasion: -4,
+                power: 10,
+                resistance: 2,
+                critical: 3,
             },
             Self::Ranger => ClassDefinition {
                 speed: 5,
@@ -124,6 +118,39 @@ impl Default for CombatAttributes {
     }
 }
 impl CombatAttributes {
+    /// A neutral additive source; Default (50) remains for legacy combatants.
+    pub const fn zero() -> Self {
+        Self {
+            speed: 0,
+            accuracy: 0,
+            evasion: 0,
+            power: 0,
+            resistance: 0,
+        }
+    }
+
+    /// Convert primary RPG attributes (1..=20) into derived combat values.
+    /// Class modifiers, equipment and mastery are added separately exactly once.
+    pub fn from_primary(attributes: &PrimaryAttributes, class: CharacterClass) -> Self {
+        let strength = i16::from(attributes.strength);
+        let dexterity = i16::from(attributes.dexterity);
+        let constitution = i16::from(attributes.constitution);
+        let intelligence = i16::from(attributes.intelligence);
+        let wisdom = i16::from(attributes.wisdom);
+        let power_attribute = match class {
+            CharacterClass::Mage => intelligence,
+            CharacterClass::Ranger | CharacterClass::Rogue => dexterity,
+            CharacterClass::Warrior | CharacterClass::Barbarian => strength,
+        };
+        Self {
+            speed: 30 + dexterity * 2,
+            accuracy: 30 + dexterity + wisdom,
+            evasion: 30 + dexterity * 2,
+            power: 30 + power_attribute * 2,
+            resistance: 30 + constitution + wisdom,
+        }
+    }
+
     pub fn derived(class: CharacterClass, base: Self, equipment: Self, mastery: Self) -> Self {
         let c = class.definition();
         Self {
@@ -500,11 +527,17 @@ impl Encounter {
             player.hp,
             player.stamina,
             player.mana,
-            player.weapon.max_damage().max(1),
+            player.effective_weapon_damage().max(1),
             player.armour.max_dr(),
         );
-        hero.equipment_attributes.resistance = (player.armour.max_dr().min(50) / 5) as i16;
-        hero.recalculate_attributes();
+        hero.set_class(player.class);
+        let mut equipment = CombatAttributes::zero();
+        equipment.resistance = (player.armour.max_dr().min(50) / 5) as i16;
+        hero.set_attribute_sources(
+            CombatAttributes::from_primary(&player.attributes, player.class),
+            equipment,
+            CombatAttributes::zero(),
+        );
         hero.max_hp = player.max_hp.max(player.hp);
         hero.max_stamina = player.max_stamina.max(player.stamina);
         hero.max_mana = player.max_mana.max(player.mana);
@@ -574,10 +607,16 @@ impl Encounter {
         hero.max_stamina = player.max_stamina.max(player.stamina);
         hero.mana = player.mana.min(player.max_mana);
         hero.max_mana = player.max_mana.max(player.mana);
-        hero.attack = player.weapon.max_damage().max(1);
+        hero.attack = player.effective_weapon_damage().max(1);
         hero.defence = player.armour.max_dr();
-        hero.equipment_attributes.resistance = (player.armour.max_dr().min(50) / 5) as i16;
-        hero.recalculate_attributes();
+        hero.set_class(player.class);
+        let mut equipment = CombatAttributes::zero();
+        equipment.resistance = (player.armour.max_dr().min(50) / 5) as i16;
+        hero.set_attribute_sources(
+            CombatAttributes::from_primary(&player.attributes, player.class),
+            equipment,
+            CombatAttributes::zero(),
+        );
         hero.sync_condition();
         self.refresh_outcome();
         Ok(())
@@ -1693,6 +1732,61 @@ mod tests {
         );
         assert_eq!(e.current_actor(), None);
     }
+    #[test]
+    fn player_class_and_unrestricted_weapon_family_reach_combat() {
+        let mut player = Player::new("mage".into(), "hash".into());
+        player.class = CharacterClass::Mage;
+        player.weapon = crate::data::WeaponTier::Omega;
+
+        let enemy = EncounterCombatant::new(
+            CombatantId(2),
+            CombatantSource::Enemy,
+            "Goblin",
+            Allegiance::Enemies,
+            20,
+            10,
+            0,
+            5,
+            0,
+        );
+        let encounter = Encounter::from_party(&player, &Party::default(), &[], vec![enemy])
+            .expect("a player and an enemy form a valid encounter");
+        let hero = encounter
+            .combatant(CombatantId(1))
+            .expect("player combatant should be present");
+
+        assert_eq!(hero.class, CharacterClass::Mage);
+        assert_eq!(hero.attack, crate::data::WeaponTier::Omega.max_damage());
+        assert_eq!(hero.attributes.power, 58);
+    }
+
+    #[test]
+    fn primary_attributes_feed_derived_combat_values_once() {
+        let primary = PrimaryAttributes::default();
+        let base = CombatAttributes::from_primary(&primary, CharacterClass::Warrior);
+        assert_eq!(
+            base,
+            CombatAttributes {
+                speed: 50,
+                accuracy: 50,
+                evasion: 50,
+                power: 50,
+                resistance: 50,
+            }
+        );
+
+        let neutral = CombatAttributes::zero();
+        let warrior = CombatAttributes::derived(CharacterClass::Warrior, base, neutral, neutral);
+        assert_eq!(warrior.speed, 45);
+        assert_eq!(warrior.power, 55);
+        assert_eq!(warrior.resistance, 60);
+
+        let mage_base = CombatAttributes::from_primary(&primary, CharacterClass::Mage);
+        let mage = CombatAttributes::derived(CharacterClass::Mage, mage_base, neutral, neutral);
+        assert_eq!(mage.power, 58);
+        assert_eq!(mage.resistance, 55);
+    }
+
     #[test]
     fn class_bonuses_are_distinct_and_clamped() {
         let base = CombatAttributes {

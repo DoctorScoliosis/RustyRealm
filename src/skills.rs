@@ -75,24 +75,9 @@ fn begin_skill_action(
     Ok(Some(modifier))
 }
 
-fn advance_skill_time(tui: &mut Tui, state: &mut GameState, turns: u32) -> io::Result<()> {
-    let mut recovered = Vec::new();
-    for _ in 0..turns {
-        recovered.extend(state.advance_world_turn());
-    }
-    if !recovered.is_empty() {
-        let names = recovered
-            .iter()
-            .map(|id| crate::party::get_definition(*id).name)
-            .collect::<Vec<_>>()
-            .join(", ");
-        tui.show_message(
-            "Companion recovered",
-            &format!("{names} recovered as world time advanced. They are available for explicit party selection."),
-            Some(state),
-        )?;
-    }
-    Ok(())
+fn advance_skill_time(tui: &mut Tui, state: &mut GameState, hours: u32) -> io::Result<()> {
+    let recovered = state.advance_world_time(u64::from(hours));
+    crate::calendar::notify_recovered_companions(tui, state, &recovered)
 }
 
 fn batch_count(available: u32) -> u32 {
@@ -244,11 +229,11 @@ pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         options.push("Back");
         let choice = tui.select_menu(
             &format!(
-                "Skill Plot · total level {} · Stamina {}/{} · Turn {}",
+                "Skill Plot · total level {} · Stamina {}/{} · {}",
                 state.player.skills.total_level(),
                 state.player.stamina,
                 state.player.max_stamina,
-                state.world_turn
+                crate::calendar::format_calendar(state.world_turn)
             ),
             &options,
             Some(state),
@@ -261,7 +246,7 @@ pub fn skill_plot(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 }
 
 /// Attempt a recipe with a skill roll. Valid recipes spend stamina and one or
-/// more world turns whether they succeed or fail. Failure consumes ingredients;
+/// more in-game hours whether they succeed or fail. Failure consumes ingredients;
 /// Smithing failures produce salvage scraps, while scrap recovery can consume
 /// a scrap without returning one.
 fn run_recipe(tui: &mut Tui, state: &mut GameState, recipe_id: &str) -> io::Result<String> {
@@ -284,7 +269,7 @@ fn run_recipe(tui: &mut Tui, state: &mut GameState, recipe_id: &str) -> io::Resu
             advance_skill_time(tui, state, turns)?;
             if result.succeeded {
                 let mut message = format!(
-                    "{} succeeded ({}% chance).\n\nInputs: {}\nOutputs: {}\nSkill XP gained: {}.\nStamina spent: {} · World turns spent: {}",
+                    "{} succeeded ({}% chance).\n\nInputs: {}\nOutputs: {}\nSkill XP gained: {}.\nStamina spent: {} · In-game hours spent: {}",
                     result.recipe.name,
                     result.success_chance,
                     result.recipe.input_description(),
@@ -311,7 +296,7 @@ fn run_recipe(tui: &mut Tui, state: &mut GameState, recipe_id: &str) -> io::Resu
                     "The ingredients were consumed and nothing usable was produced.".to_string()
                 };
                 let message = format!(
-                    "{} failed ({}% chance).\n\n{}\nStamina spent: {} · World turns spent: {}",
+                    "{} failed ({}% chance).\n\n{}\nStamina spent: {} · In-game hours spent: {}",
                     result.recipe.name, result.success_chance, outcome, stamina_cost, turns
                 );
                 tui.show_message("Crafting failed", &message, Some(state))?;
@@ -331,14 +316,14 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
     loop {
         let data = skill.data(state);
         let detail = format!(
-            "{} · level {} · XP {} · remaining {} · Stamina {}/{} · Turn {}",
+            "{} · level {} · XP {} · remaining {} · Stamina {}/{} · {}",
             skill.name(),
             data.level,
             data.current_xp,
             data.xp_remaining,
             state.player.stamina,
             state.player.max_stamina,
-            state.world_turn
+            crate::calendar::format_calendar(state.world_turn)
         );
         let action_label = format!(
             "{}{}",
@@ -395,7 +380,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 let check = roll_skill_check(level, 25, modifier);
                 if !check.succeeded {
                     format!(
-                        "You fail to find a good cut ({}% success chance). No logs or XP gained; {} stamina and {} world turn(s) spent.",
+                        "You fail to find a good cut ({}% success chance). No logs or XP gained; {} stamina and {} in-game hour(s) spent.",
                         check.success_chance, stamina_cost, turns
                     )
                 } else {
@@ -416,7 +401,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         award_skill_action_xp(tui, state, skill)?;
                         "You cut some logs.".to_string()
                     } else {
-                        format!("Mastery: cut {count} logs. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
+                        format!("Mastery: cut {count} logs. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.")
                     }
                 }
             }
@@ -455,7 +440,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 debug_assert!(removed, "validated raw food must still exist");
                 if !check.succeeded {
                     format!(
-                        "The cooking attempt failed ({}% success chance). {amount} raw food spoiled; no food or XP gained. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
+                        "The cooking attempt failed ({}% success chance). {amount} raw food spoiled; no food or XP gained. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.",
                         check.success_chance
                     )
                 } else {
@@ -471,7 +456,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         award_skill_action_xp(tui, state, skill)?;
                         "You cooked some food.".to_string()
                     } else {
-                        format!("Mastery: cooked {amount} raw food. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
+                        format!("Mastery: cooked {amount} raw food. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.")
                     }
                 }
             }
@@ -504,7 +489,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 debug_assert!(removed, "validated bait must still exist");
                 if !check.succeeded {
                     format!(
-                        "You failed to catch anything ({}% success chance). {amount} bait was lost; no fish or XP gained. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
+                        "You failed to catch anything ({}% success chance). {amount} bait was lost; no fish or XP gained. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.",
                         check.success_chance
                     )
                 } else {
@@ -521,7 +506,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         award_skill_action_xp(tui, state, skill)?;
                         "You caught a fish.".to_string()
                     } else {
-                        format!("Mastery: caught {amount} fish. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
+                        format!("Mastery: caught {amount} fish. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.")
                     }
                 }
             }
@@ -538,7 +523,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 let check = roll_skill_check(level, 30, modifier);
                 if !check.succeeded {
                     format!(
-                        "You fail to extract usable ore ({}% success chance). No ore or XP gained; {} stamina and {} world turn(s) spent.",
+                        "You fail to extract usable ore ({}% success chance). No ore or XP gained; {} stamina and {} in-game hour(s) spent.",
                         check.success_chance, stamina_cost, turns
                     )
                 } else {
@@ -559,7 +544,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         award_skill_action_xp(tui, state, skill)?;
                         "You mined some ore.".to_string()
                     } else {
-                        format!("Mastery: mined {count} ore. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
+                        format!("Mastery: mined {count} ore. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.")
                     }
                 }
             }
@@ -602,7 +587,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 if !check.succeeded {
                     state.player.add_item(ItemType::ScrapMetal, amount);
                     format!(
-                        "Smelting failed ({}% success chance). {amount} ore became Metal Scraps. You can try recovering ingots from scraps at a lower success chance. Stamina spent: {stamina_cost}; world turns spent: {turns}.",
+                        "Smelting failed ({}% success chance). {amount} ore became Metal Scraps. You can try recovering ingots from scraps at a lower success chance. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.",
                         check.success_chance
                     )
                 } else {
@@ -619,7 +604,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                         award_skill_action_xp(tui, state, skill)?;
                         "You smithed an ingot.".to_string()
                     } else {
-                        format!("Mastery: smelted {amount} ore into ingots. Stamina spent: {stamina_cost}; world turns spent: {turns}.")
+                        format!("Mastery: smelted {amount} ore into ingots. Stamina spent: {stamina_cost}; In-game hours spent: {turns}.")
                     }
                 }
             }
@@ -636,7 +621,7 @@ fn skill_menu(tui: &mut Tui, state: &mut GameState, skill: SkillKind) -> io::Res
                 let check = roll_skill_check(level, 25, modifier);
                 if !check.succeeded {
                     format!(
-                        "You get away empty-handed ({}% success chance). No gold, thread, or XP gained; {} stamina and {} world turn(s) spent.",
+                        "You get away empty-handed ({}% success chance). No gold, thread, or XP gained; {} stamina and {} in-game hour(s) spent.",
                         check.success_chance, stamina_cost, turns
                     )
                 } else {

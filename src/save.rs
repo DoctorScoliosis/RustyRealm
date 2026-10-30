@@ -11,6 +11,7 @@ use argon2::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::character::{CharacterClass, PrimaryAttributes};
 use crate::state::{GameState, Player};
 
 const CURRENT_SAVE_VERSION: u32 = 2;
@@ -158,6 +159,18 @@ fn compute_checksum(state: &GameState) -> Result<String, SaveError> {
     // Player::password_hash is #[serde(skip)] and is stored separately.
     let canonical_payload = serde_json::to_value(state)?;
     compute_checksum_payload(&canonical_payload)
+}
+
+/// Fingerprint the exact normalised gameplay payload that a successful
+/// checkpoint write would persist. Authentication metadata is intentionally
+/// excluded, as are transient values skipped by serde.
+pub fn checkpoint_fingerprint(state: &GameState) -> Result<String, SaveError> {
+    let mut safe_state = state.clone();
+    safe_state.player.cap_values();
+    for companion in &mut safe_state.companions {
+        companion.cap_values();
+    }
+    compute_checksum(&safe_state)
 }
 
 fn backup_path(path: &Path) -> PathBuf {
@@ -465,6 +478,16 @@ pub fn migrate_legacy_save(username: &str, new_password: &str) -> Result<GameSta
 }
 
 pub fn create_account(username: &str, password: &str) -> Result<GameState, SaveError> {
+    create_account_with_class(username, password, CharacterClass::Warrior)
+}
+
+/// Create the initial account checkpoint with the selected class. The legacy
+/// entry point preserves its Warrior default for existing callers.
+pub fn create_account_with_class(
+    username: &str,
+    password: &str,
+    class: CharacterClass,
+) -> Result<GameState, SaveError> {
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
         return Err(SaveError::InvalidUsername);
@@ -479,7 +502,7 @@ pub fn create_account(username: &str, password: &str) -> Result<GameState, SaveE
     }
 
     let password_hash = hash_password(password)?;
-    let player = Player::new(safe_username, password_hash);
+    let player = Player::new_with_class(safe_username, password_hash, class);
     let state = GameState::new(player);
     save_to_path(&state, &path)?;
     Ok(state)
@@ -522,6 +545,16 @@ mod tests {
         let path = dir.join("player.json");
         let mut state = test_state("player", "secret");
         state.player.gold = 4321;
+        state.player.class = CharacterClass::Rogue;
+        state.player.attributes = PrimaryAttributes {
+            strength: 8,
+            dexterity: 14,
+            constitution: 11,
+            intelligence: 12,
+            wisdom: 9,
+            charisma: 16,
+        };
+        state.player.attribute_growth_accumulator = [10, -5, 7, -3, 2, -11];
         state.world_turn = 17;
         state.player.add_item(crate::data::ItemType::Logs, 7);
         state.current_location = crate::world::LocationId::from("whispering_woods");
@@ -529,11 +562,86 @@ mod tests {
         save_to_path(&state, &path).unwrap();
         let loaded = load_game_at(&path, "player", "secret").unwrap();
         assert_eq!(loaded.player.gold, 4321);
+        assert_eq!(loaded.player.class, CharacterClass::Rogue);
+        assert_eq!(loaded.player.attributes, state.player.attributes);
+        assert_eq!(
+            loaded.player.attribute_growth_accumulator,
+            state.player.attribute_growth_accumulator
+        );
+        let mut original_growth = state.clone();
+        let mut reloaded_growth = loaded.clone();
+        original_growth.player.level_up_combat();
+        reloaded_growth.player.level_up_combat();
+        assert_eq!(
+            reloaded_growth.player.attributes,
+            original_growth.player.attributes
+        );
+        assert_eq!(
+            reloaded_growth.player.attribute_growth_accumulator,
+            original_growth.player.attribute_growth_accumulator
+        );
         assert_eq!(loaded.world_turn, 17);
         assert_eq!(loaded.current_location.as_str(), "whispering_woods");
         assert_eq!(loaded.player.get_item_count(crate::data::ItemType::Logs), 7);
         assert!(!loaded.player.password_hash.is_empty());
         assert!(load_game_at(&path, "player", "wrong").is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn combat_level_up_advances_primary_stats_once_and_deterministically() {
+        let mut first = Player::new("growth".into(), "hash".into());
+        let mut second = first.clone();
+
+        first.level_up_combat();
+        second.level_up_combat();
+
+        assert_eq!(first.combat_level, 2);
+        assert_eq!(first.attributes.total(), 61);
+        assert_eq!(first.attributes, second.attributes);
+        assert_eq!(
+            first.attribute_growth_accumulator,
+            second.attribute_growth_accumulator
+        );
+    }
+
+    #[test]
+    fn constitution_growth_increases_health_and_endurance_capacity() {
+        let mut player = Player::new("constitution".into(), "hash".into());
+        player.attributes.strength = PrimaryAttributes::MAX;
+
+        player.level_up_combat();
+
+        assert_eq!(player.attributes.constitution, 11);
+        assert_eq!(player.max_hp, 130);
+        assert_eq!(player.hp, 130);
+        assert_eq!(player.max_stamina, 102);
+        assert_eq!(player.stamina, 102);
+    }
+
+    #[test]
+    fn dropping_unsaved_live_progress_keeps_the_last_checkpoint_for_restart() {
+        let dir = test_dir("discard-checkpoint");
+        let path = dir.join("player.json");
+        let saved = test_state("discard", "secret");
+        save_to_path(&saved, &path).unwrap();
+
+        {
+            let mut live_session = saved.clone();
+            live_session.player.gold = live_session.player.gold.saturating_add(900);
+            live_session.world_turn = live_session.world_turn.saturating_add(12);
+            assert_ne!(
+                checkpoint_fingerprint(&live_session).unwrap(),
+                checkpoint_fingerprint(&saved).unwrap()
+            );
+            // Discard is represented by dropping this live session without a
+            // save call, exactly as the logout flow does.
+        }
+
+        let restarted = load_game_at(&path, "discard", "secret").unwrap();
+        assert_eq!(restarted.player.gold, saved.player.gold);
+        assert_eq!(restarted.world_turn, saved.world_turn);
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -743,6 +851,18 @@ mod tests {
         document["data"]["player"]
             .as_object_mut()
             .unwrap()
+            .remove("class");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("attributes");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("attribute_growth_accumulator");
+        document["data"]["player"]
+            .as_object_mut()
+            .unwrap()
             .remove("stamina");
         document["data"]["player"]
             .as_object_mut()
@@ -763,6 +883,9 @@ mod tests {
         let loaded = load_game_at(&path, "questcompat", "secret").unwrap();
         assert!(loaded.active_quests.is_empty());
         assert_eq!(loaded.player.lifetime_kills, 0);
+        assert_eq!(loaded.player.class, CharacterClass::Warrior);
+        assert_eq!(loaded.player.attributes, PrimaryAttributes::default());
+        assert_eq!(loaded.player.attribute_growth_accumulator, [0; 6]);
         assert_eq!(loaded.player.stamina, 100);
         assert_eq!(loaded.player.max_stamina, 100);
         assert_eq!(loaded.world_turn, 0);
