@@ -183,7 +183,11 @@ fn create_account_flow(tui: &mut Tui) -> io::Result<Option<GameState>> {
 
     match crate::save::create_account_with_class(&username, &password, class) {
         Ok(state) => {
-            tui.show_message("Account created", "Account created successfully!", Some(&state))?;
+            tui.show_message(
+                "Account created",
+                "Account created successfully!",
+                Some(&state),
+            )?;
             Ok(Some(state))
         }
         Err(error) => {
