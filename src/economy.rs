@@ -86,6 +86,7 @@ pub struct MarketState {
     pub net_trades: HashMap<ItemType, i32>,
     #[serde(default)]
     pub global_net_trades: i32,
+    /// Elapsed in-game hours since the last market-pressure decay step (0–4).
     #[serde(default)]
     turns_since_decay: u8,
 }
@@ -116,8 +117,8 @@ impl MarketState {
             .clamp(-MAX_RECORDED_TRADE_VOLUME, MAX_RECORDED_TRADE_VOLUME);
     }
 
-    /// Recover by one point of pressure. The main menu advances this every few
-    /// actions rather than every menu loop, so a single trade remains observable.
+    /// Recover by one point of pressure. The calendar applies this once per
+    /// five elapsed in-game hours, independent of how many menus were opened.
     pub fn decay_volatility(&mut self) {
         for volume in self.net_trades.values_mut() {
             if *volume > 0 {
@@ -143,7 +144,8 @@ impl MarketState {
             return;
         }
 
-        let elapsed = u128::from(self.turns_since_decay) + u128::from(turns);
+        let elapsed = u128::from(self.turns_since_decay.min(TURNS_PER_VOLATILITY_DECAY - 1))
+            + u128::from(turns);
         let decay_steps = elapsed / u128::from(TURNS_PER_VOLATILITY_DECAY);
         self.turns_since_decay = (elapsed % u128::from(TURNS_PER_VOLATILITY_DECAY)) as u8;
         if decay_steps == 0 {
