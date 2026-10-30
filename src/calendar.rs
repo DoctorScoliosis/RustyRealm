@@ -27,10 +27,6 @@ pub const CALENDAR_EPOCH_HOUR: u8 = 6;
 pub const LOCATION_INTERACTION_HOURS: u64 = 1;
 /// Tactical rounds remain inside the battle; a resolved encounter occupies one world hour.
 pub const COMBAT_HOURS_PER_ENCOUNTER: u64 = 1;
-pub const INN_REST_HOURS: u32 = 2;
-pub const FOOD_CAMP_HOURS: u32 = 2;
-pub const ROUGH_SLEEP_HOURS: u32 = 4;
-
 /// Names are deliberately centralised and replaceable until campaign canon is
 /// established. Three consecutive months belong to each season.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
