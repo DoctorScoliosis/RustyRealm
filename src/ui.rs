@@ -202,7 +202,6 @@ impl Tui {
                     .direction(Direction::Vertical)
                     .constraints(constraints)
                     .split(area);
-                let menu_area = centered_rect_absolute(menu_width, menu_height, chunks[index]);
                 let mut index = 0usize;
 
                 if title_height > 0 {
@@ -218,6 +217,7 @@ impl Tui {
                     index += 1;
                 }
 
+                let menu_area = centered_rect_absolute(menu_width, menu_height, chunks[index]);
                 let visible_options: Vec<ListItem<'_>> = options
                     .iter()
                     .enumerate()
