@@ -54,12 +54,27 @@ pub enum LocationCategory {
     Landmark,
 }
 
+/// Capabilities a location explicitly provides. Location category is descriptive;
+/// it never implies a service such as lodging, healing or safe camping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocationService {
+    Tavern,
+    Guildhouse,
+    Bed,
+    Healer,
+    FieldCamp,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Location {
     pub id: LocationId,
     pub name: String,
     pub description: String,
     pub category: LocationCategory,
+    /// Explicit services; legacy location data defaults to providing none.
+    #[serde(default)]
+    pub services: Vec<LocationService>,
 }
 
 impl Location {
@@ -74,7 +89,26 @@ impl Location {
             name: name.into(),
             description: description.into(),
             category,
+            services: Vec::new(),
         }
+    }
+
+    /// Declare the exact services available here. Duplicates are removed so
+    /// eligibility checks remain deterministic.
+    pub fn with_services(
+        mut self,
+        services: impl IntoIterator<Item = LocationService>,
+    ) -> Self {
+        for service in services {
+            if !self.services.contains(&service) {
+                self.services.push(service);
+            }
+        }
+        self
+    }
+
+    pub fn has_service(&self, service: LocationService) -> bool {
+        self.services.contains(&service)
     }
 }
 
@@ -358,6 +392,37 @@ impl World {
         self.shortest_distances(from_id).contains_key(to_id)
     }
 
+    /// Finds the reachable location with an explicit service, preferring the
+    /// lowest cumulative route cost and then the stable location ID.
+    pub fn get_nearest_location_with_service(
+        &self,
+        start_location: &LocationId,
+        service: LocationService,
+    ) -> Option<LocationId> {
+        self.shortest_distances(start_location)
+            .into_iter()
+            .filter(|(id, _)| {
+                self.locations
+                    .get(id)
+                    .is_some_and(|location| location.has_service(service))
+            })
+            .min_by(|(left_id, left_cost), (right_id, right_cost)| {
+                left_cost
+                    .cmp(right_cost)
+                    .then_with(|| left_id.cmp(right_id))
+            })
+            .map(|(id, _)| id)
+    }
+
+    /// Finds the nearest reachable healer/treatment facility. A settlement
+    /// without the explicit Healer service is not eligible.
+    pub fn get_nearest_treatment_location(
+        &self,
+        start_location: &LocationId,
+    ) -> Option<LocationId> {
+        self.get_nearest_location_with_service(start_location, LocationService::Healer)
+    }
+
     /// Finds the reachable settlement with the lowest cumulative travel cost.
     /// Equal-cost settlements are resolved by lexicographically smallest stable
     /// location ID, independent of HashMap iteration order.
@@ -433,25 +498,34 @@ pub fn build_initial_world() -> Result<World, WorldError> {
             "Oakhaven Village",
             "A quiet settlement surrounded by sturdy oak trees.",
             LocationCategory::Settlement,
-        ),
+        )
+        .with_services([
+            LocationService::Tavern,
+            LocationService::Guildhouse,
+            LocationService::Bed,
+            LocationService::Healer,
+        ]),
         Location::new(
             watchtower.clone(),
             "Crumbling Watchtower",
             "An old watchtower overlooking the valley.",
             LocationCategory::Landmark,
-        ),
+        )
+        .with_services([LocationService::FieldCamp]),
         Location::new(
             standing_stones.clone(),
             "Standing Stones",
             "A ring of weathered stones beside the old road.",
             LocationCategory::Landmark,
-        ),
+        )
+        .with_services([LocationService::FieldCamp]),
         Location::new(
             abandoned_mill.clone(),
             "Abandoned Mill",
             "A disused mill with a view over the village fields.",
             LocationCategory::Landmark,
-        ),
+        )
+        .with_services([LocationService::FieldCamp]),
         Location::new(
             sunken_ruins.clone(),
             "Sunken Ruins",
@@ -463,7 +537,8 @@ pub fn build_initial_world() -> Result<World, WorldError> {
             "Whispering Woods",
             "A dense forest where the wind sounds like distant voices.",
             LocationCategory::Wilderness,
-        ),
+        )
+        .with_services([LocationService::FieldCamp]),
         Location::new(
             goblin_caves.clone(),
             "Goblin Caves",
