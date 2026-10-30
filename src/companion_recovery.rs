@@ -217,18 +217,21 @@ impl RecoveryState {
         )
     }
 
-    /// Advance once for a committed main-menu action, never for nested menus or reloads.
-    pub fn advance_committed_turn(
+    /// Advance recovery by elapsed world hours. A record without a treatment
+    /// destination never counts down, preserving the existing rescue safeguard.
+    pub fn advance_committed_turns(
         &mut self,
         companions: &mut [CompanionState],
+        turns: u64,
     ) -> Vec<CompanionId> {
-        let mut recovered = Vec::new();
+        if turns == 0 {
+            return Vec::new();
+        }
+
+        let elapsed = u32::try_from(turns).unwrap_or(u32::MAX);
         for record in &mut self.records {
-            // Without a reachable treatment settlement, neither time nor payment
-            // may silently complete rescue. A future world graph can be re-evaluated
-            // explicitly without losing the original safe recovery record.
-            if record.destination.is_some() && record.turns_remaining > 0 {
-                record.turns_remaining -= 1;
+            if record.destination.is_some() {
+                record.turns_remaining = record.turns_remaining.saturating_sub(elapsed);
             }
         }
         let completed: Vec<CompanionId> = self
@@ -237,6 +240,7 @@ impl RecoveryState {
             .filter(|record| record.destination.is_some() && record.turns_remaining == 0)
             .map(|record| record.companion_id)
             .collect();
+        let mut recovered = Vec::new();
         for id in &completed {
             if let Some(companion) = companions.iter_mut().find(|c| c.id == *id) {
                 if matches!(
@@ -251,6 +255,14 @@ impl RecoveryState {
         }
         self.records.retain(|record| record.turns_remaining > 0);
         recovered
+    }
+
+    /// Backward-compatible one-hour recovery advancement.
+    pub fn advance_committed_turn(
+        &mut self,
+        companions: &mut [CompanionState],
+    ) -> Vec<CompanionId> {
+        self.advance_committed_turns(companions, 1)
     }
 
     /// Synchronise a completed party-combat encounter back into persistent player
