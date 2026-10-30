@@ -424,8 +424,7 @@ pub fn load_game(username: &str, password: &str) -> Result<GameState, SaveError>
 }
 
 /// Return the names of valid local save files, newest modified first.
-pub fn list_local_accounts() -> Result<Vec<String>, SaveError> {
-    let directory = get_save_dir()?;
+fn list_accounts_in(directory: &Path) -> Result<Vec<String>, SaveError> {
     let mut accounts = Vec::new();
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
@@ -448,6 +447,9 @@ pub fn list_local_accounts() -> Result<Vec<String>, SaveError> {
     Ok(accounts.into_iter().map(|(username, _)| username).collect())
 }
 
+pub fn list_local_accounts() -> Result<Vec<String>, SaveError> {
+    list_accounts_in(&get_save_dir()?)
+}
 pub fn account_requires_password(username: &str) -> Result<bool, SaveError> {
     let safe_username = sanitize_username(username);
     if safe_username.is_empty() {
@@ -570,6 +572,23 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn local_account_listing_includes_valid_saves_and_ignores_backups_and_corrupt_files() {
+        let directory = test_dir("account-list");
+        let valid_path = directory.join("zeta.json");
+        let backup_path = directory.join("zeta.bak");
+        let corrupt_path = directory.join("corrupt.json");
+        save_to_path(&GameState::new(Player::new("zeta".into(), String::new())), &valid_path)
+            .unwrap();
+        fs::write(&backup_path, b"backup").unwrap();
+        fs::write(&corrupt_path, b"not json").unwrap();
+
+        let valid = list_accounts_in(&directory).unwrap();
+        assert_eq!(valid, vec!["zeta".to_string()]);
+
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
