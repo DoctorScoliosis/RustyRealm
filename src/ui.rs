@@ -577,7 +577,15 @@ impl Tui {
                     .unwrap_or(24)
                     .saturating_add(6)
                     .clamp(40, 88);
-                let message_height = message.lines().count().saturating_add(6).clamp(8, 24);
+                let wrapped_lines = message
+                    .lines()
+                    .map(|line| {
+                        let width = message_width.saturating_sub(4).max(1);
+                        line.chars().count().div_ceil(width)
+                    })
+                    .sum::<usize>()
+                    .max(1);
+                let message_height = wrapped_lines.saturating_add(6).clamp(8, 24);
                 let popup = centered_rect_absolute(
                     message_width.min(usize::from(area.width)) as u16,
                     message_height.min(usize::from(area.height)) as u16,
