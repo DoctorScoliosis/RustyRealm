@@ -84,8 +84,11 @@ fn main() -> io::Result<()> {
                             "The migrated account will be accessible to anyone with access to this computer and its local save files.",
                             None,
                         )?;
-                        let confirm_local =
-                            tui.prompt_input("Type LOCAL to continue without a password", false, None)?;
+                        let confirm_local = tui.prompt_input(
+                            "Type LOCAL to continue without a password",
+                            false,
+                            None,
+                        )?;
                         if confirm_local != "LOCAL" {
                             continue;
                         }
