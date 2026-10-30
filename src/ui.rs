@@ -64,7 +64,7 @@ const RUSTY_REALM_ASCII_ART: &str = r#"      ▄▄▄▄▄                ▄�
             ▀▀▀       ▀▀▀▀▀                ▀▀▀▀▀▀                        ▀▀▀▀▀▀▀▀▀                 ▀▀▀       ▀▀▀▀▀▀▀▀▀                ▀         ▀▀▀▀▀▀▀▀                ▀"#;
 
 const STARTUP_LOGO_WIDTH: u16 = 175;
-const STARTUP_LOGO_HEIGHT: u16 = 10;
+const STARTUP_LOGO_HEIGHT: u16 = 11;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AccountLandingChoice {
@@ -1525,6 +1525,7 @@ mod tests {
             .max()
             .unwrap_or_default();
         assert_eq!(max_width, usize::from(STARTUP_LOGO_WIDTH));
+        assert_eq!(RUSTY_REALM_ASCII_ART.lines().count(), usize::from(STARTUP_LOGO_HEIGHT));
         assert!(startup_logo_fits(Rect::new(0, 0, 181, 26)));
         assert!(!startup_logo_fits(Rect::new(0, 0, 180, 40)));
         assert!(!startup_logo_fits(Rect::new(0, 0, 200, 25)));
