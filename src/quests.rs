@@ -273,7 +273,9 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
 
     let mut pending = vec![event.clone()];
     while let Some(current_event) = pending.pop() {
+        crate::realm_progression::record_event(state, &current_event);
         let mut newly_completed = Vec::new();
+        let mut newly_completed_stages = Vec::new();
         let mut bonus_rewards = Vec::new();
 
         for quest in &mut state.active_quests {
@@ -298,6 +300,7 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
                 continue;
             };
             let stage = &mut quest.stages[stage_index];
+            let was_stage_completed = stage.is_completed;
 
             for objective_state in &mut stage.objectives {
                 if objective_state.is_completed {
@@ -324,6 +327,9 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
             {
                 stage.is_completed = true;
             }
+            if !was_stage_completed && stage.is_completed {
+                newly_completed_stages.push((quest.id.clone(), stage.id.clone()));
+            }
             let mandatory_total = stage
                 .objectives
                 .iter()
@@ -348,6 +354,9 @@ pub fn notify_event(state: &mut GameState, event: &GameEvent) {
         }
         for quest_id in newly_completed {
             pending.push(GameEvent::PrerequisiteQuestCompleted { quest_id });
+        }
+        for (quest_id, stage_id) in newly_completed_stages {
+            pending.push(GameEvent::QuestStageCompleted { quest_id, stage_id });
         }
     }
 }
@@ -688,6 +697,7 @@ fn grant_reward(state: &mut GameState, reward: &QuestReward) {
 pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     loop {
         check_and_refresh_quests(state);
+        crate::realm_progression::reconcile_from_saved_evidence(state);
         let now = Utc::now().timestamp().max(0) as u64;
         let world_event_text = if state.active_world_event.is_active(now) {
             format!(
@@ -771,9 +781,10 @@ pub fn quest_hall(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 .collect::<Vec<_>>()
                 .join("\n")
         };
+        let campaign_text = crate::realm_progression::quest_hall_summary(state);
         let content = format!(
-            "World event\n{}\n\nLifetime monsters defeated: {}\n\nQuests\n{}\n\nDaily quests refresh automatically every 24 hours.",
-            world_event_text, state.player.lifetime_kills, quest_text
+            "World event\n{}\n\nLifetime monsters defeated: {}\n\nQuests\n{}\n\n{}\n\nDaily quests refresh automatically every 24 hours.",
+            world_event_text, state.player.lifetime_kills, quest_text, campaign_text
         );
         tui.show_text("Quest Hall", &content, Some(state))?;
 
