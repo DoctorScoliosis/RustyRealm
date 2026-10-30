@@ -212,7 +212,7 @@ pub fn plan_rest(
         },
         RestKind::FieldCamp => ResourceTotals {
             hp: recover_by_percent(before.hp, player.max_hp, 10),
-            stamina: recover_by_percent(before.stamina, player.max_stamina, 25),
+            stamina: recover_by_percent(before.stamina, player.max_stamina, 15),
             mana: recover_by_percent(before.mana, player.max_mana, 10),
         },
     };
@@ -427,6 +427,37 @@ mod tests {
     }
 
     #[test]
+    fn guildhouse_alone_qualifies_for_a_short_rest_without_granting_a_bed() {
+        let location = Location::new(
+            "guild_only",
+            "Guildhouse",
+            "A guild hall with no inn or private beds.",
+            LocationCategory::Settlement,
+        )
+        .with_services([LocationService::Guildhouse]);
+        let state = injured_state();
+
+        let plan = plan_rest(
+            &state.player,
+            &location,
+            RestKind::Short,
+            RestContext::MainMenu,
+        )
+        .unwrap();
+        assert_eq!(plan.hours, SHORT_REST_HOURS);
+        assert_eq!(plan.gold_cost, 0);
+        assert!(matches!(
+            plan_rest(
+                &state.player,
+                &location,
+                RestKind::Long,
+                RestContext::MainMenu
+            ),
+            Err(RestError::MissingService(RestKind::Long))
+        ));
+    }
+
+    #[test]
     fn field_camp_is_explicit_costs_one_food_and_recovers_less_than_safe_rest() {
         let world = build_initial_world().unwrap();
         let mut state = injured_state();
@@ -446,7 +477,14 @@ mod tests {
         assert_eq!(outcome.plan.hours, 3);
         assert_eq!(outcome.plan.food_cost, 1);
         assert_eq!(outcome.plan.gold_cost, 0);
-        assert_eq!(outcome.plan.after, ResourceTotals { hp: 50, stamina: 35, mana: 15 });
+        assert_eq!(
+            outcome.plan.after,
+            ResourceTotals {
+                hp: 50,
+                stamina: 35,
+                mana: 15
+            }
+        );
         assert_eq!(state.player.get_item_count(ItemType::Food), 0);
         assert_eq!(state.world_turn, 3);
     }
@@ -456,7 +494,12 @@ mod tests {
         let world = build_initial_world().unwrap();
         let mut full = state();
         assert!(matches!(
-            execute_rest(&mut full, &world, RestAction::ShortRest, RestContext::MainMenu),
+            execute_rest(
+                &mut full,
+                &world,
+                RestAction::ShortRest,
+                RestContext::MainMenu
+            ),
             Err(RestError::NothingToRecover)
         ));
         assert_eq!(full.world_turn, 0);
@@ -465,7 +508,12 @@ mod tests {
         poor.player.gold = LONG_REST_GOLD_COST - 1;
         let gold_before = poor.player.gold;
         assert!(matches!(
-            execute_rest(&mut poor, &world, RestAction::LongRest, RestContext::MainMenu),
+            execute_rest(
+                &mut poor,
+                &world,
+                RestAction::LongRest,
+                RestContext::MainMenu
+            ),
             Err(RestError::InsufficientGold { .. })
         ));
         assert_eq!(poor.player.gold, gold_before);
