@@ -331,7 +331,7 @@ mod tests {
     use super::*;
     use crate::event::GameEvent;
     use crate::party::CompanionState;
-    use crate::quests::{Quest, QuestObjective, QuestReward, QuestStage, QuestStageCompleted};
+    use crate::quests::{Quest, QuestObjective, QuestReward, QuestStage};
     use crate::state::Player;
     use crate::world::LocationId;
 
@@ -467,7 +467,8 @@ mod tests {
             consume_on_success: Vec::new(),
         };
         assert!(evaluate_access_gate(&state, &gate).allowed);
-        state.world_turn = crate::calendar::HOURS_PER_YEAR;
+        state.world_turn = crate::calendar::HOURS_PER_SEASON
+            - u64::from(crate::calendar::CALENDAR_EPOCH_HOUR);
         assert!(!evaluate_access_gate(&state, &gate).allowed);
         let invalid = AccessGate {
             all_of: vec![AccessRequirement::Season { season_index: 4 }],

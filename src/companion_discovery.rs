@@ -1,7 +1,7 @@
 //! Persisted companion discovery, separate from recruitment and party membership.
 
 use crate::event::GameEvent;
-use crate::party::{all_companion_definitions, CompanionId, CompanionState};
+use crate::party::{all_companion_definitions, CompanionId};
 use crate::state::GameState;
 
 /// Whether a companion has been discovered in this save. Recruited records also
