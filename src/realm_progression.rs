@@ -371,7 +371,9 @@ fn realm_is_completed(state: &GameState, realm_id: &str) -> bool {
 }
 
 fn recompute_realm_progress(state: &mut GameState, realm: &RealmDefinition) {
-    let progress = progress_for_mut(state, realm.id);
+    let Some(progress) = state.campaign_progress.realms.get_mut(realm.id) else {
+        return;
+    };
     let required: Vec<_> = realm
         .objectives
         .iter()
@@ -507,7 +509,11 @@ fn objective_has_saved_evidence(state: &GameState, requirement: RealmObjectiveRe
                     .any(|quest| quest.id == quest_id && (quest.is_completed || quest.is_claimed))
         }
         RealmObjectiveRequirement::QuestStageCompleted { quest_id, stage_id } => {
-            state.player.quests_completed.iter().any(|completed| completed == quest_id)
+            state
+                .player
+                .quests_completed
+                .iter()
+                .any(|completed| completed == quest_id)
                 || state.active_quests.iter().any(|quest| {
                     quest.id == quest_id
                         && (quest.is_completed
@@ -834,6 +840,49 @@ mod tests {
         let oakhaven = progress_for(&state, "oakhaven").unwrap();
         assert!(oakhaven.completed);
         assert!(!oakhaven.mastered);
+    }
+
+    #[test]
+    fn optional_objectives_advance_mastery_without_changing_required_completion() {
+        let mut state = fresh_state();
+        let oakhaven = REALMS.iter().find(|realm| realm.id == "oakhaven").unwrap();
+        mark_realm_complete(&mut state, oakhaven);
+        assert!(realm_is_completed(&state, "oakhaven"));
+        assert!(!progress_for(&state, "oakhaven").unwrap().mastered);
+
+        for event in [
+            GameEvent::TargetInteracted {
+                target_id: "watchtower_scout_report".into(),
+            },
+            GameEvent::TargetInteracted {
+                target_id: "abandoned_mill_cache".into(),
+            },
+            GameEvent::EncounterCleared {
+                encounter_id: "woods_patrol".into(),
+            },
+            GameEvent::EncounterCleared {
+                encounter_id: "cave_expedition".into(),
+            },
+        ] {
+            record_event(&mut state, &event);
+        }
+
+        let progress = progress_for(&state, "oakhaven").unwrap();
+        assert!(progress.completed);
+        assert!(progress.mastered);
+    }
+
+    #[test]
+    fn quest_hall_summary_does_not_reveal_undiscovered_realms() {
+        let mut state = fresh_state();
+        reconcile_from_saved_evidence(&mut state);
+        let summary = quest_hall_summary(&state);
+
+        assert!(summary.contains("Oakhaven"));
+        assert!(!summary.contains("Thornveil"));
+        assert!(!summary.contains("Ironvein"));
+        assert!(!summary.contains("Drowned Reach"));
+        assert!(!summary.contains("Ashen March"));
     }
 
     #[test]
