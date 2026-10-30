@@ -764,6 +764,7 @@ pub fn run_party_battle(
         cancel_invalid_pending_telegraph(&mut pending_telegraph, &encounter, &mut last_log);
         sync_persistent_state(state, &encounter, &world)?;
         if resolve_party_defeat(tui, state, &encounter, &world)? {
+            advance_combat_time(tui, state, &encounter, starting_round)?;
             return Ok(BattleOutcome::Defeated);
         }
 
