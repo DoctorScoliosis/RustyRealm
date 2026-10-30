@@ -201,9 +201,9 @@ pub fn plan_rest(
     };
     let after = match kind {
         RestKind::Short => ResourceTotals {
-            hp: recover_by_percent(before.hp, player.max_hp, 20),
-            stamina: recover_by_percent(before.stamina, player.max_stamina, 30),
-            mana: recover_by_percent(before.mana, player.max_mana, 20),
+            hp: recover_by_percent(before.hp, player.max_hp, 15),
+            stamina: recover_by_percent(before.stamina, player.max_stamina, 15),
+            mana: recover_by_percent(before.mana, player.max_mana, 15),
         },
         RestKind::Long => ResourceTotals {
             hp: player.max_hp,
@@ -342,17 +342,17 @@ mod tests {
         assert_eq!(
             plan.after,
             ResourceTotals {
-                hp: 60,
-                stamina: 50,
-                mana: 20
+                hp: 55,
+                stamina: 35,
+                mana: 17
             }
         );
         assert_eq!(
             plan.recovery(),
             ResourceRecovery {
-                hp: 20,
-                stamina: 30,
-                mana: 10
+                hp: 15,
+                stamina: 15,
+                mana: 7
             }
         );
     }
@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(outcome.plan.hours, 3);
         assert_eq!(outcome.plan.food_cost, 1);
         assert_eq!(outcome.plan.gold_cost, 0);
-        assert_eq!(outcome.plan.after, ResourceTotals { hp: 50, stamina: 40, mana: 15 });
+        assert_eq!(outcome.plan.after, ResourceTotals { hp: 50, stamina: 35, mana: 15 });
         assert_eq!(state.player.get_item_count(ItemType::Food), 0);
         assert_eq!(state.world_turn, 3);
     }
