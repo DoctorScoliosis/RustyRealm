@@ -502,7 +502,7 @@ fn update_lacoyx_phase(
 }
 
 fn advance_combat_time(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
-    // Tactical rounds are part of the encounter, not separate world turns.
+    // Tactical rounds are part of the encounter, not separate world hours.
     // A resolved combat encounter occupies one in-game hour.
     let recovered = state.advance_world_time(crate::calendar::COMBAT_HOURS_PER_ENCOUNTER);
     crate::calendar::notify_recovered_companions(tui, state, &recovered)
