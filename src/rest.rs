@@ -339,10 +339,21 @@ mod tests {
         assert_eq!(plan.hours, 1);
         assert_eq!(plan.gold_cost, 0);
         assert_eq!(plan.food_cost, 0);
-        assert_eq!(plan.after, ResourceTotals { hp: 65, stamina: 60, mana: 22 });
+        assert_eq!(
+            plan.after,
+            ResourceTotals {
+                hp: 65,
+                stamina: 60,
+                mana: 22
+            }
+        );
         assert_eq!(
             plan.recovery(),
-            ResourceRecovery { hp: 25, stamina: 40, mana: 12 }
+            ResourceRecovery {
+                hp: 25,
+                stamina: 40,
+                mana: 12
+            }
         );
     }
 
@@ -359,7 +370,14 @@ mod tests {
         .unwrap();
         assert_eq!(plan.hours, 8);
         assert_eq!(plan.gold_cost, LONG_REST_GOLD_COST);
-        assert_eq!(plan.after, ResourceTotals { hp: 100, stamina: 100, mana: 50 });
+        assert_eq!(
+            plan.after,
+            ResourceTotals {
+                hp: 100,
+                stamina: 100,
+                mana: 50
+            }
+        );
 
         let execution = execute_rest(
             &mut state,
@@ -389,11 +407,21 @@ mod tests {
         );
         let state = injured_state();
         assert!(matches!(
-            plan_rest(&state.player, &location, RestKind::Short, RestContext::MainMenu),
+            plan_rest(
+                &state.player,
+                &location,
+                RestKind::Short,
+                RestContext::MainMenu
+            ),
             Err(RestError::MissingService(RestKind::Short))
         ));
         assert!(matches!(
-            plan_rest(&state.player, &location, RestKind::Long, RestContext::MainMenu),
+            plan_rest(
+                &state.player,
+                &location,
+                RestKind::Long,
+                RestContext::MainMenu
+            ),
             Err(RestError::MissingService(RestKind::Long))
         ));
     }
@@ -446,7 +474,12 @@ mod tests {
         let mut hungry = injured_state();
         hungry.current_location = LocationId::from("whispering_woods");
         assert!(matches!(
-            execute_rest(&mut hungry, &world, RestAction::FieldCamp, RestContext::MainMenu),
+            execute_rest(
+                &mut hungry,
+                &world,
+                RestAction::FieldCamp,
+                RestContext::MainMenu
+            ),
             Err(RestError::InsufficientFood { .. })
         ));
         assert_eq!(hungry.world_turn, 0);
@@ -469,13 +502,7 @@ mod tests {
             state.companion_recovery.clone(),
         );
         assert_eq!(
-            execute_rest(
-                &mut state,
-                &world,
-                RestAction::Cancel,
-                RestContext::Combat
-            )
-            .unwrap(),
+            execute_rest(&mut state, &world, RestAction::Cancel, RestContext::Combat).unwrap(),
             RestExecution::Cancelled
         );
         assert_eq!(
@@ -503,7 +530,10 @@ mod tests {
                 execute_rest(&mut state, &world, RestAction::LongRest, context),
                 Err(RestError::RestNotAllowed)
             );
-            assert_eq!((state.player.hp, state.player.gold, state.world_turn), before);
+            assert_eq!(
+                (state.player.hp, state.player.gold, state.world_turn),
+                before
+            );
         }
     }
 
@@ -516,11 +546,14 @@ mod tests {
         companion.current_hp = 0;
         companion.condition = CompanionCondition::KnockedOut;
         state.companions.push(companion);
-        state.companion_recovery.records.push(CompanionRecoveryRecord {
-            companion_id: id,
-            destination: Some(LocationId::from("village_start")),
-            turns_remaining: 2,
-        });
+        state
+            .companion_recovery
+            .records
+            .push(CompanionRecoveryRecord {
+                companion_id: id,
+                destination: Some(LocationId::from("village_start")),
+                turns_remaining: 2,
+            });
 
         let first = execute_rest(
             &mut state,
@@ -533,7 +566,10 @@ mod tests {
             panic!("short rest should complete");
         };
         assert!(first.recovered_companions.is_empty());
-        assert_eq!(state.companion_recovery.record(id).unwrap().turns_remaining, 1);
+        assert_eq!(
+            state.companion_recovery.record(id).unwrap().turns_remaining,
+            1
+        );
 
         let second = execute_rest(
             &mut state,
@@ -559,11 +595,14 @@ mod tests {
         companion.current_hp = 0;
         companion.condition = CompanionCondition::KnockedOut;
         state.companions.push(companion);
-        state.companion_recovery.records.push(CompanionRecoveryRecord {
-            companion_id: id,
-            destination: None,
-            turns_remaining: 3,
-        });
+        state
+            .companion_recovery
+            .records
+            .push(CompanionRecoveryRecord {
+                companion_id: id,
+                destination: None,
+                turns_remaining: 3,
+            });
 
         let outcome = execute_rest(
             &mut state,
@@ -577,7 +616,10 @@ mod tests {
         assert_eq!(record.destination, None);
         assert_eq!(record.turns_remaining, 3);
         assert_eq!(state.companions[0].current_hp, 0);
-        assert_eq!(state.companions[0].condition, CompanionCondition::KnockedOut);
+        assert_eq!(
+            state.companions[0].condition,
+            CompanionCondition::KnockedOut
+        );
     }
 
     #[test]
@@ -587,7 +629,12 @@ mod tests {
         state.world_turn = u64::MAX;
         let gold_before = state.player.gold;
         assert_eq!(
-            execute_rest(&mut state, &world, RestAction::LongRest, RestContext::MainMenu),
+            execute_rest(
+                &mut state,
+                &world,
+                RestAction::LongRest,
+                RestContext::MainMenu
+            ),
             Err(RestError::WorldClockExhausted)
         );
         assert_eq!(state.player.gold, gold_before);
