@@ -8,7 +8,7 @@ use std::fmt;
 
 use crate::party::{CompanionCondition, CompanionId, CompanionState, Party};
 use crate::state::GameState;
-use crate::world::{LocationCategory, LocationId, World};
+use crate::world::{LocationCategory, LocationId, LocationService, World};
 
 /// Knocked-out companions recover after three elapsed in-game hours.
 pub const RECOVERY_HOURS: u32 = 3;
@@ -94,7 +94,7 @@ impl RecoveryState {
             companion.condition = CompanionCondition::KnockedOut;
             return Ok(false);
         }
-        let destination = world.get_nearest_settlement(origin);
+        let destination = world.get_nearest_treatment_location(origin);
         companion.current_hp = 0;
         companion.condition = CompanionCondition::KnockedOut;
         self.records.push(CompanionRecoveryRecord {
@@ -159,7 +159,7 @@ impl RecoveryState {
         let location = world
             .get_location(&destination)
             .ok_or_else(|| RecoveryError::InvalidSettlement(destination.clone()))?;
-        if location.category != LocationCategory::Settlement {
+        if !location.has_service(LocationService::Healer) {
             return Err(RecoveryError::InvalidSettlement(destination));
         }
         if companion.id != id {
