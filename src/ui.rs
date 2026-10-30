@@ -1499,6 +1499,19 @@ mod tests {
         }
     }
     #[test]
+    fn original_startup_banner_is_exactly_sized_and_only_shown_on_large_terminals() {
+        let max_width = RUSTY_REALM_ASCII_ART
+            .lines()
+            .map(|line| line.chars().count())
+            .max()
+            .unwrap_or_default();
+        assert_eq!(max_width, usize::from(STARTUP_LOGO_WIDTH));
+        assert!(startup_logo_fits(Rect::new(0, 0, 179, 26)));
+        assert!(!startup_logo_fits(Rect::new(0, 0, 178, 40)));
+        assert!(!startup_logo_fits(Rect::new(0, 0, 200, 25)));
+    }
+
+    #[test]
     fn line_input_mode_can_be_forced_and_is_selected_for_non_terminal_stdin() {
         assert!(should_use_line_input(Some("text"), true));
         assert!(should_use_line_input(Some("line"), true));
