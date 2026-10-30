@@ -291,7 +291,8 @@ pub struct GameState {
     /// Added with defaults for backward-compatible progression saves.
     #[serde(default)]
     pub market_state: MarketState,
-    /// Number of committed world turns; skill actions and rests advance this clock.
+    /// Persisted world clock. One committed world turn is exactly one in-game hour.
+    /// The calendar is derived from this field so the two clocks cannot diverge.
     #[serde(default)]
     pub world_turn: u64,
     #[serde(default)]
@@ -328,13 +329,29 @@ pub struct GameState {
 }
 
 impl GameState {
-    /// Commit one unit of world time and advance turn-based world systems.
-    /// Returns companions whose recovery completed on this turn.
-    pub fn advance_world_turn(&mut self) -> Vec<crate::party::CompanionId> {
-        self.world_turn = self.world_turn.saturating_add(1);
-        self.market_state.advance_turn();
+    /// Advance elapsed in-game hours. Zero hours are a strict no-op. The clock
+    /// saturates at u64::MAX; dependent systems receive only the elapsed hours
+    /// that could actually be represented by the persisted counter.
+    pub fn advance_world_time(&mut self, hours: u64) -> Vec<crate::party::CompanionId> {
+        if hours == 0 {
+            return Vec::new();
+        }
+        let previous = self.world_turn;
+        let next = previous.saturating_add(hours);
+        let elapsed = next.saturating_sub(previous);
+        if elapsed == 0 {
+            return Vec::new();
+        }
+
+        self.world_turn = next;
+        self.market_state.advance_turns(elapsed);
         self.companion_recovery
-            .advance_committed_turn(&mut self.companions)
+            .advance_committed_turns(&mut self.companions, elapsed)
+    }
+
+    /// Backward-compatible one-hour advancement for existing action systems.
+    pub fn advance_world_turn(&mut self) -> Vec<crate::party::CompanionId> {
+        self.advance_world_time(1)
     }
 
     pub fn new(player: Player) -> Self {
