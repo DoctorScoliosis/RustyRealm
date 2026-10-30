@@ -73,7 +73,6 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-
 fn enter_local_account(tui: &mut Tui, username: &str) -> io::Result<Option<GameState>> {
     let preview = match crate::save::preview_local_account(username) {
         Ok(state) => state,
@@ -86,7 +85,9 @@ fn enter_local_account(tui: &mut Tui, username: &str) -> io::Result<Option<GameS
     let auth_label = match &auth {
         Ok(true) => "Password protected",
         Ok(false) => "Local-only · no password",
-        Err(crate::save::SaveError::PasswordMigrationRequired) => "Legacy save · migration required",
+        Err(crate::save::SaveError::PasswordMigrationRequired) => {
+            "Legacy save · migration required"
+        }
         Err(_) => "Authentication status unavailable",
     };
     tui.show_message(
@@ -98,7 +99,8 @@ fn enter_local_account(tui: &mut Tui, username: &str) -> io::Result<Option<GameS
         &format!("Enter {username}?"),
         &["Enter account", "Back to accounts"],
         None,
-    )? != 0 {
+    )? != 0
+    {
         return Ok(None);
     }
 
@@ -170,7 +172,10 @@ fn format_account_preview(username: &str, state: &GameState, authentication: &st
             state.player.skills.total_level()
         ),
         format!("Location: {location}"),
-        format!("World time: {}", crate::calendar::format_calendar(state.world_turn)),
+        format!(
+            "World time: {}",
+            crate::calendar::format_calendar(state.world_turn)
+        ),
         String::new(),
         format!(
             "ACTIVE PARTY · {}/{} slots",
@@ -232,11 +237,8 @@ fn migrate_legacy_account(tui: &mut Tui, username: &str) -> io::Result<Option<Ga
             return Ok(None);
         }
     }
-    let confirmation = tui.prompt_input(
-        "Confirm password (leave blank if passwordless)",
-        true,
-        None,
-    )?;
+    let confirmation =
+        tui.prompt_input("Confirm password (leave blank if passwordless)", true, None)?;
     if password != confirmation {
         tui.show_message(
             "Migration cancelled",
@@ -247,7 +249,11 @@ fn migrate_legacy_account(tui: &mut Tui, username: &str) -> io::Result<Option<Ga
     }
     match crate::save::migrate_legacy_save(username, &password) {
         Ok(state) => {
-            tui.show_message("Migration complete", "The local save was migrated successfully.", Some(&state))?;
+            tui.show_message(
+                "Migration complete",
+                "The local save was migrated successfully.",
+                Some(&state),
+            )?;
             Ok(Some(state))
         }
         Err(error) => {
@@ -267,7 +273,11 @@ fn manage_local_accounts(tui: &mut Tui) -> io::Result<()> {
             }
         };
         if accounts.is_empty() {
-            tui.show_message("Manage accounts", "There are no local accounts to manage.", None)?;
+            tui.show_message(
+                "Manage accounts",
+                "There are no local accounts to manage.",
+                None,
+            )?;
             return Ok(());
         }
         let mut options = accounts.clone();
@@ -310,8 +320,11 @@ fn manage_local_accounts(tui: &mut Tui) -> io::Result<()> {
         } else {
             String::new()
         };
-        let confirmation =
-            tui.prompt_input(&format!("Type {username} to permanently delete"), false, None)?;
+        let confirmation = tui.prompt_input(
+            &format!("Type {username} to permanently delete"),
+            false,
+            None,
+        )?;
         match crate::save::delete_local_account(username, &password, &confirmation) {
             Ok(()) => tui.show_message(
                 "Account deleted",
