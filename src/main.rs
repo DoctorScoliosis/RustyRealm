@@ -1786,29 +1786,45 @@ mod access_travel_tests {
         let mut world = build_initial_world().expect("initial world should be valid");
         let village = LocationId::from("village_start");
         let hidden = LocationId::from("hidden_archive");
-        world.add_location(
-            Location::new(hidden.clone(), "Hidden Archive", "A concealed chamber.", LocationCategory::Landmark)
+        world
+            .add_location(
+                Location::new(
+                    hidden.clone(),
+                    "Hidden Archive",
+                    "A concealed chamber.",
+                    LocationCategory::Landmark,
+                )
                 .with_access_gate(
                     AccessGate {
-                        all_of: vec![AccessRequirement::RealmDiscovered { realm_id: "oakhaven".into() }],
+                        all_of: vec![AccessRequirement::RealmDiscovered {
+                            realm_id: "oakhaven".into(),
+                        }],
                         ..AccessGate::default()
                     },
                     true,
                 ),
-        ).unwrap();
+            )
+            .unwrap();
         world.add_route(&village, &hidden, 2, 0).unwrap();
 
         let mut state = test_state();
         assert!(world.is_reachable(&village, &hidden));
-        assert!(!travel_destinations(&state, &world).iter().any(|destination| destination.id == hidden));
+        assert!(!travel_destinations(&state, &world)
+            .iter()
+            .any(|destination| destination.id == hidden));
         assert!(apply_travel(&mut state, &world, &hidden).is_err());
         assert_eq!(state.current_location, village);
         assert_eq!(state.world_turn, 0);
 
-        crate::quests::notify_event(&mut state, &crate::event::GameEvent::LocationReached {
-            location_id: village.clone(),
-        });
-        assert!(travel_destinations(&state, &world).iter().any(|destination| destination.id == hidden));
+        crate::quests::notify_event(
+            &mut state,
+            &crate::event::GameEvent::LocationReached {
+                location_id: village.clone(),
+            },
+        );
+        assert!(travel_destinations(&state, &world)
+            .iter()
+            .any(|destination| destination.id == hidden));
         apply_travel(&mut state, &world, &hidden).unwrap();
         assert_eq!(state.current_location, hidden);
         assert_eq!(state.world_turn, 2);
@@ -1822,18 +1838,37 @@ mod access_travel_tests {
         let mut world = World::new();
         let from = LocationId::from("from");
         let to = LocationId::from("to");
-        world.add_location(Location::new(from.clone(), "From", "", LocationCategory::Settlement)).unwrap();
-        world.add_location(Location::new(to.clone(), "To", "", LocationCategory::Wilderness)).unwrap();
-        world.add_route_with_gate(
-            &from, &to, 3, 1,
-            AccessGate {
-                all_of: vec![AccessRequirement::AttributeAtLeast {
-                    attribute: AttributeKind::Wisdom,
-                    minimum: 15,
-                }],
-                ..AccessGate::default()
-            },
-        ).unwrap();
+        world
+            .add_location(Location::new(
+                from.clone(),
+                "From",
+                "",
+                LocationCategory::Settlement,
+            ))
+            .unwrap();
+        world
+            .add_location(Location::new(
+                to.clone(),
+                "To",
+                "",
+                LocationCategory::Wilderness,
+            ))
+            .unwrap();
+        world
+            .add_route_with_gate(
+                &from,
+                &to,
+                3,
+                1,
+                AccessGate {
+                    all_of: vec![AccessRequirement::AttributeAtLeast {
+                        attribute: AttributeKind::Wisdom,
+                        minimum: 15,
+                    }],
+                    ..AccessGate::default()
+                },
+            )
+            .unwrap();
 
         let mut state = test_state();
         state.current_location = from.clone();
@@ -1850,19 +1885,37 @@ mod access_travel_tests {
         let mut world = World::new();
         let from = LocationId::from("from");
         let to = LocationId::from("to");
-        world.add_location(crate::world::Location::new(
-            from.clone(), "From", "", crate::world::LocationCategory::Settlement
-        )).unwrap();
-        world.add_location(crate::world::Location::new(
-            to.clone(), "To", "", crate::world::LocationCategory::Landmark
-        )).unwrap();
-        world.add_route_with_gate(
-            &from, &to, 1, 0,
-            AccessGate {
-                consume_on_success: vec![ItemCost { item: ItemType::Food, count: 1 }],
-                ..AccessGate::default()
-            },
-        ).unwrap();
+        world
+            .add_location(crate::world::Location::new(
+                from.clone(),
+                "From",
+                "",
+                crate::world::LocationCategory::Settlement,
+            ))
+            .unwrap();
+        world
+            .add_location(crate::world::Location::new(
+                to.clone(),
+                "To",
+                "",
+                crate::world::LocationCategory::Landmark,
+            ))
+            .unwrap();
+        world
+            .add_route_with_gate(
+                &from,
+                &to,
+                1,
+                0,
+                AccessGate {
+                    consume_on_success: vec![ItemCost {
+                        item: ItemType::Food,
+                        count: 1,
+                    }],
+                    ..AccessGate::default()
+                },
+            )
+            .unwrap();
 
         let mut state = test_state();
         state.current_location = from.clone();
@@ -1871,6 +1924,4 @@ mod access_travel_tests {
         assert_eq!(state.player.get_item_count(ItemType::Food), 0);
         assert_eq!(state.current_location, to);
     }
-
-
 }

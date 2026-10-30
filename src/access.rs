@@ -517,6 +517,7 @@ mod tests {
     #[test]
     fn quest_and_stage_requirements_use_persisted_progress() {
         let mut state = state();
+        state.active_quests.clear();
         state.active_quests.push(quest_with_stage());
         let quest_gate = AccessGate {
             all_of: vec![AccessRequirement::QuestCompleted {
@@ -525,7 +526,12 @@ mod tests {
             ..AccessGate::default()
         };
         assert!(!evaluate_access_gate(&state, &quest_gate).allowed);
-        state.active_quests[0].is_completed = true;
+        state
+            .active_quests
+            .iter_mut()
+            .find(|quest| quest.id == "known_quest")
+            .unwrap()
+            .is_completed = true;
         assert!(evaluate_access_gate(&state, &quest_gate).allowed);
 
         let stage_gate = AccessGate {
@@ -536,7 +542,13 @@ mod tests {
             ..AccessGate::default()
         };
         assert!(!evaluate_access_gate(&state, &stage_gate).allowed);
-        state.active_quests[0].stages[0].is_completed = true;
+        state
+            .active_quests
+            .iter_mut()
+            .find(|quest| quest.id == "known_quest")
+            .unwrap()
+            .stages[0]
+            .is_completed = true;
         assert!(evaluate_access_gate(&state, &stage_gate).allowed);
     }
 

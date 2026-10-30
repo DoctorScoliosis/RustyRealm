@@ -1359,14 +1359,15 @@ mod tests {
         state.active_quests.push(make_composite_quest(
             "gated_stage_quest",
             "Gated stage",
-            "Discover Oakhaven first.",
+            "Raise Wisdom before progressing.",
             vec![QuestStage {
                 id: "after_discovery".into(),
                 title: "Defeat a goblin".into(),
                 is_completed: false,
                 access_gate: Some(crate::access::AccessGate {
-                    all_of: vec![crate::access::AccessRequirement::RealmDiscovered {
-                        realm_id: "oakhaven".into(),
+                    all_of: vec![crate::access::AccessRequirement::AttributeAtLeast {
+                        attribute: crate::access::AttributeKind::Wisdom,
+                        minimum: 15,
                     }],
                     ..crate::access::AccessGate::default()
                 }),
@@ -1392,12 +1393,7 @@ mod tests {
         );
         assert_eq!(state.active_quests[0].stages[0].objectives[0].progress, 0);
 
-        notify_event(
-            &mut state,
-            &GameEvent::LocationReached {
-                location_id: LocationId::from("village_start"),
-            },
-        );
+        state.player.attributes.wisdom = 15;
         notify_event(
             &mut state,
             &GameEvent::MonsterDefeated {
