@@ -325,11 +325,11 @@ pub struct StrongholdGateStatus {
     pub message: String,
 }
 
-fn progress_for(state: &GameState, realm_id: &str) -> Option<&RealmProgress> {
+fn progress_for<'a>(state: &'a GameState, realm_id: &str) -> Option<&'a RealmProgress> {
     state.campaign_progress.realms.get(realm_id)
 }
 
-fn progress_for_mut(state: &mut GameState, realm_id: &str) -> &mut RealmProgress {
+fn progress_for_mut<'a>(state: &'a mut GameState, realm_id: &str) -> &'a mut RealmProgress {
     state
         .campaign_progress
         .realms
@@ -402,9 +402,7 @@ fn insert_objective_once(state: &mut GameState, realm_id: &str, objective_id: &s
         .iter()
         .any(|completed| completed == objective_id)
     {
-        progress
-            .completed_objectives
-            .push(objective_id.to_string());
+        progress.completed_objectives.push(objective_id.to_string());
     }
 }
 
@@ -421,10 +419,7 @@ fn event_matches_requirement(
             },
         ) => quest_id == completed_id,
         (
-            RealmObjectiveRequirement::QuestStageCompleted {
-                quest_id,
-                stage_id,
-            },
+            RealmObjectiveRequirement::QuestStageCompleted { quest_id, stage_id },
             GameEvent::QuestStageCompleted {
                 quest_id: completed_quest,
                 stage_id: completed_stage,
@@ -498,10 +493,7 @@ pub fn reconcile_from_saved_evidence(state: &mut GameState) {
     }
 }
 
-fn objective_has_saved_evidence(
-    state: &GameState,
-    requirement: RealmObjectiveRequirement,
-) -> bool {
+fn objective_has_saved_evidence(state: &GameState, requirement: RealmObjectiveRequirement) -> bool {
     match requirement {
         RealmObjectiveRequirement::QuestCompleted { quest_id } => {
             state
@@ -509,21 +501,20 @@ fn objective_has_saved_evidence(
                 .quests_completed
                 .iter()
                 .any(|completed| completed == quest_id)
-                || state.active_quests.iter().any(|quest| {
-                    quest.id == quest_id && (quest.is_completed || quest.is_claimed)
-                })
+                || state
+                    .active_quests
+                    .iter()
+                    .any(|quest| quest.id == quest_id && (quest.is_completed || quest.is_claimed))
         }
-        RealmObjectiveRequirement::QuestStageCompleted {
-            quest_id,
-            stage_id,
-        } => {
+        RealmObjectiveRequirement::QuestStageCompleted { quest_id, stage_id } => {
             state.player.quests_completed.iter().any(|completed| completed == quest_id)
                 || state.active_quests.iter().any(|quest| {
                     quest.id == quest_id
                         && (quest.is_completed
-                            || quest.stages.iter().any(|stage| {
-                                stage.id == stage_id && stage.is_completed
-                            }))
+                            || quest
+                                .stages
+                                .iter()
+                                .any(|stage| stage.id == stage_id && stage.is_completed))
                 })
         }
         RealmObjectiveRequirement::EncounterCleared { encounter_id } => state
@@ -604,7 +595,9 @@ fn evaluate_gate_with_registry(
     if unlocked {
         return StrongholdGateStatus {
             unlocked: true,
-            message: "Every required realm has been discovered and completed. The Lacoyx Gate is open.".into(),
+            message:
+                "Every required realm has been discovered and completed. The Lacoyx Gate is open."
+                    .into(),
         };
     }
 
@@ -637,9 +630,7 @@ pub fn stronghold_gate_status(state: &GameState) -> StrongholdGateStatus {
 pub fn quest_hall_summary(state: &GameState) -> String {
     let discovered: Vec<_> = REALMS
         .iter()
-        .filter(|realm| {
-            progress_for(state, realm.id).is_some_and(|progress| progress.discovered)
-        })
+        .filter(|realm| progress_for(state, realm.id).is_some_and(|progress| progress.discovered))
         .collect();
 
     let mut lines = vec!["Realm progression".to_string()];
@@ -655,7 +646,11 @@ pub fn quest_hall_summary(state: &GameState) -> String {
             } else {
                 "In progress"
             };
-            let required_total = realm.objectives.iter().filter(|objective| objective.required).count();
+            let required_total = realm
+                .objectives
+                .iter()
+                .filter(|objective| objective.required)
+                .count();
             let required_done = realm
                 .objectives
                 .iter()
@@ -663,7 +658,11 @@ pub fn quest_hall_summary(state: &GameState) -> String {
                     objective.required && objective_completed(progress, objective.id)
                 })
                 .count();
-            let mastery_total = realm.objectives.iter().filter(|objective| !objective.required).count();
+            let mastery_total = realm
+                .objectives
+                .iter()
+                .filter(|objective| !objective.required)
+                .count();
             let mastery_done = realm
                 .objectives
                 .iter()
@@ -700,7 +699,7 @@ pub fn quest_hall_summary(state: &GameState) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adventure::{REGION_QUEST_ID, RegionProgress};
+    use crate::adventure::{RegionProgress, REGION_QUEST_ID};
     use crate::state::Player;
 
     fn fresh_state() -> GameState {
@@ -712,7 +711,11 @@ mod tests {
     fn mark_realm_complete(state: &mut GameState, realm: &RealmDefinition) {
         let progress = progress_for_mut(state, realm.id);
         progress.discovered = true;
-        for objective in realm.objectives.iter().filter(|objective| objective.required) {
+        for objective in realm
+            .objectives
+            .iter()
+            .filter(|objective| objective.required)
+        {
             if !progress
                 .completed_objectives
                 .iter()
@@ -734,7 +737,10 @@ mod tests {
         assert!(oakhaven.discovered);
         assert!(!oakhaven.completed);
         assert_eq!(state.campaign_progress.realms.len(), 1);
-        assert!(!state.player.quests_completed.contains(&REGION_QUEST_ID.to_string()));
+        assert!(!state
+            .player
+            .quests_completed
+            .contains(&REGION_QUEST_ID.to_string()));
     }
 
     #[test]
@@ -903,10 +909,7 @@ mod tests {
     fn old_save_without_campaign_progress_loads_safely_and_stays_gated() {
         let state = fresh_state();
         let mut value = serde_json::to_value(state).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("campaign_progress");
+        value.as_object_mut().unwrap().remove("campaign_progress");
 
         let mut loaded: GameState = serde_json::from_value(value).unwrap();
         assert!(loaded.campaign_progress.realms.is_empty());
@@ -924,7 +927,9 @@ mod tests {
             },
         );
         // Oakhaven has not been completed, so Thornveil is not yet discovered.
-        assert!(!progress_for(&state, "thornveil_wilds").is_some_and(|progress| progress.discovered));
+        assert!(
+            !progress_for(&state, "thornveil_wilds").is_some_and(|progress| progress.discovered)
+        );
 
         for realm in REALMS.iter().take(1) {
             mark_realm_complete(&mut state, realm);
