@@ -524,9 +524,15 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
         format!("[Disabled: already fully recovered.] Camp with food — recover stamina and HP ({} hours)", crate::calendar::FOOD_CAMP_HOURS)
     });
     options.push(if state.player.stamina < state.player.max_stamina {
-        format!("Sleep rough — +20 stamina; no HP recovery ({} hours)", crate::calendar::ROUGH_SLEEP_HOURS)
+        format!(
+            "Sleep rough — +20 stamina; no HP recovery ({} hours)",
+            crate::calendar::ROUGH_SLEEP_HOURS
+        )
     } else {
-        format!("[Disabled: stamina is already full.] Sleep rough — +20 stamina ({} hours)", crate::calendar::ROUGH_SLEEP_HOURS)
+        format!(
+            "[Disabled: stamina is already full.] Sleep rough — +20 stamina ({} hours)",
+            crate::calendar::ROUGH_SLEEP_HOURS
+        )
     });
     options.push("Back".to_string());
 
@@ -534,7 +540,9 @@ fn rest_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<
     let choice = tui.select_menu(
         &format!(
             "Rest at {location_name} · Stamina {}/{} · {}",
-            state.player.stamina, state.player.max_stamina, crate::calendar::format_calendar(state.world_turn)
+            state.player.stamina,
+            state.player.max_stamina,
+            crate::calendar::format_calendar(state.world_turn)
         ),
         &refs,
         Some(state),
@@ -680,7 +688,9 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
 
         let labels: Vec<String> = destinations
             .iter()
-            .map(|(_, name, hours, danger)| format!("{name} · travel time {hours}h · danger {danger}"))
+            .map(|(_, name, hours, danger)| {
+                format!("{name} · travel time {hours}h · danger {danger}")
+            })
             .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
