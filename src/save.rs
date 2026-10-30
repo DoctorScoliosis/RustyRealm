@@ -720,6 +720,69 @@ mod tests {
         fs::remove_dir_all(directory).unwrap();
     }
 
+    #[test]
+    fn account_preview_reads_valid_data_without_authenticating_gameplay() {
+        let directory = test_dir("preview");
+        let path = directory.join("previewhero.json");
+        let mut state = test_state("previewhero", "secret");
+        state.player.gold = 777;
+        save_to_path(&state, &path).unwrap();
+
+        let preview = preview_account_at(&path, "previewhero").unwrap();
+        assert_eq!(preview.player.gold, 777);
+        assert!(preview.player.password_hash.is_empty());
+        assert!(load_game_at(&path, "previewhero", "wrong").is_err());
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn protected_account_deletion_requires_password_and_exact_name() {
+        let directory = test_dir("delete-protected");
+        let path = directory.join("deletehero.json");
+        let state = test_state("deletehero", "secret");
+        save_to_path(&state, &path).unwrap();
+        let mut updated = state.clone();
+        updated.player.gold += 1;
+        save_to_path(&updated, &path).unwrap();
+        let backup = backup_path(&path);
+        assert!(backup.exists());
+
+        assert!(matches!(
+            delete_account_at(&path, "deletehero", "wrong", "deletehero"),
+            Err(SaveError::AuthenticationFailed)
+        ));
+        assert!(path.exists());
+        assert!(backup.exists());
+        assert!(matches!(
+            delete_account_at(&path, "deletehero", "secret", "other"),
+            Err(SaveError::ConfirmationMismatch)
+        ));
+        assert!(path.exists());
+
+        delete_account_at(&path, "deletehero", "secret", "deletehero").unwrap();
+        assert!(!path.exists());
+        assert!(!backup.exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn passwordless_account_deletion_requires_exact_name_confirmation() {
+        let directory = test_dir("delete-passwordless");
+        let path = directory.join("localhero.json");
+        let state = GameState::new(Player::new("localhero".into(), String::new()));
+        save_to_path(&state, &path).unwrap();
+
+        assert!(matches!(
+            delete_account_at(&path, "localhero", "", "wrong"),
+            Err(SaveError::ConfirmationMismatch)
+        ));
+        assert!(path.exists());
+        delete_account_at(&path, "localhero", "", "localhero").unwrap();
+        assert!(!path.exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
     fn test_state(username: &str, password: &str) -> GameState {
         let hash = hash_password(password).unwrap();
         GameState::new(Player::new(username.to_owned(), hash))
