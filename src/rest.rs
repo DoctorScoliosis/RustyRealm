@@ -19,7 +19,7 @@ use crate::party::CompanionId;
 use crate::state::{GameState, Player};
 use crate::world::{Location, LocationId, LocationService, World};
 
-pub const SHORT_REST_HOURS: u64 = 1;
+pub const SHORT_REST_HOURS: u64 = 2;
 pub const LONG_REST_HOURS: u64 = 8;
 pub const FIELD_CAMP_HOURS: u64 = 3;
 pub const LONG_REST_GOLD_COST: u32 = 25;
@@ -201,9 +201,9 @@ pub fn plan_rest(
     };
     let after = match kind {
         RestKind::Short => ResourceTotals {
-            hp: recover_by_percent(before.hp, player.max_hp, 25),
-            stamina: recover_by_percent(before.stamina, player.max_stamina, 40),
-            mana: recover_by_percent(before.mana, player.max_mana, 25),
+            hp: recover_by_percent(before.hp, player.max_hp, 20),
+            stamina: recover_by_percent(before.stamina, player.max_stamina, 30),
+            mana: recover_by_percent(before.mana, player.max_mana, 20),
         },
         RestKind::Long => ResourceTotals {
             hp: player.max_hp,
@@ -336,23 +336,23 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(plan.hours, 1);
+        assert_eq!(plan.hours, 2);
         assert_eq!(plan.gold_cost, 0);
         assert_eq!(plan.food_cost, 0);
         assert_eq!(
             plan.after,
             ResourceTotals {
-                hp: 65,
-                stamina: 60,
-                mana: 22
+                hp: 60,
+                stamina: 50,
+                mana: 20
             }
         );
         assert_eq!(
             plan.recovery(),
             ResourceRecovery {
-                hp: 25,
-                stamina: 40,
-                mana: 12
+                hp: 20,
+                stamina: 30,
+                mana: 10
             }
         );
     }
@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(outcome.plan.hours, 3);
         assert_eq!(outcome.plan.food_cost, 1);
         assert_eq!(outcome.plan.gold_cost, 0);
-        assert_eq!(outcome.plan.after, ResourceTotals { hp: 50, stamina: 45, mana: 15 });
+        assert_eq!(outcome.plan.after, ResourceTotals { hp: 50, stamina: 40, mana: 15 });
         assert_eq!(state.player.get_item_count(ItemType::Food), 0);
         assert_eq!(state.world_turn, 3);
     }
@@ -552,7 +552,7 @@ mod tests {
             .push(CompanionRecoveryRecord {
                 companion_id: id,
                 destination: Some(LocationId::from("village_start")),
-                turns_remaining: 2,
+                turns_remaining: 3,
             });
 
         let first = execute_rest(
