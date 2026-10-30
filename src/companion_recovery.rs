@@ -54,16 +54,16 @@ impl fmt::Display for RecoveryError {
                 write!(f, "Companion {id} is not awaiting recovery.")
             }
             Self::NoTreatmentSettlement => f.write_str(
-                "No reachable settlement can provide treatment. The companion remains safe but unavailable until a route or settlement becomes available.",
+                "No reachable healer or treatment location can provide care. The companion remains safe but unavailable until a valid healer route becomes available.",
             ),
             Self::NotAtTreatmentSettlement => f.write_str(
-                "Travel to the companion's recorded treatment settlement before paying for immediate treatment.",
+                "Travel to the companion's recorded healer/treatment location before paying for immediate treatment.",
             ),
             Self::InsufficientGold { required, available } => {
                 write!(f, "Treatment costs {required} gold, but only {available} is available.")
             }
             Self::InvalidSettlement(id) => {
-                write!(f, "Location {id} is not a treatment-capable settlement.")
+                write!(f, "Location {id} does not provide the required healer/treatment service.")
             }
             Self::DuplicateRecoveryRecord(id) => {
                 write!(f, "Companion {id} already has a recovery record.")
