@@ -15,6 +15,21 @@ pub fn view_inventory(tui: &mut Tui, state: &mut GameState, in_combat: bool) -> 
         let mut lines = vec![
             format!("Health: {}/{}", state.player.hp, state.player.max_hp),
             format!("Combat level: {}", state.player.combat_level),
+            format!("Class: {}", state.player.class.name()),
+            format!(
+                "Attributes: STR {} · DEX {} · CON {} · INT {} · WIS {} · CHA {}",
+                state.player.attributes.strength,
+                state.player.attributes.dexterity,
+                state.player.attributes.constitution,
+                state.player.attributes.intelligence,
+                state.player.attributes.wisdom,
+                state.player.attributes.charisma
+            ),
+            format!(
+                "Weapon proficiency: {} (+{}% damage)",
+                state.player.weapon.family().name(),
+                state.player.class.weapon_proficiency_pct(state.player.weapon.family())
+            ),
             format!("Gold: {}", state.player.gold),
             format!("EXP: {}", state.player.xp),
             format!("EXP until next level: {}", xp_until),

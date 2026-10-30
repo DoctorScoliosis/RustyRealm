@@ -3,6 +3,8 @@ mod adventure;
 mod balance_simulation;
 mod bank;
 mod calendar;
+mod character;
+mod checkpoint;
 mod combat;
 mod combat_engine;
 mod companion_recovery;
@@ -31,6 +33,8 @@ mod ui;
 #[allow(dead_code)]
 mod world;
 
+use crate::character::CharacterClass;
+use crate::checkpoint::CheckpointSession;
 use crate::data::ItemType;
 use crate::state::GameState;
 use crate::ui::Tui;
@@ -153,7 +157,13 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
         return Ok(None);
     }
 
-    match crate::save::create_account(&username, &password) {
+    let class_options = CharacterClass::ALL.map(CharacterClass::name);
+    let class_choice = tui.select_menu("Choose your character class", &class_options, None)?;
+    let Some(class) = CharacterClass::ALL.get(class_choice).copied() else {
+        return Ok(None);
+    };
+
+    match crate::save::create_account_with_class(&username, &password, class) {
         Ok(state) => {
             tui.show_message(
                 "Account created",
@@ -171,6 +181,9 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
 
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
+    // Take the checkpoint baseline before startup reconciliation. Any migration
+    // or repair performed below is therefore visible as unsaved progress.
+    let mut checkpoint = CheckpointSession::new(state).map_err(io::Error::other)?;
     crate::adventure::ensure_region_quest(state);
     crate::realm_progression::reconcile_from_saved_evidence(state);
     // The location graph and recovery records are persisted separately; a
@@ -235,7 +248,6 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         "Companion Recovery",
         "Rest / Recover",
         "Settings",
-        "Log Out",
     ];
 
     loop {
@@ -249,13 +261,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
             tui.show_message("Achievement unlocked", &notice, Some(state))?;
         }
         crate::quests::check_and_refresh_quests(state);
-        if let Err(error) = crate::save::save_game(state) {
-            tui.show_message(
-                "Save warning",
-                &format!("Failed to save the game: {}", error),
-                Some(state),
-            )?;
-        }
+        let dirty = checkpoint.is_dirty(state).map_err(io::Error::other)?;
 
         let current_location_name = world
             .get_location(&state.current_location)
@@ -266,11 +272,53 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                     state.current_location
                 ))
             })?;
+        let dirty_marker = if dirty { " · UNSAVED" } else { "" };
         let title = format!(
-            "Final Realm · {current_location_name} · {}",
-            crate::calendar::format_calendar(state.world_turn)
+            "Final Realm · {current_location_name} · {}{}",
+            crate::calendar::format_calendar(state.world_turn),
+            dirty_marker
         );
-        let choice = tui.select_menu(&title, &options, Some(state))?;
+        let can_save_here = world
+            .get_location(&state.current_location)
+            .is_some_and(crate::checkpoint::is_checkpoint_location);
+        let mut menu_options = options.to_vec();
+        let save_index = if can_save_here {
+            let index = menu_options.len();
+            menu_options.push("Save Checkpoint");
+            Some(index)
+        } else {
+            None
+        };
+        let logout_index = menu_options.len();
+        menu_options.push("Log Out");
+        let choice = tui.select_menu(&title, &menu_options, Some(state))?;
+
+        if Some(choice) == save_index {
+            let location = world
+                .get_location(&state.current_location)
+                .expect("the current location was validated above");
+            match checkpoint.save_at(state, location) {
+                Ok(()) => tui.show_message(
+                    "Checkpoint saved",
+                    "Your progress has been written successfully.",
+                    Some(state),
+                )?,
+                Err(error) => tui.show_message(
+                    "Checkpoint failed",
+                    &format!("{error}\n\nYour progress remains unsaved."),
+                    Some(state),
+                )?,
+            }
+            continue;
+        }
+
+        if choice == logout_index {
+            if handle_logout(tui, state, &world, &mut checkpoint)? {
+                return Ok(());
+            }
+            continue;
+        }
+
         match choice {
             0 => travel_menu(tui, state, &world)?,
             1 => interact_with_current_location(tui, state, &world)?,
@@ -298,13 +346,179 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 continue;
             }
             19 => settings_menu(tui, state)?,
-            _ => {
-                crate::save::save_game(state)
-                    .map_err(|error| io::Error::other(error.to_string()))?;
-                return Ok(());
+            _ => {}
+        }
+    }
+}
+
+
+fn nearest_checkpoint_step(state: &GameState, world: &World) -> Option<LocationId> {
+    let current = &state.current_location;
+    let target = world
+        .get_reachable_destinations(current)
+        .into_iter()
+        .filter(|reachable| {
+            world.get_location(&reachable.location_id).is_some_and(|location| {
+                crate::checkpoint::is_checkpoint_location(location)
+            })
+        })
+        .min_by(|left, right| {
+            left.total_travel_cost
+                .cmp(&right.total_travel_cost)
+                .then_with(|| left.location_id.cmp(&right.location_id))
+        })?
+        .location_id;
+
+    world
+        .get_direct_routes(current)
+        .iter()
+        .filter_map(|route| {
+            let remaining = if route.destination_id == target {
+                0
+            } else {
+                world
+                    .get_reachable_destinations(&route.destination_id)
+                    .into_iter()
+                    .find(|reachable| reachable.location_id == target)
+                    .map(|reachable| reachable.total_travel_cost)?
+            };
+            Some((
+                u64::from(route.travel_cost).saturating_add(remaining),
+                route.destination_id.clone(),
+            ))
+        })
+        .min_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)))
+        .map(|(_, destination)| destination)
+}
+
+fn travel_to_nearest_checkpoint(
+    tui: &mut Tui,
+    state: &mut GameState,
+    world: &World,
+) -> io::Result<()> {
+    let mut elapsed_hours = 0_u64;
+    let mut hops = 0_u32;
+    loop {
+        let Some(location) = world.get_location(&state.current_location) else {
+            tui.show_message(
+                "Checkpoint route unavailable",
+                "Your current location is not present in the world graph.",
+                Some(state),
+            )?;
+            return Ok(());
+        };
+        if crate::checkpoint::is_checkpoint_location(location) {
+            tui.show_message(
+                "Safe haven reached",
+                &format!(
+                    "You reached {} after {} hours of travel. Your progress is still unsaved; use Save Checkpoint before logging out.",
+                    location.name, elapsed_hours
+                ),
+                Some(state),
+            )?;
+            return Ok(());
+        }
+        let Some(next_step) = nearest_checkpoint_step(state, world) else {
+            tui.show_message(
+                "No checkpoint route",
+                "No tavern or guildhouse is reachable from your current location. Your progress has not been discarded.",
+                Some(state),
+            )?;
+            return Ok(());
+        };
+        let (hours, recovered) = apply_travel(state, world, &next_step)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        elapsed_hours = elapsed_hours.saturating_add(u64::from(hours));
+        hops = hops.saturating_add(1);
+        crate::calendar::notify_recovered_companions(tui, state, &recovered)?;
+        if hops >= 64 {
+            tui.show_message(
+                "Checkpoint route interrupted",
+                "Travel stopped after 64 route steps to avoid following a malformed route indefinitely. Your progress remains in this session.",
+                Some(state),
+            )?;
+            return Ok(());
+        }
+    }
+}
+
+fn handle_logout(
+    tui: &mut Tui,
+    state: &mut GameState,
+    world: &World,
+    checkpoint: &mut CheckpointSession,
+) -> io::Result<bool> {
+    if !checkpoint.is_dirty(state).map_err(io::Error::other)? {
+        return Ok(true);
+    }
+
+    let current_location = world.get_location(&state.current_location);
+    let can_save_here = current_location.is_some_and(crate::checkpoint::is_checkpoint_location);
+    let can_travel_to_checkpoint = !can_save_here && nearest_checkpoint_step(state, world).is_some();
+
+    let mut choices = vec!["Return to game"];
+    let save_index = if can_save_here {
+        let index = choices.len();
+        choices.push("Save checkpoint and log out");
+        Some(index)
+    } else {
+        None
+    };
+    let travel_index = if can_travel_to_checkpoint {
+        let index = choices.len();
+        choices.push("Travel to nearest save point");
+        Some(index)
+    } else {
+        None
+    };
+    let discard_index = choices.len();
+    choices.push("Discard unsaved progress and log out");
+
+    let choice = tui.select_menu("Unsaved progress", &choices, Some(state))?;
+    if choice == 0 {
+        return Ok(false);
+    }
+    if Some(choice) == save_index {
+        let location = current_location.expect("save eligibility requires a known location");
+        match checkpoint.save_at(state, location) {
+            Ok(()) => {
+                tui.show_message(
+                    "Checkpoint saved",
+                    "Your progress has been written successfully. You are now logged out.",
+                    Some(state),
+                )?;
+                return Ok(true);
+            }
+            Err(error) => {
+                tui.show_message(
+                    "Checkpoint failed",
+                    &format!("{error}\n\nYou remain logged in and your progress is still unsaved."),
+                    Some(state),
+                )?;
+                return Ok(false);
             }
         }
     }
+    if Some(choice) == travel_index {
+        travel_to_nearest_checkpoint(tui, state, world)?;
+        return Ok(false);
+    }
+    if choice == discard_index {
+        let confirmation = tui.prompt_input(
+            "Type DISCARD to abandon all progress since the last checkpoint",
+            false,
+            Some(state),
+        )?;
+        if confirmation == "DISCARD" {
+            tui.show_message(
+                "Logged out without saving",
+                "Unsaved gameplay changes were not written. The next login will load the last successful checkpoint. A crash or power loss has the same effect on unsaved changes.",
+                Some(state),
+            )?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Interact with the current location using a stable machine-facing ID.
