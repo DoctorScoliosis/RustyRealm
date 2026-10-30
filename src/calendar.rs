@@ -337,11 +337,14 @@ mod tests {
     #[test]
     fn recovery_without_a_treatment_destination_does_not_count_down() {
         let mut state = state();
-        state.companion_recovery.records.push(CompanionRecoveryRecord {
-            companion_id: CompanionId::BranTheShield,
-            destination: None,
-            turns_remaining: 2,
-        });
+        state
+            .companion_recovery
+            .records
+            .push(CompanionRecoveryRecord {
+                companion_id: CompanionId::BranTheShield,
+                destination: None,
+                turns_remaining: 2,
+            });
 
         assert!(state.advance_world_time(100).is_empty());
         assert_eq!(state.companion_recovery.records[0].turns_remaining, 2);
