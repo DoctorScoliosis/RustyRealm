@@ -929,15 +929,22 @@ fn render_compact_header(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
         .as_deref()
         .map(|t| format!(" · {t}"))
         .unwrap_or_default();
+    let calendar = crate::calendar::calendar_at(state.world_turn);
+    let season = calendar.season_name.chars().take(3).collect::<String>();
+    let month = calendar.month_name.chars().take(3).collect::<String>();
+    let date = format!(
+        "Y{} {} {}{} {:02}:00",
+        calendar.year, season, month, calendar.day, calendar.hour
+    );
     let text = format!(
-        "Lv{} HP:{}/{} St:{}/{} G:{} T:{}{}",
+        "Lv{} HP:{}/{} St:{}/{} G:{} {}{}",
         state.player.combat_level,
         state.player.hp,
         state.player.max_hp,
         state.player.stamina,
         state.player.max_stamina,
         state.player.gold,
-        state.world_turn,
+        date,
         title
     );
     frame.render_widget(
