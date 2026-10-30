@@ -351,7 +351,18 @@ fn prerequisites_completed(state: &GameState, realm: &RealmDefinition) -> bool {
     })
 }
 
-fn realm_is_completed(state: &GameState, realm_id: &str) -> bool {
+/// Whether an ID belongs to the configured campaign registry.
+pub fn realm_exists(realm_id: &str) -> bool {
+    REALMS.iter().any(|realm| realm.id == realm_id)
+}
+
+/// Whether saved campaign progress records discovery of a known realm.
+pub fn realm_is_discovered(state: &GameState, realm_id: &str) -> bool {
+    realm_exists(realm_id)
+        && progress_for(state, realm_id).is_some_and(|progress| progress.discovered)
+}
+
+pub fn realm_is_completed(state: &GameState, realm_id: &str) -> bool {
     let Some(realm) = REALMS.iter().find(|realm| realm.id == realm_id) else {
         return false;
     };

@@ -1,3 +1,4 @@
+mod access;
 mod achievements;
 mod adventure;
 mod balance_simulation;
@@ -7,6 +8,7 @@ mod character;
 mod checkpoint;
 mod combat;
 mod combat_engine;
+mod companion_discovery;
 mod companion_recovery;
 mod crafting;
 mod data;
@@ -186,6 +188,7 @@ fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let mut checkpoint = CheckpointSession::new(state).map_err(io::Error::other)?;
     crate::adventure::ensure_region_quest(state);
     crate::realm_progression::reconcile_from_saved_evidence(state);
+    crate::companion_discovery::reconcile_legacy_discoveries(state);
     // The location graph and recovery records are persisted separately; a
     // companion with zero HP is normalised here so stale party IDs cannot let
     // an older save field reintroduce them into combat.
@@ -868,68 +871,94 @@ fn apply_travel(
     state: &mut GameState,
     world: &World,
     destination_id: &LocationId,
-) -> Result<(u32, Vec<crate::party::CompanionId>), &'static str> {
+) -> Result<(u32, Vec<crate::party::CompanionId>), String> {
     let current_id = state.current_location.clone();
     let route = world
         .get_direct_routes(&current_id)
         .iter()
         .find(|route| &route.destination_id == destination_id)
-        .ok_or("That destination is not directly connected to your current location.")?;
-
+        .ok_or_else(|| "That destination is not directly connected to your current location.".to_string())?;
     if route.travel_cost == 0 {
-        return Err("This route has an invalid travel cost.");
+        return Err("This route has an invalid travel cost.".into());
     }
     let destination = world
         .get_location(destination_id)
-        .ok_or("That destination is not known to the world.")?;
+        .ok_or_else(|| "That destination is not known to the world.".to_string())?;
     let travel_cost = route.travel_cost;
+    let gates = [route.access_gate.as_ref(), destination.access_gate.as_ref()];
+    let access = crate::access::evaluate_access_gates(state, &gates);
+    if !access.allowed {
+        return Err(if destination.hidden_when_locked {
+            "That destination is not currently available.".into()
+        } else {
+            access.summary()
+        });
+    }
 
-    // Mutate only after the direct route and its cost have been validated.
-    state.current_location = destination.id.clone();
+    // Stage arrival, event progression and elapsed time on a clone. Entry
+    // costs are committed only after the transition has succeeded.
+    let mut next_state = state.clone();
+    next_state.current_location = destination.id.clone();
     crate::quests::notify_event(
-        state,
+        &mut next_state,
         &crate::event::GameEvent::LocationTraversed {
-            from_location_id: current_id.clone(),
+            from_location_id: current_id,
             to_location_id: destination.id.clone(),
         },
     );
     crate::quests::notify_event(
-        state,
+        &mut next_state,
         &crate::event::GameEvent::LocationReached {
             location_id: destination.id.clone(),
         },
     );
-    let recovered = state.advance_world_time(u64::from(travel_cost));
+    let recovered = next_state.advance_world_time(u64::from(travel_cost));
+    crate::access::consume_entry_costs_atomically(&mut next_state, &gates)?;
+    *state = next_state;
     Ok((travel_cost, recovered))
+}
+
+struct TravelDestination {
+    id: LocationId,
+    name: String,
+    travel_hours: u32,
+    danger_level: u32,
+    access: crate::access::AccessResult,
+}
+
+fn travel_destinations(state: &GameState, world: &World) -> Vec<TravelDestination> {
+    world
+        .get_direct_routes(&state.current_location)
+        .iter()
+        .filter_map(|route| {
+            let location = world.get_location(&route.destination_id)?;
+            let gates = [route.access_gate.as_ref(), location.access_gate.as_ref()];
+            let access = crate::access::evaluate_access_gates(state, &gates);
+            if location.hidden_when_locked && !access.allowed {
+                return None;
+            }
+            Some(TravelDestination {
+                id: location.id.clone(),
+                name: location.name.clone(),
+                travel_hours: route.travel_cost,
+                danger_level: route.danger_level,
+                access,
+            })
+        })
+        .collect()
 }
 
 fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Result<()> {
     loop {
-        let current_id = state.current_location.clone();
         let current_name = world
-            .get_location(&current_id)
+            .get_location(&state.current_location)
             .map(|location| location.name.clone())
-            .ok_or_else(|| io::Error::other(format!("Unknown current location '{current_id}'.")))?;
-
-        let destinations: Vec<(LocationId, String, u32, u32)> = world
-            .get_direct_routes(&current_id)
-            .iter()
-            .filter_map(|route| {
-                world.get_location(&route.destination_id).map(|location| {
-                    (
-                        location.id.clone(),
-                        location.name.clone(),
-                        route.travel_cost,
-                        route.danger_level,
-                    )
-                })
-            })
-            .collect();
-
+            .ok_or_else(|| io::Error::other(format!("Unknown current location '{}'.", state.current_location)))?;
+        let destinations = travel_destinations(state, world);
         if destinations.is_empty() {
             tui.show_message(
                 "No routes available",
-                "There are no direct travel connections from this location.",
+                "There are no currently visible direct travel destinations from this location.",
                 Some(state),
             )?;
             return Ok(());
@@ -937,36 +966,42 @@ fn travel_menu(tui: &mut Tui, state: &mut GameState, world: &World) -> io::Resul
 
         let labels: Vec<String> = destinations
             .iter()
-            .map(|(_, name, hours, danger)| {
-                format!("{name} · travel time {hours}h · danger {danger}")
+            .map(|destination| {
+                let locked = if destination.access.allowed {
+                    String::new()
+                } else {
+                    format!(" · LOCKED — {}", destination.access.summary().replace('\n', " "))
+                };
+                format!(
+                    "{} · travel time {}h · danger {}{}",
+                    destination.name, destination.travel_hours, destination.danger_level, locked
+                )
             })
             .collect();
         let mut options: Vec<&str> = labels.iter().map(String::as_str).collect();
         options.push("Back");
-
-        let title = format!("Travel from {current_name}");
-        let choice = tui.select_menu(&title, &options, Some(state))?;
+        let choice = tui.select_menu(&format!("Travel from {current_name}"), &options, Some(state))?;
         if choice >= destinations.len() {
             return Ok(());
         }
 
-        let (destination_id, destination_name, _listed_cost, danger_level) = &destinations[choice];
-        match apply_travel(state, world, destination_id) {
+        let destination = &destinations[choice];
+        match apply_travel(state, world, &destination.id) {
             Ok((travel_hours, recovered)) => {
                 crate::calendar::notify_recovered_companions(tui, state, &recovered)?;
                 tui.show_message(
                     "Travel complete",
                     &format!(
-                        "You arrive at {destination_name}.\n\nTravel time: {travel_hours} hours\nRoute danger: {danger_level}\n\n{}",
+                        "You arrive at {}.\n\nTravel time: {travel_hours} hours\nRoute danger: {}\n\n{}",
+                        destination.name,
+                        destination.danger_level,
                         crate::calendar::format_calendar(state.world_turn)
                     ),
                     Some(state),
                 )?;
                 return Ok(());
             }
-            Err(message) => {
-                tui.show_message("Travel unavailable", message, Some(state))?;
-            }
+            Err(message) => tui.show_message("Travel unavailable", &message, Some(state))?,
         }
     }
 }
@@ -1103,7 +1138,8 @@ fn companion_recovery_menu(tui: &mut Tui, state: &mut GameState, world: &World) 
             if let Some(companion) = state
                 .companions
                 .iter()
-                .find(|c| c.id == record.companion_id)
+                .find(|c| c.id == record.companion_id
+                    && crate::companion_discovery::is_discovered(state, c.id))
             {
                 let destination = record
                     .destination
@@ -1211,9 +1247,10 @@ fn companion_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
         let party_count = state.party.companion_count();
         let party_limit = state.party.max_companions();
         let roster_count = state.companions.len();
+        let discovered_count = crate::companion_discovery::discovered_definitions(state).len();
         let title = format!(
-            "Companions & Party · {} recruited · {}/{} party slots",
-            roster_count, party_count, party_limit
+            "Companions & Party · {} discovered · {} recruited · {}/{} party slots",
+            discovered_count, roster_count, party_count, party_limit
         );
         let choice = tui.select_menu(
             &title,
@@ -1229,12 +1266,17 @@ fn companion_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
 }
 
 fn view_roster(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
-    use crate::party::{
-        all_companion_definitions, build_roster_actions, resolve_roster_action, PartyManager,
-        RosterAction,
-    };
+    use crate::party::{build_roster_actions, resolve_roster_action, PartyManager, RosterAction};
 
-    let definitions = all_companion_definitions();
+    let definitions = crate::companion_discovery::discovered_definitions(state);
+    if definitions.is_empty() {
+        tui.show_message(
+            "Companion Roster",
+            "No companion leads have been discovered yet. Explore landmarks and complete local objectives to meet potential companions.",
+            Some(state),
+        )?;
+        return Ok(());
+    }
 
     loop {
         let mut labels: Vec<String> = definitions
@@ -1405,6 +1447,9 @@ fn visible_party_members(state: &GameState) -> Vec<(crate::party::CompanionId, S
         .members()
         .iter()
         .filter_map(|&id| {
+            if !crate::companion_discovery::is_discovered(state, id) {
+                return None;
+            }
             state.companions.iter().find(|c| c.id == id).map(|c| {
                 (
                     id,
@@ -1496,7 +1541,9 @@ fn manage_party(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
                 let available: Vec<_> = state
                     .companions
                     .iter()
-                    .filter(|c| c.can_join_party() && !state.party.contains(c.id))
+                    .filter(|c| crate::companion_discovery::is_discovered(state, c.id)
+                        && c.can_join_party()
+                        && !state.party.contains(c.id))
                     .collect();
                 if available.is_empty() {
                     tui.show_message(
@@ -1707,3 +1754,98 @@ mod travel_tests {
         assert_eq!(state.world_turn, 0);
     }
 }
+
+    #[test]
+    fn hidden_location_is_hidden_and_direct_travel_is_rejected_until_unlocked() {
+        use crate::access::{AccessGate, AccessRequirement};
+        use crate::world::{Location, LocationCategory};
+
+        let mut world = build_initial_world().expect("initial world should be valid");
+        let village = LocationId::from("village_start");
+        let hidden = LocationId::from("hidden_archive");
+        world.add_location(
+            Location::new(hidden.clone(), "Hidden Archive", "A concealed chamber.", LocationCategory::Landmark)
+                .with_access_gate(
+                    AccessGate {
+                        all_of: vec![AccessRequirement::RealmDiscovered { realm_id: "oakhaven".into() }],
+                        ..AccessGate::default()
+                    },
+                    true,
+                ),
+        ).unwrap();
+        world.add_route(&village, &hidden, 2, 0).unwrap();
+
+        let mut state = test_state();
+        assert!(world.is_reachable(&village, &hidden));
+        assert!(!travel_destinations(&state, &world).iter().any(|destination| destination.id == hidden));
+        assert!(apply_travel(&mut state, &world, &hidden).is_err());
+        assert_eq!(state.current_location, village);
+        assert_eq!(state.world_turn, 0);
+
+        crate::quests::notify_event(&mut state, &crate::event::GameEvent::LocationReached {
+            location_id: village.clone(),
+        });
+        assert!(travel_destinations(&state, &world).iter().any(|destination| destination.id == hidden));
+        apply_travel(&mut state, &world, &hidden).unwrap();
+        assert_eq!(state.current_location, hidden);
+        assert_eq!(state.world_turn, 2);
+    }
+
+    #[test]
+    fn route_requirement_is_checked_by_the_domain_travel_operation() {
+        use crate::access::{AccessGate, AccessRequirement, AttributeKind};
+        use crate::world::{Location, LocationCategory};
+
+        let mut world = World::new();
+        let from = LocationId::from("from");
+        let to = LocationId::from("to");
+        world.add_location(Location::new(from.clone(), "From", "", LocationCategory::Settlement)).unwrap();
+        world.add_location(Location::new(to.clone(), "To", "", LocationCategory::Wilderness)).unwrap();
+        world.add_route_with_gate(
+            &from, &to, 3, 1,
+            AccessGate {
+                all_of: vec![AccessRequirement::AttributeAtLeast {
+                    attribute: AttributeKind::Wisdom,
+                    minimum: 15,
+                }],
+                ..AccessGate::default()
+            },
+        ).unwrap();
+
+        let mut state = test_state();
+        state.current_location = from.clone();
+        assert!(world.can_travel(&from, &to));
+        assert!(apply_travel(&mut state, &world, &to).is_err());
+        assert_eq!(state.current_location, from);
+        assert_eq!(state.world_turn, 0);
+    }
+
+    #[test]
+    fn access_items_are_consumed_only_after_successful_travel() {
+        use crate::access::{AccessGate, ItemCost};
+        use crate::data::ItemType;
+        let mut world = World::new();
+        let from = LocationId::from("from");
+        let to = LocationId::from("to");
+        world.add_location(crate::world::Location::new(
+            from.clone(), "From", "", crate::world::LocationCategory::Settlement
+        )).unwrap();
+        world.add_location(crate::world::Location::new(
+            to.clone(), "To", "", crate::world::LocationCategory::Landmark
+        )).unwrap();
+        world.add_route_with_gate(
+            &from, &to, 1, 0,
+            AccessGate {
+                consume_on_success: vec![ItemCost { item: ItemType::Food, count: 1 }],
+                ..AccessGate::default()
+            },
+        ).unwrap();
+
+        let mut state = test_state();
+        state.current_location = from.clone();
+        state.player.add_item(ItemType::Food, 1);
+        apply_travel(&mut state, &world, &to).unwrap();
+        assert_eq!(state.player.get_item_count(ItemType::Food), 0);
+        assert_eq!(state.current_location, to);
+    }
+

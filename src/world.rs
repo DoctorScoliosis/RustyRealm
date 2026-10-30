@@ -4,6 +4,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::access::AccessGate;
+
 /// Stable, machine-facing identity for a world location.
 ///
 /// Display names may change without changing a location's identity. The
@@ -75,6 +77,12 @@ pub struct Location {
     /// Explicit services; legacy location data defaults to providing none.
     #[serde(default)]
     pub services: Vec<LocationService>,
+    /// Optional entrance requirements, evaluated by direct travel.
+    #[serde(default)]
+    pub access_gate: Option<AccessGate>,
+    /// If locked, omit this destination from travel navigation.
+    #[serde(default)]
+    pub hidden_when_locked: bool,
 }
 
 impl Location {
@@ -90,6 +98,8 @@ impl Location {
             description: description.into(),
             category,
             services: Vec::new(),
+            access_gate: None,
+            hidden_when_locked: false,
         }
     }
 
@@ -107,6 +117,12 @@ impl Location {
     pub fn has_service(&self, service: LocationService) -> bool {
         self.services.contains(&service)
     }
+
+    pub fn with_access_gate(mut self, gate: AccessGate, hidden_when_locked: bool) -> Self {
+        self.access_gate = Some(gate);
+        self.hidden_when_locked = hidden_when_locked;
+        self
+    }
 }
 
 /// A directed edge from its owning location to its destination ID.
@@ -119,6 +135,9 @@ pub struct Route {
     /// Elapsed in-game travel hours for this directed route.
     pub travel_cost: u32,
     pub danger_level: u32,
+    /// Optional prerequisites for traversing this directed route.
+    #[serde(default)]
+    pub access_gate: Option<AccessGate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +232,7 @@ impl World {
             destination_id: to_id.clone(),
             travel_cost,
             danger_level,
+            access_gate: None,
         });
         Ok(())
     }
@@ -236,6 +256,7 @@ impl World {
                 destination_id: second_id.clone(),
                 travel_cost,
                 danger_level,
+                access_gate: None,
             });
         self.routes
             .entry(second_id.clone())
@@ -244,7 +265,54 @@ impl World {
                 destination_id: first_id.clone(),
                 travel_cost,
                 danger_level,
+                access_gate: None,
             });
+        Ok(())
+    }
+
+    /// Add a directed route with explicit access requirements.
+    pub fn add_route_with_gate(
+        &mut self,
+        from_id: &LocationId,
+        to_id: &LocationId,
+        travel_cost: u32,
+        danger_level: u32,
+        gate: AccessGate,
+    ) -> Result<(), WorldError> {
+        self.validate_new_route(from_id, to_id, travel_cost)?;
+        self.routes.entry(from_id.clone()).or_default().push(Route {
+            destination_id: to_id.clone(),
+            travel_cost,
+            danger_level,
+            access_gate: Some(gate),
+        });
+        Ok(())
+    }
+
+    /// Add a gated bidirectional connection. Both directions are validated
+    /// before either edge is inserted.
+    pub fn add_bidirectional_route_with_gate(
+        &mut self,
+        first_id: &LocationId,
+        second_id: &LocationId,
+        travel_cost: u32,
+        danger_level: u32,
+        gate: AccessGate,
+    ) -> Result<(), WorldError> {
+        self.validate_new_route(first_id, second_id, travel_cost)?;
+        self.validate_new_route(second_id, first_id, travel_cost)?;
+        self.routes.entry(first_id.clone()).or_default().push(Route {
+            destination_id: second_id.clone(),
+            travel_cost,
+            danger_level,
+            access_gate: Some(gate.clone()),
+        });
+        self.routes.entry(second_id.clone()).or_default().push(Route {
+            destination_id: first_id.clone(),
+            travel_cost,
+            danger_level,
+            access_gate: Some(gate),
+        });
         Ok(())
     }
 

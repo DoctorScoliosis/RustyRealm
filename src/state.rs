@@ -5,7 +5,7 @@ use crate::data::{
 };
 use crate::economy::MarketState;
 use crate::event::WorldEvent;
-use crate::party::{CompanionState, Party};
+use crate::party::{CompanionId, CompanionState, Party};
 use crate::quests::Quest;
 use crate::world::LocationId;
 use chrono::{DateTime, Utc};
@@ -357,6 +357,10 @@ pub struct GameState {
     pub active_theme: String,
     #[serde(default)]
     pub mastery_perks: Vec<MasteryPerkId>,
+    /// Stable companion IDs revealed through authored gameplay discovery.
+    /// Recruited legacy records also count as discovered during migration.
+    #[serde(default)]
+    pub discovered_companions: Vec<CompanionId>,
     /// Recruited companions and their mutable state.
     #[serde(default)]
     pub companions: Vec<CompanionState>,
@@ -416,6 +420,7 @@ impl GameState {
             unlocked_themes: default_unlocked_themes(),
             active_theme: default_theme(),
             mastery_perks: Vec::new(),
+            discovered_companions: Vec::new(),
             companions: Vec::new(),
             party: Party::new(),
             companion_recovery: crate::companion_recovery::RecoveryState::default(),

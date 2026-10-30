@@ -56,6 +56,10 @@ pub enum GameEvent {
     EncounterCleared {
         encounter_id: String,
     },
+    /// A companion lead has been discovered. This does not imply recruitment.
+    CompanionDiscovered {
+        companion_id: crate::party::CompanionId,
+    },
     /// Stable, realm-scoped task ID for content-specific progression milestones.
     RealmTaskCompleted {
         realm_id: String,
