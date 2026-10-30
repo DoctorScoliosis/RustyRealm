@@ -316,15 +316,11 @@ fn save_to_path(state: &GameState, path: &Path) -> Result<(), SaveError> {
     }
 
     let password_hash = state.player.password_hash.trim();
-    if password_hash.is_empty() {
-        return Err(SaveError::InvalidPasswordHash);
-    }
-
     let checksum = compute_checksum(&safe_state)?;
     let envelope = SaveEnvelope {
         version: CURRENT_SAVE_VERSION,
         checksum,
-        authentication: Some(AuthMetadata {
+        authentication: (!password_hash.is_empty()).then(|| AuthMetadata {
             password_hash: password_hash.to_owned(),
         }),
         data: safe_state,
@@ -382,15 +378,15 @@ fn load_game_at(path: &Path, username: &str, password: &str) -> Result<GameState
             if sanitize_username(&envelope.data.player.username) != safe_username {
                 return Err(SaveError::UsernameMismatch);
             }
-            let auth = envelope
-                .authentication
-                .ok_or(SaveError::PasswordMigrationRequired)?;
-            if !verify_password(password, &auth.password_hash)? {
+            let mut state = envelope.data;
+            if let Some(auth) = envelope.authentication {
+                if !verify_password(password, &auth.password_hash)? {
+                    return Err(SaveError::AuthenticationFailed);
+                }
+                state.player.password_hash = auth.password_hash;
+            } else if !password.is_empty() {
                 return Err(SaveError::AuthenticationFailed);
             }
-
-            let mut state = envelope.data;
-            state.player.password_hash = auth.password_hash;
             state
         }
     };
@@ -417,6 +413,53 @@ pub fn load_game(username: &str, password: &str) -> Result<GameState, SaveError>
     }
     let path = get_save_dir()?.join(format!("{safe_username}.json"));
     load_game_at(&path, &safe_username, password)
+}
+
+/// Return the names of valid local save files, newest modified first.
+pub fn list_local_accounts() -> Result<Vec<String>, SaveError> {
+    let directory = get_save_dir()?;
+    let mut accounts = Vec::new();
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(username) = path.file_stem().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if sanitize_username(username) != username {
+            continue;
+        }
+        if read_save(&path).is_ok() || read_save(&backup_path(&path)).is_ok() {
+            let modified = entry.metadata()?.modified().unwrap_or(UNIX_EPOCH);
+            accounts.push((username.to_owned(), modified));
+        }
+    }
+    accounts.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    Ok(accounts.into_iter().map(|(username, _)| username).collect())
+}
+
+pub fn account_requires_password(username: &str) -> Result<bool, SaveError> {
+    let safe_username = sanitize_username(username);
+    if safe_username.is_empty() {
+        return Err(SaveError::InvalidUsername);
+    }
+    let path = get_save_dir()?.join(format!("{safe_username}.json"));
+    let (parsed, _) = match read_save(&path) {
+        Ok(save) => (save, false),
+        Err(primary_error) => {
+            let backup = backup_path(&path);
+            if !backup.exists() {
+                return Err(primary_error);
+            }
+            (read_save(&backup)?, true)
+        }
+    };
+    match parsed {
+        ParsedSave::Current(envelope) => Ok(envelope.authentication.is_some()),
+        ParsedSave::Legacy(_) => Err(SaveError::PasswordMigrationRequired),
+    }
 }
 
 fn migrate_legacy_at(
@@ -492,10 +535,6 @@ pub fn create_account_with_class(
     if safe_username.is_empty() {
         return Err(SaveError::InvalidUsername);
     }
-    if password.is_empty() {
-        return Err(SaveError::EmptyPassword);
-    }
-
     let path = get_save_dir()?.join(format!("{safe_username}.json"));
     if path.exists() {
         return Err(SaveError::AccountExists);
