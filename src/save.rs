@@ -465,7 +465,6 @@ pub fn account_requires_password(username: &str) -> Result<bool, SaveError> {
         }
     }
 }
-
 fn migrate_legacy_at(
     path: &Path,
     username: &str,
