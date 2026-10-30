@@ -346,7 +346,6 @@ pub fn save_game(state: &GameState) -> Result<(), SaveError> {
     save_to_path(state, &path)
 }
 
-
 fn account_requires_password_at(path: &Path) -> Result<bool, SaveError> {
     match read_save(path)? {
         ParsedSave::Current(envelope) => Ok(envelope.authentication.is_some()),
@@ -580,8 +579,11 @@ mod tests {
         let valid_path = directory.join("zeta.json");
         let backup_path = directory.join("zeta.bak");
         let corrupt_path = directory.join("corrupt.json");
-        save_to_path(&GameState::new(Player::new("zeta".into(), String::new())), &valid_path)
-            .unwrap();
+        save_to_path(
+            &GameState::new(Player::new("zeta".into(), String::new())),
+            &valid_path,
+        )
+        .unwrap();
         fs::write(&backup_path, b"backup").unwrap();
         fs::write(&corrupt_path, b"not json").unwrap();
 
