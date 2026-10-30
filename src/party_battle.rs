@@ -501,20 +501,10 @@ fn update_lacoyx_phase(
     Ok(())
 }
 
-fn advance_combat_time(
-    tui: &mut Tui,
-    state: &mut GameState,
-    encounter: &Encounter,
-    starting_round: u64,
-) -> io::Result<()> {
-    // A battle consumes one in-game hour per begun combat round. A battle
-    // resolved during its first round therefore costs one hour.
-    let rounds = encounter
-        .round()
-        .saturating_sub(starting_round)
-        .saturating_add(1);
-    let hours = rounds.saturating_mul(crate::calendar::COMBAT_HOURS_PER_ROUND);
-    let recovered = state.advance_world_time(hours);
+fn advance_combat_time(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    // Tactical rounds are part of the encounter, not separate world turns.
+    // A resolved combat encounter occupies one in-game hour.
+    let recovered = state.advance_world_time(crate::calendar::COMBAT_HOURS_PER_ENCOUNTER);
     crate::calendar::notify_recovered_companions(tui, state, &recovered)
 }
 
@@ -526,7 +516,6 @@ pub fn run_party_battle(
 ) -> io::Result<BattleOutcome> {
     let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
     let mut encounter = build_encounter(state, &config).map_err(encounter_error)?;
-    let starting_round = encounter.round();
     let enemy_id = encounter
         .combatants()
         .iter()
@@ -588,7 +577,7 @@ pub fn run_party_battle(
             cancel_invalid_pending_telegraph(&mut pending_telegraph, &encounter, &mut last_log);
             sync_persistent_state(state, &encounter, &world)?;
             if resolve_party_defeat(tui, state, &encounter, &world)? {
-                advance_combat_time(tui, state, &encounter, starting_round)?;
+                advance_combat_time(tui, state)?;
                 return Ok(BattleOutcome::Defeated);
             }
             if encounter.current_actor() != Some(actor) {
