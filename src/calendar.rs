@@ -222,6 +222,17 @@ mod tests {
     }
 
     #[test]
+    fn configured_month_and_season_names_can_be_replaced_without_changing_the_clock() {
+        let mut config = DEFAULT_CALENDAR_CONFIG;
+        config.month_names[0] = "OwnerChosenMonth";
+        config.season_names[0] = "OwnerChosenSeason";
+        let date = calendar_at_with_config(0, &config);
+        assert_eq!(date.month_name, "OwnerChosenMonth");
+        assert_eq!(date.season_name, "OwnerChosenSeason");
+        assert_eq!((date.year, date.month, date.day, date.hour), (1, 1, 1, 6));
+    }
+
+    #[test]
     fn legacy_epoch_is_a_documented_morning_in_the_first_spring_month() {
         let date = calendar_at(0);
         assert_eq!(date.year, 1);
@@ -324,7 +335,7 @@ mod tests {
 
     #[test]
     fn legacy_save_without_a_clock_defaults_to_epoch_and_world_clock_roundtrips() {
-        let mut original = state();
+        let original = state();
         let mut value = serde_json::to_value(&original).unwrap();
         value.as_object_mut().unwrap().remove("world_turn");
 
@@ -338,7 +349,6 @@ mod tests {
         assert_eq!(loaded.world_turn, 1234);
         assert_eq!(calendar_at(loaded.world_turn), calendar_at(1234));
 
-        original.advance_world_time(0);
     }
 
     #[test]
