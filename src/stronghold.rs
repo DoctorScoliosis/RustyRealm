@@ -47,6 +47,17 @@ pub fn calculate_gauntlet_rewards(w: u32) -> (u32, u32) {
     let r = bounded(100.0 * (1.0 + f64::from(w) * 0.25));
     (r, r)
 }
+fn ensure_lacoyx_gate(tui: &mut Tui, state: &mut GameState) -> io::Result<bool> {
+    crate::realm_progression::reconcile_from_saved_evidence(state);
+    let gate = crate::realm_progression::stronghold_gate_status(state);
+    if gate.unlocked {
+        Ok(true)
+    } else {
+        tui.show_message("The Lacoyx Gate Remains Sealed", &gate.message, Some(state))?;
+        Ok(false)
+    }
+}
+
 pub fn enter_stronghold(tui: &mut Tui, s: &mut GameState) -> io::Result<()> {
     loop {
         match tui.select_menu(
@@ -60,6 +71,9 @@ pub fn enter_stronghold(tui: &mut Tui, s: &mut GameState) -> io::Result<()> {
             Some(s),
         )? {
             0 => {
+                if !ensure_lacoyx_gate(tui, s)? {
+                    continue;
+                }
                 if stronghold_warning(tui, s)? {
                     stronghold_dungeon(tui, s)?
                 }
@@ -201,6 +215,9 @@ fn stronghold_guardian_from_roll(roll: u8) -> (NpcType, u32) {
 /// Preserve the ten-victory Stronghold run while using the shared combat engine
 /// for its warrior encounters and the Lacoyx boss.
 pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    if !ensure_lacoyx_gate(tui, state)? {
+        return Ok(());
+    }
     if state.player.stronghold_kill_count >= 10 {
         return boss_fight(tui, state);
     }
@@ -271,6 +288,9 @@ pub fn stronghold_dungeon(tui: &mut Tui, state: &mut GameState) -> io::Result<()
 }
 
 fn boss_fight(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
+    if !ensure_lacoyx_gate(tui, state)? {
+        return Ok(());
+    }
     state.player.hp = state.player.max_hp;
     let npc_type = NpcType::Lacoyx;
     let level = 741;
