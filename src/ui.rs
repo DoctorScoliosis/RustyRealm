@@ -1585,6 +1585,20 @@ mod tests {
     }
 
     #[test]
+    fn escape_only_uses_an_explicit_back_or_cancel_action() {
+        assert_eq!(
+            back_option_index(&["Enter account", "Back to accounts"]),
+            Some(1)
+        );
+        assert_eq!(
+            back_option_index(&["Delete account", "Cancel"]),
+            Some(1)
+        );
+        assert_eq!(back_option_index(&["Delete account", "Confirm"]), None);
+        assert_eq!(back_option_index(&["Exit"]), None);
+    }
+
+    #[test]
     fn menu_hit_testing_maps_only_visible_rows() {
         let area = Rect::new(4, 7, 20, 4);
         assert_eq!(menu_row_at(area, 3, 0, 4, 7), Some(0));
