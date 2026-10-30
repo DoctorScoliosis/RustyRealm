@@ -171,14 +171,30 @@ impl Tui {
             let mut menu_region = Rect::default();
             let mut menu_offset = 0usize;
             self.render_screen(state, |frame, area, game_state| {
+                // Menus should follow their contents instead of stretching across
+                // the full terminal. Long lists still receive a scrollable viewport.
                 let title_height = if area.height >= 7 { 3 } else { 0 };
                 let footer_height = if area.height >= 10 { 2 } else { 0 };
+                let menu_height = options
+                    .len()
+                    .saturating_add(2)
+                    .min(12)
+                    .min(usize::from(area.height.saturating_sub(title_height + footer_height)))
+                    as u16;
                 let content_height = area.height.saturating_sub(title_height + footer_height);
+                let menu_width = options
+                    .iter()
+                    .map(|option| menu_option_parts(option).1.chars().count())
+                    .max()
+                    .unwrap_or(12)
+                    .saturating_add(8)
+                    .clamp(24, 64)
+                    .min(usize::from(area.width)) as u16;
                 let mut constraints = Vec::new();
                 if title_height > 0 {
                     constraints.push(Constraint::Length(title_height));
                 }
-                constraints.push(Constraint::Length(content_height));
+                constraints.push(Constraint::Length(menu_height.min(content_height)));
                 if footer_height > 0 {
                     constraints.push(Constraint::Length(footer_height));
                 }
@@ -186,6 +202,7 @@ impl Tui {
                     .direction(Direction::Vertical)
                     .constraints(constraints)
                     .split(area);
+                let menu_area = centered_rect_absolute(menu_width, menu_height, chunks[index]);
                 let mut index = 0usize;
 
                 if title_height > 0 {
@@ -301,8 +318,8 @@ impl Tui {
                         " Options "
                     })
                     .borders(Borders::ALL)
-                    .inner(chunks[index]);
-                frame.render_stateful_widget(list, chunks[index], &mut list_state);
+                    .inner(menu_area);
+                frame.render_stateful_widget(list, menu_area, &mut list_state);
                 menu_offset = list_state.offset();
                 index += 1;
 
@@ -460,7 +477,12 @@ impl Tui {
         let mut input = String::new();
         loop {
             self.render_screen(state, |frame, area, game_state| {
-                let popup = centered_rect(88, 35, area);
+                let popup_width = prompt.chars().count().saturating_add(12).clamp(32, 72);
+                let popup = centered_rect_absolute(
+                    popup_width.min(usize::from(area.width)) as u16,
+                    5.min(area.height),
+                    area,
+                );
                 frame.render_widget(Clear, popup);
                 let block = Block::default()
                     .title(format!(" {} ", prompt))
@@ -548,7 +570,19 @@ impl Tui {
         let mut scroll = 0u16;
         loop {
             self.render_screen(state, |frame, area, game_state| {
-                let popup = centered_rect(92, 82, area);
+                let message_width = message
+                    .lines()
+                    .map(|line| line.chars().count())
+                    .max()
+                    .unwrap_or(24)
+                    .saturating_add(6)
+                    .clamp(40, 88);
+                let message_height = message.lines().count().saturating_add(6).clamp(8, 24);
+                let popup = centered_rect_absolute(
+                    message_width.min(usize::from(area.width)) as u16,
+                    message_height.min(usize::from(area.height)) as u16,
+                    area,
+                );
                 frame.render_widget(Clear, popup);
                 let block = Block::default()
                     .title(format!(" {} ", title))
@@ -951,6 +985,17 @@ fn render_compact_header(frame: &mut Frame<'_>, area: Rect, state: &GameState) {
         Paragraph::new(text).style(Style::default().fg(theme_color(Some(state)))),
         area,
     );
+}
+
+fn centered_rect_absolute(width: u16, height: u16, area: Rect) -> Rect {
+    let width = width.max(1).min(area.width);
+    let height = height.max(1).min(area.height);
+    Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    )
 }
 
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
