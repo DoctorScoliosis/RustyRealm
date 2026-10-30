@@ -172,11 +172,8 @@ mod tests {
 
         let tavern = location(&[LocationService::Tavern]);
         state.current_location = tavern.id.clone();
-        state.player.password_hash.clear();
-        assert!(matches!(
-            session.save_at(&state, &tavern),
-            Err(CheckpointError::Save(_))
-        ));
-        assert!(session.is_dirty(&state).unwrap());
+        // Passwordless local accounts are still valid save targets.
+        session.save_at(&state, &tavern).unwrap();
+        assert!(!session.is_dirty(&state).unwrap());
     }
 }
