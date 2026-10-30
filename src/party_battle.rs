@@ -659,7 +659,7 @@ pub fn run_party_battle(
                     // must not attempt a second action for it.
                     sync_persistent_state(state, &encounter, &world)?;
                     if resolve_party_defeat(tui, state, &encounter, &world)? {
-                        advance_combat_time(tui, state, &encounter, starting_round)?;
+                        advance_combat_time(tui, state)?;
                         return Ok(BattleOutcome::Defeated);
                     }
                     if is_lacoyx {
@@ -753,7 +753,7 @@ pub fn run_party_battle(
         cancel_invalid_pending_telegraph(&mut pending_telegraph, &encounter, &mut last_log);
         sync_persistent_state(state, &encounter, &world)?;
         if resolve_party_defeat(tui, state, &encounter, &world)? {
-            advance_combat_time(tui, state, &encounter, starting_round)?;
+            advance_combat_time(tui, state)?;
             return Ok(BattleOutcome::Defeated);
         }
 
@@ -782,7 +782,7 @@ pub fn run_party_battle(
         )?;
     }
     sync_persistent_state(state, &encounter, &world)?;
-    advance_combat_time(tui, state, &encounter, starting_round)?;
+    advance_combat_time(tui, state)?;
     match encounter.outcome {
         EncounterOutcome::Victory => {
             if let Some(enemy) = crate::adventure::enemy_for_name(config.enemy_name) {
