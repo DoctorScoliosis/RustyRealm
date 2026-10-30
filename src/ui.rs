@@ -102,11 +102,18 @@ impl Tui {
                 println!("  {}. {}", index + 1, line);
             }
             let prompt = format!(
-                "Type an option number or exact label (1-{}), then press Enter: ",
+                "Type an option number or exact label (1-{}), or 0 to go back: ",
                 options.len()
             );
             let raw = read_line_prompt(&prompt)?;
             let choice = raw.trim();
+            if choice == "0" {
+                if let Some(back_index) = back_option_index(options) {
+                    return Ok(back_index);
+                }
+                println!("There is no back option on this screen.");
+                continue;
+            }
             let selected = choice
                 .parse::<usize>()
                 .ok()
@@ -486,7 +493,11 @@ impl Tui {
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Esc, ..
-                }) => return Ok(AccountLandingChoice::Action(actions.len() - 1)),
+                }) => {
+                    // Escape navigates from the actions panel back to the
+                    // account list. Exiting remains an explicit Enter action.
+                    focus_right = accounts.is_empty();
+                }
                 _ => {}
             }
         }
@@ -768,19 +779,11 @@ impl Tui {
                 Event::Key(KeyEvent {
                     code: KeyCode::Esc, ..
                 }) => {
-                    let back_index = options
-                        .iter()
-                        .position(|option| {
-                            let label = option.to_ascii_lowercase();
-                            label.contains("back")
-                                || label.contains("exit")
-                                || label.contains("leave")
-                                || label.contains("return")
-                                || label.contains("flee")
-                                || label.contains("cancel")
-                        })
-                        .unwrap_or(options.len() - 1);
-                    return Ok(back_index);
+                    // Escape may only activate an explicit navigation action.
+                    // It must never confirm an arbitrary final menu item.
+                    if let Some(back_index) = back_option_index(options) {
+                        return Ok(back_index);
+                    }
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char(c),
@@ -1165,6 +1168,14 @@ fn render_action_panel(
         .highlight_symbol(if focused { "▶ " } else { "  " });
     frame.render_stateful_widget(list, area, &mut state);
     *offset = state.offset();
+}
+
+fn back_option_index(options: &[&str]) -> Option<usize> {
+    options.iter().position(|option| {
+        let (_, label, _) = menu_option_parts(option);
+        let label = label.to_ascii_lowercase();
+        label.contains("back") || label.contains("return") || label.contains("cancel")
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
