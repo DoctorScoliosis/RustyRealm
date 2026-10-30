@@ -1525,8 +1525,8 @@ mod tests {
             .max()
             .unwrap_or_default();
         assert_eq!(max_width, usize::from(STARTUP_LOGO_WIDTH));
-        assert!(startup_logo_fits(Rect::new(0, 0, 179, 26)));
-        assert!(!startup_logo_fits(Rect::new(0, 0, 178, 40)));
+        assert!(startup_logo_fits(Rect::new(0, 0, 181, 26)));
+        assert!(!startup_logo_fits(Rect::new(0, 0, 180, 40)));
         assert!(!startup_logo_fits(Rect::new(0, 0, 200, 25)));
     }
 
