@@ -464,9 +464,18 @@ pub fn record_event(state: &mut GameState, event: &GameEvent) {
     }
 
     for realm in REALMS {
-        for objective in realm.objectives {
-            if event_matches_requirement(realm.id, objective.requirement, event) {
-                insert_objective_once(state, realm.id, objective.id);
+        let matched_objectives: Vec<_> = realm
+            .objectives
+            .iter()
+            .filter(|objective| event_matches_requirement(realm.id, objective.requirement, event))
+            .map(|objective| objective.id)
+            .collect();
+        if !matched_objectives.is_empty() {
+            // A successful realm-specific quest, encounter, landmark or task
+            // event is itself evidence that the player discovered that realm.
+            progress_for_mut(state, realm.id).discovered = true;
+            for objective_id in matched_objectives {
+                insert_objective_once(state, realm.id, objective_id);
             }
         }
     }
@@ -485,6 +494,10 @@ pub fn reconcile_from_saved_evidence(state: &mut GameState) {
 
         for objective in realm.objectives {
             if objective_has_saved_evidence(state, objective.requirement) {
+                // Older saves have no campaign-discovery flag. A persisted
+                // quest, encounter or landmark record proves the realm was found,
+                // even when the player has since travelled away from its entry.
+                progress_for_mut(state, realm.id).discovered = true;
                 insert_objective_once(state, realm.id, objective.id);
             }
         }
@@ -939,7 +952,7 @@ mod tests {
     #[test]
     fn legacy_region_and_quest_evidence_reconstructs_only_oakhaven() {
         let mut state = fresh_state();
-        state.current_location = LocationId::from("village_start");
+        state.current_location = LocationId::from("thornveil_entry");
         state.player.quests_completed.push(REGION_QUEST_ID.into());
         state.region_progress = RegionProgress {
             cleared_encounters: vec!["ruins_guardians".into()],
