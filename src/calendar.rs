@@ -308,6 +308,22 @@ mod tests {
     }
 
     #[test]
+    fn batched_market_time_matches_repeated_single_hour_advancement() {
+        let mut batched = state();
+        let mut repeated = state();
+        batched.market_state.record_trade(ItemType::Ore, 17);
+        repeated.market_state.record_trade(ItemType::Ore, 17);
+        batched.market_state.record_trade(ItemType::Logs, -13);
+        repeated.market_state.record_trade(ItemType::Logs, -13);
+
+        batched.market_state.advance_turns(27);
+        for _ in 0..27 {
+            repeated.market_state.advance_turn();
+        }
+        assert_eq!(batched.market_state, repeated.market_state);
+    }
+
+    #[test]
     fn market_decay_is_applied_for_elapsed_hours_not_for_menu_reads() {
         let mut state = state();
         state.market_state.record_trade(ItemType::Ore, 5);
@@ -316,6 +332,19 @@ mod tests {
         assert_eq!(state.market_state.net_trades.get(&ItemType::Ore), Some(&5));
         state.advance_world_time(1);
         assert_eq!(state.market_state.net_trades.get(&ItemType::Ore), Some(&4));
+    }
+
+    #[test]
+    fn recovery_without_a_treatment_destination_does_not_count_down() {
+        let mut state = state();
+        state.companion_recovery.records.push(CompanionRecoveryRecord {
+            companion_id: CompanionId::BranTheShield,
+            destination: None,
+            turns_remaining: 2,
+        });
+
+        assert!(state.advance_world_time(100).is_empty());
+        assert_eq!(state.companion_recovery.records[0].turns_remaining, 2);
     }
 
     #[test]
