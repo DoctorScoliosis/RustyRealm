@@ -15,6 +15,7 @@ mod party;
 mod party_battle;
 mod party_combat;
 mod quests;
+mod realm_progression;
 mod save;
 mod shops;
 mod skill_checks;
@@ -169,6 +170,7 @@ fn create_account(tui: &mut Tui) -> io::Result<Option<GameState>> {
 fn main_menu(tui: &mut Tui, state: &mut GameState) -> io::Result<()> {
     let world = build_initial_world().map_err(|error| io::Error::other(error.to_string()))?;
     crate::adventure::ensure_region_quest(state);
+    crate::realm_progression::reconcile_from_saved_evidence(state);
     // The location graph and recovery records are persisted separately; a
     // companion with zero HP is normalised here so stale party IDs cannot let
     // an older save field reintroduce them into combat.
