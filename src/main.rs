@@ -174,7 +174,8 @@ fn create_account_flow(tui: &mut Tui) -> io::Result<Option<GameState>> {
         }
     }
 
-    let class_options = crate::character::CharacterClass::ALL.map(crate::character::CharacterClass::name);
+    let class_options =
+        crate::character::CharacterClass::ALL.map(crate::character::CharacterClass::name);
     let class_choice = tui.select_menu("Choose your character class", &class_options, None)?;
     let Some(class) = crate::character::CharacterClass::ALL
         .get(class_choice)
