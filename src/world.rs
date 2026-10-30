@@ -80,8 +80,8 @@ impl Location {
 
 /// A directed edge from its owning location to its destination ID.
 ///
-/// Directionality is explicit: use World::add_bidirectional_route when travel
-/// should be possible in both directions.
+/// travel_cost is the elapsed in-game travel duration in hours. Directionality
+/// is explicit: use World::add_bidirectional_route for two-way travel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Route {
     pub destination_id: LocationId,
