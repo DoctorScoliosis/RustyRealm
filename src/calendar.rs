@@ -139,10 +139,7 @@ pub fn calendar_at(world_turn: u64) -> CalendarDateTime {
     calendar_at_with_config(world_turn, &DEFAULT_CALENDAR_CONFIG)
 }
 
-pub fn calendar_at_with_config(
-    world_turn: u64,
-    config: &CalendarConfig,
-) -> CalendarDateTime {
+pub fn calendar_at_with_config(world_turn: u64, config: &CalendarConfig) -> CalendarDateTime {
     let epoch_hour = u128::from(config.epoch_hour.min(23));
     let absolute_hour = u128::from(world_turn) + epoch_hour;
     let hour_of_year = absolute_hour % u128::from(HOURS_PER_YEAR);
@@ -249,8 +246,14 @@ mod tests {
     fn midnight_and_month_boundaries_are_exact() {
         let last_moment = calendar_at(HOURS_PER_MONTH - u64::from(CALENDAR_EPOCH_HOUR) - 1);
         let next_month = calendar_at(HOURS_PER_MONTH - u64::from(CALENDAR_EPOCH_HOUR));
-        assert_eq!((last_moment.month, last_moment.day, last_moment.hour), (1, 30, 23));
-        assert_eq!((next_month.month, next_month.day, next_month.hour), (2, 1, 0));
+        assert_eq!(
+            (last_moment.month, last_moment.day, last_moment.hour),
+            (1, 30, 23)
+        );
+        assert_eq!(
+            (next_month.month, next_month.day, next_month.hour),
+            (2, 1, 0)
+        );
 
         let midnight = calendar_at(HOURS_PER_DAY - u64::from(CALENDAR_EPOCH_HOUR));
         assert_eq!((midnight.day, midnight.hour), (2, 0));
@@ -259,13 +262,22 @@ mod tests {
     #[test]
     fn season_and_year_boundaries_follow_three_months_and_twelve_months() {
         let summer = calendar_at(HOURS_PER_SEASON - u64::from(CALENDAR_EPOCH_HOUR));
-        assert_eq!((summer.month, summer.day, summer.season_name), (4, 1, "Summer"));
+        assert_eq!(
+            (summer.month, summer.day, summer.season_name),
+            (4, 1, "Summer")
+        );
 
         let autumn = calendar_at(2 * HOURS_PER_SEASON - u64::from(CALENDAR_EPOCH_HOUR));
-        assert_eq!((autumn.month, autumn.day, autumn.season_name), (7, 1, "Autumn"));
+        assert_eq!(
+            (autumn.month, autumn.day, autumn.season_name),
+            (7, 1, "Autumn")
+        );
 
         let winter = calendar_at(3 * HOURS_PER_SEASON - u64::from(CALENDAR_EPOCH_HOUR));
-        assert_eq!((winter.month, winter.day, winter.season_name), (10, 1, "Winter"));
+        assert_eq!(
+            (winter.month, winter.day, winter.season_name),
+            (10, 1, "Winter")
+        );
 
         let next_year = calendar_at(HOURS_PER_YEAR - u64::from(CALENDAR_EPOCH_HOUR));
         assert_eq!((next_year.year, next_year.month, next_year.day), (2, 1, 1));
@@ -315,11 +327,14 @@ mod tests {
         companion.current_hp = 0;
         companion.condition = CompanionCondition::KnockedOut;
         state.companions.push(companion);
-        state.companion_recovery.records.push(CompanionRecoveryRecord {
-            companion_id: id,
-            destination: Some(LocationId::from("village_start")),
-            turns_remaining: 3,
-        });
+        state
+            .companion_recovery
+            .records
+            .push(CompanionRecoveryRecord {
+                companion_id: id,
+                destination: Some(LocationId::from("village_start")),
+                turns_remaining: 3,
+            });
 
         assert!(state.advance_world_time(2).is_empty());
         assert_eq!(state.companion_recovery.records[0].turns_remaining, 1);
@@ -349,7 +364,6 @@ mod tests {
         let loaded: GameState = serde_json::from_value(value).unwrap();
         assert_eq!(loaded.world_turn, 1234);
         assert_eq!(calendar_at(loaded.world_turn), calendar_at(1234));
-
     }
 
     #[test]
