@@ -1458,6 +1458,7 @@ mod travel_tests {
         assert!(!world.can_travel(&starting_location, &destination));
         assert!(apply_travel(&mut state, &world, &destination).is_err());
         assert_eq!(state.current_location, starting_location);
+        assert_eq!(state.world_turn, 0);
     }
 
     #[test]
@@ -1468,5 +1469,6 @@ mod travel_tests {
 
         assert!(apply_travel(&mut state, &world, &LocationId::from("unknown_location")).is_err());
         assert_eq!(state.current_location, starting_location);
+        assert_eq!(state.world_turn, 0);
     }
 }
